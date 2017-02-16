@@ -39,13 +39,6 @@ for ac in asicsConfig.values():
 		cc.setValue("vth_e", 20)
 		
 
-for ac in asicsConfig.values():
-	for cc in ac.channelConfig:
-		cc.setValue("trigger_mode_1", 0b11)
-
-asicsConfig[(0,0,0)].channelConfig[44].setValue("trigger_mode_1", 0b00)
-asicsConfig[(0,0,2)].channelConfig[33].setValue("trigger_mode_1", 0b00)
-
 #for ac in asicsConfig.values():
 	#ac.globalConfig.setValue("debug_mode", 1)
         #ac.globalConfig.setValue("adebug_out_mode", 0b01)
