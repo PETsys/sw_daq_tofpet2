@@ -69,7 +69,7 @@ public:
 	void closeStep(float step1, float step2) {
 		if(!isBinary) return;
 		
-		fprintf(indexFile, "%llu\t|llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
+		fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
 		stepBegin = ftell(dataFile);
 	};
 	
