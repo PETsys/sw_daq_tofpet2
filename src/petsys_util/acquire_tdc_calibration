@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import argparse
+
+parser = argparse.ArgumentParser(description='Acquire data for TDC calibration')
+parser.add_argument("--config", type=str, required=True, help="Configuration file")
+parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help="Data filename (prefix)")
+args = parser.parse_args()
+
+systemConfig = config.ConfigFromFile(args.config, loadMask=0)
+
+daqd = daqd.Connection()
+daqd.initializeSystem()
+systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
+
+daqd.openRawAcquisition(args.fileNamePrefix)
+asicsConfig = daqd.getAsicsConfig()
+
+## Calibration parameters
+## Phase range: 0 to 8 clocks in 129 steps
+phaseMin = 0.0
+phaseMax = 8.0
+nBins = 165
+
+binParameterFile = open(args.fileNamePrefix + ".bins", "w")
+binParameterFile.write("%d\t%f\t%f\n" % (nBins, phaseMin, phaseMax))
+binParameterFile.close()
+
+
+# Prepare all channels for TDCA but disable actual triggering...
+for ac in asicsConfig.values():
+	for cc in ac.channelConfig:
+		## These trigger modes use only do_T1 ignoring do_T2 and do_E
+		cc.setValue("trigger_mode_2_t", 0b00)
+		cc.setValue("trigger_mode_2_e", 0b000)
+		cc.setValue("trigger_mode_2_q", 0b00)
+		cc.setValue("trigger_mode_2_b", 0b000)
+		# Set mode to ToT
+		cc.setValue("qdc_mode", 0)
+		# Disable channel from triggering.
+		# Will selectively enable channels below
+		cc.setValue("trigger_mode_1", 0b11)
+		
+	ac.globalConfig.setValue("debug_mode", 1)
+	
+
+
+# This works for worse case scenarion:
+# 16 ASIC per FEB/D with GbE interface (max 126 events/frame)
+simultaneousChannels = 7
+
+simultaneousChannels = 1 # For debug
+
+for firstChannel in range(0, 64/simultaneousChannels):
+	# Enable triggering for this channel
+	cfg = deepcopy(asicsConfig)
+	for ac in cfg.values():
+		for channel in range(firstChannel, 64, 64/simultaneousChannels):
+			print channel
+			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
+			ac.channelConfig[channel].setValue("debug_mode", 0b11)
+	daqd.setAsicsConfig(cfg)
+
+	for i in range(0, nBins):
+		binSize = (phaseMax - phaseMin) / nBins
+		finePhase = phaseMin + (i+0.5) * binSize
+		print binSize, i, finePhase
+		daqd.setTestPulsePLL(100, 0, finePhase, False)
+
+		daqd.acquire(0.02, finePhase, 0)
+
+systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
