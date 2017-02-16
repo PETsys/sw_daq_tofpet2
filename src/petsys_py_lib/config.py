@@ -52,7 +52,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readSiPMBiasTable(fn)
-		config._Config__sipmBiasTable = t
+		config.sipmBiasTable = t
 		config._Config__loadMask |= LOAD_SIPM_BIAS
 
 	if loadMask & LOAD_DISC_CALIBRATION != 0:
@@ -60,7 +60,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readDiscCalibrationsTable(fn)
-		config._Config__discCalibrationTable = t
+		config.discCalibrationTable = t
 		config._Config__loadMask |= LOAD_DISC_CALIBRATION
 
 	# We always load ASIC parameters from config "asic" section, if they exist
@@ -74,8 +74,8 @@ class Config:
 	def __init__(self):
 		self.__loadMask = 0x00000000
 		self.__ad5535CalibrationTable = {}
-		self.__sipmBiasTable = {}
-		self.__discCalibrationTable = {}
+		self.sipmBiasTable = {}
+		self.discCalibrationTable = {}
 		self.__asicParameterTable = {}
 
 	def loadToHardware(self, daqd, biasMode):
@@ -91,8 +91,8 @@ class Config:
 		if biasMode == APPLY_BIAS_PREBD or biasMode == APPLY_BIAS_ON:
 			assert self.__loadMask & LOAD_AD5535_CALIBRATION != 0
 			assert self.__loadMask & LOAD_SIPM_BIAS != 0
-			for key in self.__sipmBiasTable.keys():
-				entry = self.__sipmBiasTable[key]
+			for key in self.sipmBiasTable.keys():
+				entry = self.sipmBiasTable[key]
 				if biasMode == APPLY_BIAS_PREBD:
 					Vset = entry.Vprebd
 				else:
@@ -120,7 +120,7 @@ class Config:
 			for portID, slaveID, chipID in asicsConfig.keys():
 				ac = asicsConfig[(portID, slaveID, chipID)]
 				for channelID in range(64):
-					entry = self.__discCalibrationTable[(portID, slaveID, chipID, channelID)]
+					entry = self.discCalibrationTable[(portID, slaveID, chipID, channelID)]
 					cc = ac.channelConfig[channelID]
 					cc.setValue("baseline_t", entry.baseline_t)
 					cc.setValue("baseline_e", entry.baseline_e)
@@ -145,10 +145,6 @@ class Config:
 		b = y1 - m*x1
 		x = (y-b)/m
 		return int(round(x))
-
-	def getSiPMBiasTable(self):
-		return self.__sipmBiasTable
-
 
 def parseAsicParameters(configParser):
 	if not configParser.has_section("asic_parameters"):
