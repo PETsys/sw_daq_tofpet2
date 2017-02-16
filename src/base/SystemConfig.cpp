@@ -101,7 +101,7 @@ static void normalizeLine(char *line) {
 	s = boost::regex_replace(s, boost::regex("\\s+$"), "");
 	// Normalize white space to tab
 	s = boost::regex_replace(s, boost::regex("\\s+"), "\t");
-	strcat(line, s.c_str());
+	strcpy(line, s.c_str());
 	
 }
 
