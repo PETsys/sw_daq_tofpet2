@@ -80,13 +80,14 @@ class AsicGlobalConfig(bitarray):
 		# WARNING This value is negated in the default(reset) config
 		self.setValue("tdc_comp_bias", 0b00100)
 
+		# WARNING These values were set by experimental adjustment
 		# tdc global dac adjust due to mismatch
 		self.setValue("tdc_global_dac", 63-44) # default: 63-11
-		
 		# main global dac adjustment due to mismatch
 		self.setValue("main_global_dac", 31 - 20) # default: 31 - 17
 		
-		self.setValue("disc_lsb_t1", 61)
+		# WARNING: Avoid changing values here, use the .ini file instead
+		#self.setValue("disc_lsb_t1", 61)
 
 		
 		#self.setValue("tdc_comp_vcas", 15-15)
@@ -238,7 +239,9 @@ class AsicChannelConfig(bitarray):
 
 		# Specify default value
 		self[0:125] = bitarray('10100100100000100000000001101100000000001111010011101111111000111101000000111000001110111101010100101010111110000000000000000')
-		self.setValue("fe_delay", 0b10110) # Maximum delay, ~14 ns
+
+		# WARNING: Avoid changing values here, use the .ini file instead
+		#self.setValue("fe_delay", 0b10110) # Maximum delay, ~14 ns
 
 		#self.setValue("tac_max_age", 31)
 		#self.setValue("tac_min_age", 20)
