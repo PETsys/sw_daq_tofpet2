@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
 		reader->getStepValue(stepIndex, step1, step2);
-		printf("Processing step %d of %d: (%f, %f)\n", stepIndex, reader->getNSteps(), step1, step2);
+		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
 		
 		reader->processStep(stepIndex,
 				new CoarseSorter(
