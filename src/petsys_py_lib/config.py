@@ -20,7 +20,7 @@ class SiPMBiasConfigEntry:
 		self.Vbd = Vbd
 		self.Vover = Vover
 
-class DiscriminatorConfigEntry:
+class DiscriminatorCalibrationEntry:
 	def __init__(self, baseline_t, zero_t1, noise_t1, zero_t2, noise_t2, baseline_e, zero_e, noise_e):
 		self.baseline_t = baseline_t
 		self.zero_t1 = zero_t1
@@ -30,6 +30,12 @@ class DiscriminatorConfigEntry:
 		self.baseline_e = baseline_e
 		self.zero_e = zero_e
 		self.noise_e = noise_e
+
+class DiscriminatorConfigEntry:
+	def __init__(self, vth_t1, vth_t2, vth_e):
+		self.vth_t1 = vth_t1
+		self.vth_t2 = vth_t2
+		self.vth_e = vth_e
 
 
 def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
@@ -61,6 +67,13 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 			fn = os.path.join(dn, fn)
 		t = readDiscCalibrationsTable(fn)
 		config.discCalibrationTable = t
+		# TODO: Load discriminator configurations from somewhere else
+		tt = {}
+		for key in t.keys():
+			e = t[key]
+			tt[key] = DiscriminatorConfigEntry(0, 0, 0)
+		config.discConfigTable = tt
+			
 		config._Config__loadMask |= LOAD_DISC_CALIBRATION
 
 	# We always load ASIC parameters from config "asic" section, if they exist
@@ -76,6 +89,7 @@ class Config:
 		self.__ad5535CalibrationTable = {}
 		self.sipmBiasTable = {}
 		self.discCalibrationTable = {}
+		self.discConfigTable = {}
 		self.__asicParameterTable = {}
 
 	def loadToHardware(self, daqd, biasMode):
@@ -120,13 +134,14 @@ class Config:
 			for portID, slaveID, chipID in asicsConfig.keys():
 				ac = asicsConfig[(portID, slaveID, chipID)]
 				for channelID in range(64):
-					entry = self.discCalibrationTable[(portID, slaveID, chipID, channelID)]
+					a = self.discCalibrationTable[(portID, slaveID, chipID, channelID)]
+					b = self.discConfigTable[(portID, slaveID, chipID, channelID)]
 					cc = ac.channelConfig[channelID]
-					cc.setValue("baseline_t", entry.baseline_t)
-					cc.setValue("baseline_e", entry.baseline_e)
-					cc.setValue("vth_t1", int(entry.zero_t1 - 6*entry.noise_t1))
-					cc.setValue("vth_t2", int(entry.zero_t2 - 6*entry.noise_t2))
-					cc.setValue("vth_e", int(entry.zero_e - 6*entry.noise_e))
+					cc.setValue("baseline_t", a.baseline_t)
+					cc.setValue("baseline_e", a.baseline_e)
+					cc.setValue("vth_t1", int(b.vth_t1))
+					cc.setValue("vth_t2", int(b.vth_t2))
+					cc.setValue("vth_e", int(b.vth_e))
 
 		daqd.setAsicsConfig(asicsConfig)
 
@@ -227,5 +242,5 @@ def readDiscCalibrationsTable(fn):
 		zero_T1, noise_T1, zero_T2, noise_T2 = [ float(v) for v in l[5:9] ]
 		baseline_E = int(l[9])
 		zero_E, noise_E = [ float(v) for v in l[10:12] ]
-		c[(portID, slaveID, chipID, channelID)] = DiscriminatorConfigEntry(baseline_T, zero_T1, noise_T1, zero_T2, noise_T2, baseline_E, zero_E, noise_E)
+		c[(portID, slaveID, chipID, channelID)] = DiscriminatorCalibrationEntry(baseline_T, zero_T1, noise_T1, zero_T2, noise_T2, baseline_E, zero_E, noise_E)
 	return c
