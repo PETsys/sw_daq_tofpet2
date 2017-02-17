@@ -195,26 +195,26 @@ for profile in noiseProfiles.values():
 outFile = open(args.outFileName, "w")
 outFile.write("# Port ID\tSlaveID\tChipID\tChannelID\tbaseline_T\tzero_T1\tnoise_T1\tzero_T2\tnoise_T2\tbaseline_E\tzero_E\tnoise_E\n")
 for portID, slaveID, chipID, channelID in activeChannels:
-	baseline_T = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].getValue("baseline_T")
-	baseline_E = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].getValue("baseline_E")
+	baseline_T = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].getValue("baseline_t")
+	baseline_E = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].getValue("baseline_e")
 	
-	p = noiseProfiles[(portID, slaveID, chipID, channelID, "vth_T1")]
+	p = noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t1")]
 	f = p.GetFunction("fSigmoid")
 	if f:
 		zero_T1 = f.GetParameter(2)
 		noise_T1 = f.GetParameter(1)
 	else:
-		print "WARNING: No fit for (%2d %2d %2d %2d %s)" % (portID, slaveID, chipID, channelID, "vth_T1")
+		print "WARNING: No fit for (%2d %2d %2d %2d %s)" % (portID, slaveID, chipID, channelID, "vth_t1")
 		zero_T1 = 63.0
 		noise_T1 = 10.0
 	
-	p = noiseProfiles[(portID, slaveID, chipID, channelID, "vth_T2")]
+	p = noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t2")]
 	f = p.GetFunction("fSigmoid")
 	if f:
 		zero_T2 = f.GetParameter(2)
 		noise_T2 = f.GetParameter(1)
 	else:
-		print "WARNING: No fit for (%2d %2d %2d %2d %s)" % (portID, slaveID, chipID, channelID, "vth_T2")
+		print "WARNING: No fit for (%2d %2d %2d %2d %s)" % (portID, slaveID, chipID, channelID, "vth_t2")
 		zero_T2 = 63.0
 		noise_T2 = 10.0
 	
