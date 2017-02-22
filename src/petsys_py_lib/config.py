@@ -173,19 +173,19 @@ def parseAsicParameters(configParser):
 		if key[0:7] == "global.":
 			k = key[7:]
 			if k not in gk:
-				print "1Invalid ASIC parameter: '%s'" % key
+				print "Invalid ASIC parameter: '%s'" % key
 				exit(1)
 			else:
 				t[("global", k)] = int(value)
 		elif key[0:8] == "channel.":
 			k = key[8:]
 			if k not in ck:
-				print "2Invalid ASIC parameter: '%s'" % key
+				print "Invalid ASIC parameter: '%s'" % key
 				exit(1)
 			else:
 				t[("channel", k)] = int(value)
 		else:
-			print "3Invalid ASIC parameter: '%s'" % key
+			print "Invalid ASIC parameter: '%s'" % key
 			exit(1)
 	return t
 
