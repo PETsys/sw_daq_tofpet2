@@ -156,8 +156,9 @@ class Connection:
 		
 		d = reply[2:]
 		value = 0
-		for n in range(8):#####  it was 8		
-			value = value + (d[n] << (8*n))
+                size = min(len(d),8)
+		for n in range(size):#####  it was 8		
+                        value = value + (d[n] << (8*n))
 		return value
 
 	## Writes a FEB/D configuration register
@@ -523,7 +524,7 @@ class Connection:
 		cmd = bytearray(cmd)
 
 		reply = self.sendCommand(portID, slaveID, 0x00, cmd)
-		if len(reply) < 2: raise tofpet.ConfigurationErrorBadReply(2, len(reply))
+		if len(reply) < 2: raise tofpet2.ConfigurationErrorBadReply(2, len(reply))
 		status = reply[1]
 			
 		if status == 0xE3:
@@ -539,7 +540,7 @@ class Connection:
 			expectedBytes = math.ceil(dataLength/8)
 			if len(reply) < (2+expectedBytes): 
 				print len(reply), (2+expectedBytes)
-				raise tofpet.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
+				raise tofpet2.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
 			reply = str(reply[2:])
 			data = bitarray()
 			data.frombytes(reply)

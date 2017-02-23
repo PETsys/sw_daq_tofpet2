@@ -57,6 +57,17 @@ public:
 	void report() { };
 };
 
+void displayHelp(char * program)
+{
+	fprintf(stderr, "Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", program);
+	fprintf(stderr, "\arguments:\n");
+	fprintf(stderr,  "  --help \t\t\t Show this help message and exit \n");
+	fprintf(stderr,  "  --config \t\t\t Configuration file containing path to tdc calibration table \n");
+	fprintf(stderr,  "  -i \t\t\t Input file prefix for the data to be processed\n");
+	fprintf(stderr,  "  -o \t\t\t Output file prefix containing raw event data in ROOT format (extension .root will be created automatically)\n");
+};
+
+
 void displayUsage(char *argv0)
 {
 	printf("Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n");
@@ -67,6 +78,7 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
+	char *outputFilePrefix = NULL;
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
@@ -113,6 +125,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	
+	sprintf(outputFileName,"%s.root",outputFilePrefix);
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
 	DataFileWriter *rootFile = new DataFileWriter(outputFileName);
