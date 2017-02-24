@@ -45,7 +45,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	configParser = ConfigParser.SafeConfigParser()
 	configParser.read(configFileName)
 	
-	if loadMask & LOAD_AD5535_CALIBRATION != 0:
+	if (loadMask & LOAD_AD5535_CALIBRATION) != 0:
 		fn = configParser.get("main", "ad5535_calibration_table")
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
@@ -53,7 +53,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		config._Config__ad5535CalibrationTable = t
 		config._Config__loadMask |= LOAD_AD5535_CALIBRATION
 
-	if loadMask & LOAD_SIPM_BIAS != 0:
+	if (loadMask & LOAD_SIPM_BIAS) != 0:
 		fn = configParser.get("main", "sipm_bias_table")
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
@@ -61,19 +61,18 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		config.sipmBiasTable = t
 		config._Config__loadMask |= LOAD_SIPM_BIAS
 
-	if loadMask & LOAD_DISC_CALIBRATION != 0:
+	if (loadMask & LOAD_DISC_CALIBRATION) != 0:
 		fn = configParser.get("main", "disc_calibration_table")
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readDiscCalibrationsTable(fn)
 		config.discCalibrationTable = t
-		# TODO: Load discriminator configurations from somewhere else
-		tt = {}
-		for key in t.keys():
-			e = t[key]
-			tt[key] = DiscriminatorConfigEntry(0, 0, 0)
-		config.discConfigTable = tt
-			
+
+		fn = configParser.get("main", "disc_settings_table")
+		if not os.path.isabs(fn):
+			fn = os.path.join(dn, fn)
+		t = readDiscSettingsTable(fn)
+		config.discConfigTable = t
 		config._Config__loadMask |= LOAD_DISC_CALIBRATION
 
 	# We always load ASIC parameters from config "asic" section, if they exist
@@ -103,8 +102,8 @@ class Config:
 				ad5535HwConfig[key] = int(round(1.0 * 2**14 / (50 * 2.048)))
 
 		if biasMode == APPLY_BIAS_PREBD or biasMode == APPLY_BIAS_ON:
-			assert self.__loadMask & LOAD_AD5535_CALIBRATION != 0
-			assert self.__loadMask & LOAD_SIPM_BIAS != 0
+			assert (self.__loadMask & LOAD_AD5535_CALIBRATION) != 0
+			assert (self.__loadMask & LOAD_SIPM_BIAS) != 0
 			for key in self.sipmBiasTable.keys():
 				entry = self.sipmBiasTable[key]
 				if biasMode == APPLY_BIAS_PREBD:
@@ -130,7 +129,7 @@ class Config:
 
 		#
 		# Apply discriminator calibrations
-		if self.__loadMask & LOAD_DISC_CALIBRATION:
+		if (self.__loadMask & LOAD_DISC_CALIBRATION) != 0:
 			for portID, slaveID, chipID in asicsConfig.keys():
 				ac = asicsConfig[(portID, slaveID, chipID)]
 				for channelID in range(64):
@@ -161,10 +160,18 @@ class Config:
 		x = (y-b)/m
 		return int(round(x))
 
+def toInt(s):
+	s = s.upper()
+	if s[0:2] == "0X":
+		return int(s[2:], base=16)
+	elif s[0:2] == "0B":
+		return int(s[2:], base=2)
+	else:
+		return int(s)
+
 def parseAsicParameters(configParser):
 	if not configParser.has_section("asic_parameters"):
 		return {}
-
 	
 	t = {}
 	gk = tofpet2.AsicGlobalConfig().getKeys()
@@ -173,19 +180,19 @@ def parseAsicParameters(configParser):
 		if key[0:7] == "global.":
 			k = key[7:]
 			if k not in gk:
-				print "1Invalid ASIC parameter: '%s'" % key
+				print "Invalid ASIC parameter: '%s'" % key
 				exit(1)
 			else:
-				t[("global", k)] = int(value)
+				t[("global", k)] = toInt(value)
 		elif key[0:8] == "channel.":
 			k = key[8:]
 			if k not in ck:
-				print "2Invalid ASIC parameter: '%s'" % key
+				print "Invalid ASIC parameter: '%s'" % key
 				exit(1)
 			else:
-				t[("channel", k)] = int(value)
+				t[("channel", k)] = toInt(value)
 		else:
-			print "3Invalid ASIC parameter: '%s'" % key
+			print "Invalid ASIC parameter: '%s'" % key
 			exit(1)
 	return t
 
@@ -244,3 +251,15 @@ def readDiscCalibrationsTable(fn):
 		zero_E, noise_E = [ float(v) for v in l[10:12] ]
 		c[(portID, slaveID, chipID, channelID)] = DiscriminatorCalibrationEntry(baseline_T, zero_T1, noise_T1, zero_T2, noise_T2, baseline_E, zero_E, noise_E)
 	return c
+
+def readDiscSettingsTable(fn):
+	f = open(fn)
+	c = {}
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, chipID, channelID = [ int(v) for v in l[0:4] ]
+		vth_t1, vth_t2, vth_e = [ float(v) for v in l[4:7] ]
+		c[(portID, slaveID, chipID, channelID)] = DiscriminatorConfigEntry(vth_t1, vth_t2, vth_e)
+	return c
+

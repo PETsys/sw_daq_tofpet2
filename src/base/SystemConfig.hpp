@@ -12,13 +12,20 @@ namespace PETSYS {
 		static const uint64_t LOAD_SYSTEM_MAP		= 0x0000000000000001ULL;
 		static const uint64_t LOAD_TDC_CALIBRATION	= 0x0000000000000002ULL;
 		static const uint64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
-		static const uint64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000006ULL;
+		static const uint64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
 
 		struct TacConfig {
 			float t0;
 			float tB;
 			float m;
 			float p2;
+		};
+		struct QacConfig {
+			float p0;
+			float p1;
+			float p2;
+			float p3;
+			float p4;
 		};
 		struct ChannelConfig {
 			float x, y, z;
@@ -27,6 +34,7 @@ namespace PETSYS {
 			float t0;
 			TacConfig tac_T[4];
 			TacConfig tac_E[4];
+			QacConfig qac_Q[4];
 		};
 
 		static SystemConfig *fromFile(const char *configFileName);
@@ -49,6 +57,7 @@ namespace PETSYS {
 	private:
 		void touchChannelConfig(unsigned channelID);
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
+		static void loadQDCCalibration(SystemConfig *config, const char *fn);
 		
 		ChannelConfig **channelConfig;
 		ChannelConfig nullChannelConfig;

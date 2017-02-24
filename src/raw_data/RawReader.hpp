@@ -12,15 +12,16 @@ namespace PETSYS {
 		~RawReader();
 		static RawReader *openFile(const char *fnPrefix);
 
+		bool isQDC();
 		double getFrequency();
 		int getNSteps();
 		void getStepValue(int n, float &step1, float &step2);
-		void processStep(int n, EventSink<RawHit> *pipeline);
-		void processLastStep(EventSink<RawHit> *pipeline);
+		void processStep(int n, bool verbose, EventSink<RawHit> *pipeline);
+		void processLastStep(bool verbose, EventSink<RawHit> *pipeline);
 
 	private:
 		RawReader();
-		void processRange(unsigned long begin, unsigned long end, EventSink<RawHit> *pipeline);
+		void processRange(unsigned long begin, unsigned long end, bool verbose, EventSink<RawHit> *pipeline);
 
 		struct Step {
                         float step1;
