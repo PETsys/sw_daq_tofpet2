@@ -75,6 +75,11 @@ double RawReader::getFrequency()
 	return (double) frequency;
 }
 
+bool RawReader::isQDC()
+{
+	return qdcMode;
+}
+
 void RawReader::getStepValue(int n, float &step1, float &step2)
 {
 	Step step = steps[n];
@@ -82,7 +87,7 @@ void RawReader::getStepValue(int n, float &step1, float &step2)
 	step2 = step.step2;
 }
 
-void RawReader::processStep(int n, EventSink<RawHit> *sink)
+void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 {
 	Step step = steps[n];
 	
@@ -93,15 +98,21 @@ void RawReader::processStep(int n, EventSink<RawHit> *sink)
 	EventBuffer<RawHit> *outBuffer = NULL; 
 	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
-	while (lseek(dataFile, 0, SEEK_CUR) < step.stepEnd) {
+	
+	off_t currentPosition = step.stepBegin;
+	while (currentPosition < step.stepEnd) {
 		int r;
 		// Read frame header
 		r = read(dataFile, (void*)((dataFrame->data)+0), 2*sizeof(uint64_t));
 		assert(r == 2*sizeof(uint64_t));
+		currentPosition += r;
 		
 		int N = dataFrame->getNEvents();
 		r = read(dataFile, (void*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
+		currentPosition += r;
+		
+		readahead(dataFile, currentPosition, outBlockSize*sizeof(uint64_t));
 		
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
@@ -143,8 +154,10 @@ void RawReader::processStep(int n, EventSink<RawHit> *sink)
 	}
 	
 	sink->finish();
-	fprintf(stderr, "RawReader report\n");
-	sink->report();
+	if(verbose) {
+		fprintf(stderr, "RawReader report\n");
+		sink->report();
+	}
 	delete sink;
 	
 }

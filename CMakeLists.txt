@@ -33,6 +33,7 @@ configure_file("src/petsys_util/setSI53xx.py" "setSI53xx.py" COPYONLY)
 configure_file("src/petsys_util/SI5326_config.txt" "SI5326_config.txt" COPYONLY)
 configure_file("src/petsys_util/acquire_tdc_calibration" "acquire_tdc_calibration" COPYONLY)
 configure_file("src/petsys_util/calibrate_thresholds" "calibrate_thresholds" COPYONLY)
+configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
@@ -50,5 +51,7 @@ set ( COMMON_SOURCES
 	"src/base/CoincidenceGrouper.cpp"
 )
 add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" ${COMMON_SOURCES} )
+add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" ${COMMON_SOURCES} )
+add_executable("process_energy_calibration" "src/petsys_util/process_energy_calibration.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_root" "src/petsys_util/convert_raw_to_root.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" ${COMMON_SOURCES} )

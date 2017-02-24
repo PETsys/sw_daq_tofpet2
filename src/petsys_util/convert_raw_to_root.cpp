@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
 		reader->getStepValue(stepIndex, step1, step2);
 		printf("Processing step %d of %d: (%f, %f)\n", stepIndex, reader->getNSteps(), step1, step2);
 		
-		reader->processStep(stepIndex,
+		reader->processStep(stepIndex, true,
 				new WriteHelper(rootFile, step1, step2,
 				new NullSink<RawHit>()
 				));

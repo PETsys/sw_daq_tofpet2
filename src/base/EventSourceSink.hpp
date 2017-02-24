@@ -46,7 +46,9 @@ namespace PETSYS {
 		
 		virtual void report() {
 		};
-		~NullSink() { delete lastBuffer; };
+		~NullSink() {
+			delete lastBuffer;
+		};
 	private:
 		AbstractEventBuffer *lastBuffer;
 	};

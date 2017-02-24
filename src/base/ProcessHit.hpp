@@ -10,8 +10,9 @@ namespace PETSYS {
 class ProcessHit : public OverlappedEventHandler<RawHit, Hit> {
 private:
 	SystemConfig *systemConfig;
+	bool qdcMode;
 public:
-	ProcessHit(SystemConfig *systemConfig, EventSink<Hit> *sink);
+	ProcessHit(SystemConfig *systemConfig, bool qdcMode, EventSink<Hit> *sink);
 	
 protected:
 	virtual EventBuffer<Hit> * handleEvents (EventBuffer<RawHit> *inBuffer);

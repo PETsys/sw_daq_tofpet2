@@ -19,6 +19,7 @@ class DataFileWriter {
 private:
 	double frequency;
 	bool isBinary;
+	bool qdcMode;
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
@@ -39,9 +40,10 @@ private:
 	};
 	
 public:
-	DataFileWriter(char *fName, double frequency, bool isBinary) {
+	DataFileWriter(char *fName, double frequency, bool isBinary, bool qdcMode) {
 		this->frequency = frequency;
 		this->isBinary = isBinary;
+		this->qdcMode = qdcMode;
 		stepBegin = 0;
 		
 		if(!isBinary) {
@@ -99,13 +101,13 @@ public:
 					Event eo = { 
 						(uint8_t)p1.nHits, (uint8_t)m,
 						(long long)(h1.time * Tps), // WARNING Get this from raw file header
-						h1.energy * Tns,
+						h1.energy * (qdcMode ? 1.0f : Tns),
 						(int)h1.raw->channelID,
 						
 						
 						(uint8_t)p2.nHits, (uint8_t)n,
 						(long long)(h2.time * Tps),
-						h2.energy * Tns,
+						h2.energy * (qdcMode ? 1.0f : Tns),
 						(int)h2.raw->channelID
 						
 					};
@@ -115,12 +117,12 @@ public:
 					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
 						p1.nHits, m,
 						(long long)(h1.time * Tps),
-						h1.energy * Tns,
+						h1.energy * (qdcMode ? 1.0 : Tns),
 						h1.raw->channelID,
 						
 						p2.nHits, n,
 						(long long)(h2.time * Tps),
-						h2.energy * Tns,
+						h2.energy * (qdcMode ? 1.0 : Tns),
 						h2.raw->channelID
 					);
 				}
@@ -145,9 +147,6 @@ public:
 		dataFileWriter->addEvents(buffer);
 		return buffer;
 	};
-	
-	void pushT0(double t0) { };
-	void report() { };
 };
 
 void displayUsage(char *argv0)
@@ -206,19 +205,25 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	SystemConfig *config = SystemConfig::fromFile(configFileName);
-	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), true);
+	
+	// If data was taken in ToT mode, do not attempt to load these files
+	unsigned long long mask = SystemConfig::LOAD_ALL;
+	if(!reader->isQDC()) {
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
+	}
+	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
+	
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), true, reader->isQDC());
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
 		reader->getStepValue(stepIndex, step1, step2);
 		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
 		
-		reader->processStep(stepIndex,
+		reader->processStep(stepIndex, true,
 				new CoarseSorter(
-				new ProcessHit(config,
+				new ProcessHit(config, reader->isQDC(),
 				new SimpleGrouper(config,
 				new CoincidenceGrouper(config,
 				new WriteHelper(dataFileWriter,

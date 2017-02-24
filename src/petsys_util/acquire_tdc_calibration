@@ -16,7 +16,7 @@ daqd = daqd.Connection()
 daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
 
-daqd.openRawAcquisition(args.fileNamePrefix)
+daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False)
 asicsConfig = daqd.getAsicsConfig()
 
 ## Calibration parameters
@@ -33,18 +33,20 @@ binParameterFile.close()
 # Prepare all channels for TDCA but disable actual triggering...
 for ac in asicsConfig.values():
 	for cc in ac.channelConfig:
-		## These trigger modes use only do_T1 ignoring do_T2 and do_E
+		# Set mode to ToT
+		cc.setValue("qdc_mode", 0)
+		cc.setValue("intg_en", 0)
+		cc.setValue("intg_signal_en", 0)
+
+		## Set simplest trigger_mode_2_* setting
 		cc.setValue("trigger_mode_2_t", 0b00)
 		cc.setValue("trigger_mode_2_e", 0b000)
 		cc.setValue("trigger_mode_2_q", 0b00)
 		cc.setValue("trigger_mode_2_b", 0b000)
-		# Set mode to ToT
-		cc.setValue("qdc_mode", 0)
+
 		# Disable channel from triggering.
 		# Will selectively enable channels below
 		cc.setValue("trigger_mode_1", 0b11)
-		
-	ac.globalConfig.setValue("debug_mode", 1)
 	
 
 
@@ -61,7 +63,6 @@ for firstChannel in range(0, 64/simultaneousChannels):
 		for channel in range(firstChannel, 64, 64/simultaneousChannels):
 			print channel
 			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
-			ac.channelConfig[channel].setValue("debug_mode", 0b11)
 	daqd.setAsicsConfig(cfg)
 
 	for i in range(0, nBins):
