@@ -1,0 +1,8 @@
+*~
+*.pyc
+*.cpp.o
+*.cpp.d
+*.cpp.b
+*.so
+*_C.d
+
