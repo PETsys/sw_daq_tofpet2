@@ -14,7 +14,11 @@ namespace PETSYS {
 		public EventSink<TEventInput>,
 		public EventSource<TEventOutput> {
 	public:
+#if  __cplusplus >= 201103L		
 		static constexpr double overlap = 40.0; // 200 ns @ 200 MHz;
+#else
+		static const double overlap = 40.0; // 200 ns @ 200 MHz;
+#endif
 	
 		OverlappedEventHandler(EventSink<TEventOutput> *sink, bool singleWorker = false, ThreadPool *pool = GlobalThreadPool);
 		~OverlappedEventHandler();
