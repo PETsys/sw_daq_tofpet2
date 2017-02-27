@@ -35,7 +35,6 @@ configure_file("src/petsys_util/acquire_tdc_calibration" "acquire_tdc_calibratio
 configure_file("src/petsys_util/calibrate_thresholds" "calibrate_thresholds" COPYONLY)
 configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
-configure_file("src/petsys_util/acquire_sipm_data_ricardo" "acquire_sipm_data_ricardo" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
@@ -53,7 +52,6 @@ set ( COMMON_SOURCES
 )
 add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" ${COMMON_SOURCES} )
 add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" ${COMMON_SOURCES} )
-add_executable("process_energy_calibration" "src/petsys_util/process_energy_calibration.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_root" "src/petsys_util/convert_raw_to_root.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" ${COMMON_SOURCES} )

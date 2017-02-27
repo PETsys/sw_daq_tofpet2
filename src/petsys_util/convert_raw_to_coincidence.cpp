@@ -14,15 +14,38 @@
 using namespace PETSYS;
 
 
+enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT };
 
 class DataFileWriter {
 private:
 	double frequency;
-	bool isBinary;
+	FILE_TYPE fileType;
 	bool qdcMode;
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
+	
+	TTree *hData;
+	TTree *hIndex;
+	TFile *hFile;
+	// ROOT Tree fields
+	float		brStep1;
+	float		brStep2;
+	long long 	brStepBegin;
+	long long 	brStepEnd;
+
+	unsigned short	br1N, 		br2N;
+	unsigned short	br1J,		br2J;
+	long long	br1Time,	br2Time;
+	unsigned short	br1ChannelID,	br2ChannelID;
+	float		br1ToT,		br2ToT;
+	float		br1Energy, 	br2Energy;
+	unsigned short	br1TacID,	br2TacID;
+	int		br1Xi,		br2Xi;
+	int		br1Yi,		br2Yi;
+	float		br1X,		br2X;
+	float 		br1Y,		br2Y;
+	float 		br1Z,		br2Z;
 	
 	struct Event {
 		uint8_t mh_n1; 
@@ -40,18 +63,53 @@ private:
 	};
 	
 public:
-	DataFileWriter(char *fName, double frequency, bool isBinary, bool qdcMode) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode) {
 		this->frequency = frequency;
-		this->isBinary = isBinary;
+		this->fileType = fileType;
 		this->qdcMode = qdcMode;
+
 		stepBegin = 0;
 		
-		if(!isBinary) {
-			dataFile = fopen(fName, "w");
-			assert(dataFile != NULL);
-			indexFile = NULL;
+		if (fileType == FILE_ROOT){
+			hFile = new TFile(fName, "RECREATE");
+			int bs = 512*1024;
+
+			hData = new TTree("data", "Event List", 2);
+			hData->Branch("step1", &brStep1, bs);
+			hData->Branch("step2", &brStep2, bs);
+			
+			hData->Branch("mh_n1", &br1N, bs);
+			hData->Branch("mh_j1", &br1J, bs);
+			hData->Branch("tot1", &br1ToT, bs);
+			hData->Branch("time1", &br1Time, bs);
+			hData->Branch("channelID1", &br1ChannelID, bs);
+			hData->Branch("energy1", &br1Energy, bs);
+			hData->Branch("tacID1", &br1TacID, bs);
+			hData->Branch("xi1", &br1Xi, bs);
+			hData->Branch("yi1", &br1Yi, bs);
+			hData->Branch("x1", &br1X, bs);
+			hData->Branch("y1", &br1Y, bs);
+			hData->Branch("z1", &br1Z, bs);
+			hData->Branch("mh_n2", &br2N, bs);
+			hData->Branch("mh_j2", &br2J, bs);
+			hData->Branch("time2", &br2Time, bs);
+			hData->Branch("channelID2", &br2ChannelID, bs);
+			hData->Branch("tot2", &br2ToT, bs);
+			hData->Branch("energy2", &br2Energy, bs);
+			hData->Branch("tacID2", &br2TacID, bs);
+			hData->Branch("xi2", &br2Xi, bs);
+			hData->Branch("yi2", &br2Yi, bs);
+			hData->Branch("x2", &br2X, bs);
+			hData->Branch("y2", &br2Y, bs);
+			hData->Branch("z2", &br2Z, bs);
+			
+			hIndex = new TTree("index", "Step Index", 2);
+			hIndex->Branch("step1", &brStep1, bs);
+			hIndex->Branch("step2", &brStep2, bs);
+			hIndex->Branch("stepBegin", &brStepBegin, bs);
+			hIndex->Branch("stepEnd", &brStepEnd, bs);
 		}
-		else {
+		else if(fileType == FILE_BINARY) {
 			char fName2[1024];
 			sprintf(fName2, "%s.ldat", fName);
 			dataFile = fopen(fName2, "w");
@@ -60,23 +118,50 @@ public:
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
+		else {
+			dataFile = fopen(fName, "w");
+			assert(dataFile != NULL);
+			indexFile = NULL;
+		}
 	};
 	
 	~DataFileWriter() {
-		fclose(dataFile);
-		if(isBinary)
+		if (fileType == FILE_ROOT){
+			hFile->Write();
+			hFile->Close();
+		}
+		else if(fileType == FILE_BINARY) {
+			fclose(dataFile);
 			fclose(indexFile);
+		}
+		else {
+			fclose(dataFile);
+		}
 	}
 	
 	void closeStep(float step1, float step2) {
-		if(!isBinary) return;
-		
-		fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
-		stepBegin = ftell(dataFile);
+		if (fileType == FILE_ROOT){
+			brStepBegin = stepBegin;
+			brStepEnd = hData->GetEntries();
+			brStep1 = step1;
+			brStep2 = step2;
+			hIndex->Fill();
+			stepBegin = hData->GetEntries();
+			hFile->Write();
+		}
+		else if(fileType == FILE_BINARY) {
+			fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
+			stepBegin = ftell(dataFile);
+		}
+		else {
+			// Do nothing
+		}
 	};
 	
-	void addEvents(EventBuffer<Coincidence> *buffer) {
+	void addEvents(float step1, float step2,EventBuffer<Coincidence> *buffer) {
 		bool writeMultipleHits = false;
+
+		long long tMin = buffer->getTMin();
 		
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
@@ -97,10 +182,42 @@ public:
 				Hit &h1 = *p1.hits[m];
 				Hit &h2 = *p2.hits[n];
 				
-				if(isBinary) {
+				if (fileType == FILE_ROOT){
+					brStep1 = step1;
+					brStep2 = step2;
+
+					br1N  = p1.nHits;
+					br1J = m;
+					br1Time = (h1.time * Tps) + tMin;
+					br1ChannelID = h1.raw->channelID;
+					br1ToT = (h1.timeEnd - h1.time) * Tps;
+					br1Energy = h1.energy * (qdcMode ? 1.0f : Tns);
+					br1TacID = h1.raw->tacID;
+					br1X = h1.x;
+					br1Y = h1.y;
+					br1Z = h1.z;
+					br1Xi = h1.xi;
+					br1Yi = h1.yi;
+					
+					br2N  = p2.nHits;
+					br2J = n;
+					br2Time = (h2.time * Tps) + tMin;
+					br2ChannelID = h2.raw->channelID;
+					br2ToT = (h2.timeEnd - h2.time) * Tps;
+					br2Energy = h2.energy * (qdcMode ? 2.0f : Tns);
+					br2TacID = h2.raw->tacID;
+					br2X = h2.x;
+					br2Y = h2.y;
+					br2Z = h2.z;
+					br2Xi = h2.xi;
+					br2Yi = h2.yi;
+					
+					hData->Fill();
+				}
+				else if(fileType == FILE_BINARY) {
 					Event eo = { 
 						(uint8_t)p1.nHits, (uint8_t)m,
-						(long long)(h1.time * Tps), // WARNING Get this from raw file header
+						(long long)(h1.time * Tps), //
 						h1.energy * (qdcMode ? 1.0f : Tns),
 						(int)h1.raw->channelID,
 						
@@ -117,12 +234,12 @@ public:
 					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
 						p1.nHits, m,
 						(long long)(h1.time * Tps),
-						h1.energy * (qdcMode ? 1.0 : Tns),
+						h1.energy * (qdcMode ? 1.0f : Tns),
 						h1.raw->channelID,
 						
 						p2.nHits, n,
 						(long long)(h2.time * Tps),
-						h2.energy * (qdcMode ? 1.0 : Tns),
+						h2.energy * (qdcMode ? 1.0f : Tns),
 						h2.raw->channelID
 					);
 				}
@@ -136,15 +253,17 @@ public:
 class WriteHelper : public OverlappedEventHandler<Coincidence, Coincidence> {
 private: 
 	DataFileWriter *dataFileWriter;
+	float step1;
+	float step2;
 public:
-	WriteHelper(DataFileWriter *dataFileWriter, EventSink<Coincidence> *sink) :
+	WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, EventSink<Coincidence> *sink) :
 		OverlappedEventHandler<Coincidence, Coincidence>(sink, true),
-		dataFileWriter(dataFileWriter)
+		dataFileWriter(dataFileWriter), step1(step1), step2(step2)
 	{
 	};
 	
 	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
-		dataFileWriter->addEvents(buffer);
+		dataFileWriter->addEvents(step1, step2, buffer);
 		return buffer;
 	};
 };
@@ -159,10 +278,13 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
+	FILE_TYPE fileType = FILE_TEXT;
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
-                { "config", required_argument, 0, 0 }
+                { "config", required_argument, 0, 0 },
+		{ "writeBinary", no_argument, 0, 0 },
+		{ "writeRoot", no_argument, 0, 0 }
         };
 
         while(true) {
@@ -182,6 +304,8 @@ int main(int argc, char *argv[])
 			switch(optionIndex) {
 			case 0:		displayUsage(argv[0]); exit(0); break;
                         case 1:		configFileName = optarg; break;
+			case 2:		fileType = FILE_BINARY; break;
+			case 3:		fileType = FILE_ROOT; break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -189,7 +313,7 @@ int main(int argc, char *argv[])
 			assert(false);
 		}
 	}
-	
+
 	if(configFileName == NULL) {
 		fprintf(stderr, "--config must be specified\n");
 		exit(1);
@@ -214,7 +338,7 @@ int main(int argc, char *argv[])
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), true, reader->isQDC());
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, reader->isQDC());
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
@@ -226,7 +350,7 @@ int main(int argc, char *argv[])
 				new ProcessHit(config, reader->isQDC(),
 				new SimpleGrouper(config,
 				new CoincidenceGrouper(config,
-				new WriteHelper(dataFileWriter,
+				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<Coincidence>()
 				))))));
 		

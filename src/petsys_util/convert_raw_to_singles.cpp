@@ -9,20 +9,45 @@
 #include <CoincidenceGrouper.hpp>
 
 #include <TFile.h>
-#include <TNtuple.h>
+#include <TTree.h>
 
 using namespace PETSYS;
 
 
+enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT };
 
 class DataFileWriter {
 private:
 	double frequency;
-	bool isBinary;
+	FILE_TYPE fileType;
+	bool qdcMode;
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
 	
+	TTree *hData;
+	TTree *hIndex;
+	TFile *hFile;
+	// ROOT Tree fields
+	float		brStep1;
+	float		brStep2;
+	long long 	brStepBegin;
+	long long 	brStepEnd;
+
+	long long	brTime;
+	unsigned short	brChannelID;
+	float		brToT;
+	float		brEnergy;
+	unsigned short	brTacID;
+	int		brXi;
+	int		brYi;
+	float		brX;
+	float 		brY;
+	float 		brZ;
+	float		brTQT;
+	float		brTQE;
+	
+
 	struct Event {
 		long long time;
 		float e;
@@ -30,17 +55,39 @@ private:
 	};
 	
 public:
-	DataFileWriter(char *fName, double frequency, bool isBinary) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode) {
 		this->frequency = frequency;
-		this->isBinary = isBinary;
+		this->fileType = fileType;
+		this->qdcMode = qdcMode;
 		stepBegin = 0;
 		
-		if(!isBinary) {
-			dataFile = fopen(fName, "w");
-			assert(dataFile != NULL);
-			indexFile = NULL;
+		if (fileType == FILE_ROOT){
+			hFile = new TFile(fName, "RECREATE");
+			int bs = 512*1024;
+
+			hData = new TTree("data", "Event List", 2);
+			hData->Branch("step1", &brStep1, bs);
+			hData->Branch("step2", &brStep2, bs);
+			hData->Branch("time", &brTime, bs);
+			hData->Branch("channelID", &brChannelID, bs);
+			hData->Branch("tot", &brToT, bs);
+			hData->Branch("energy", &brEnergy, bs);
+			hData->Branch("tacID", &brTacID, bs);
+			hData->Branch("xi", &brXi, bs);
+			hData->Branch("yi", &brYi, bs);
+			hData->Branch("x", &brX, bs);
+			hData->Branch("y", &brY, bs);
+			hData->Branch("z", &brZ, bs);
+			hData->Branch("tqT", &brTQT, bs);
+			hData->Branch("tqE", &brTQE, bs);
+			
+			hIndex = new TTree("index", "Step Index", 2);
+			hIndex->Branch("step1", &brStep1, bs);
+			hIndex->Branch("step2", &brStep2, bs);
+			hIndex->Branch("stepBegin", &brStepBegin, bs);
+			hIndex->Branch("stepEnd", &brStepEnd, bs);
 		}
-		else {
+		else if(fileType == FILE_BINARY) {
 			char fName2[1024];
 			sprintf(fName2, "%s.ldat", fName);
 			dataFile = fopen(fName2, "w");
@@ -49,23 +96,48 @@ public:
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
+		else {
+			dataFile = fopen(fName, "w");
+			assert(dataFile != NULL);
+			indexFile = NULL;
+		}
 	};
 	
 	~DataFileWriter() {
-		fclose(dataFile);
-		if(isBinary)
+		if (fileType == FILE_ROOT){
+			hFile->Write();
+			hFile->Close();
+		}
+		else if(fileType == FILE_BINARY) {
+			fclose(dataFile);
 			fclose(indexFile);
+		}
+		else {
+			fclose(dataFile);
+		}
 	}
 	
 	void closeStep(float step1, float step2) {
-		if(!isBinary) return;
-		
-		fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
-		stepBegin = ftell(dataFile);
+		if (fileType == FILE_ROOT){
+			brStepBegin = stepBegin;
+			brStepEnd = hData->GetEntries();
+			brStep1 = step1;
+			brStep2 = step2;
+			hIndex->Fill();
+			stepBegin = hData->GetEntries();
+			hFile->Write();
+		}
+		else if(fileType == FILE_BINARY) {
+			fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
+			stepBegin = ftell(dataFile);
+		}
+		else {
+			// Do nothing
+		}
 	};
 	
-	void addEvents(EventBuffer<Hit> *buffer) {
-		
+	void addEvents(float step1, float step2,EventBuffer<Hit> *buffer) {
+		long long tMin = buffer->getTMin();
 		
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
@@ -75,11 +147,29 @@ public:
 			Hit &hit = buffer->get(i);
 			if(!hit.valid) continue;
 			
-			
-			if (isBinary) {
+			if (fileType == FILE_ROOT){
+				brStep1 = step1;
+				brStep2 = step2;
+				
+				brTime = (hit.time * Tps) + tMin;
+				brChannelID = hit.raw->channelID;
+				brToT = (hit.timeEnd - hit.time) * Tps;
+				brEnergy = hit.energy * (qdcMode ? 1.0f : Tns);
+				brTacID = hit.raw->tacID;
+				brTQT = hit.raw->time - hit.time;
+				brTQE = (hit.raw->timeEnd - hit.timeEnd);
+				brX = hit.x;
+				brY = hit.y;
+				brZ = hit.z;
+				brXi = hit.xi;
+				brYi = hit.yi;
+				
+				hData->Fill();
+			}
+			else if(fileType == FILE_BINARY) {
 				Event eo = {
 					(long long)(hit.time * Tps),
-					hit.energy * Tns,
+					hit.energy * (qdcMode ? 1.0f : Tns),
 					(int)hit.raw->channelID
 				};
 				fwrite(&eo, sizeof(eo), 1, dataFile);
@@ -87,13 +177,10 @@ public:
 			else {
 				fprintf(dataFile, "%lld\t%f\t%d\n",
 					(long long)(hit.time * Tps),
-					hit.energy * Tns,
+					hit.energy * (qdcMode ? 1.0f : Tns),
 					(int)hit.raw->channelID
 					);
 			}
-			
-
-			
 		}
 		
 	}
@@ -103,15 +190,17 @@ public:
 class WriteHelper : public OverlappedEventHandler<Hit, Hit> {
 private: 
 	DataFileWriter *dataFileWriter;
+	float step1;
+	float step2;
 public:
-	WriteHelper(DataFileWriter *dataFileWriter, EventSink<Hit> *sink) :
+	WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, EventSink<Hit> *sink) :
 		OverlappedEventHandler<Hit, Hit>(sink, true),
-		dataFileWriter(dataFileWriter)
+		dataFileWriter(dataFileWriter), step1(step1), step2(step2)
 	{
 	};
 	
 	EventBuffer<Hit> * handleEvents(EventBuffer<Hit> *buffer) {
-		dataFileWriter->addEvents(buffer);
+		dataFileWriter->addEvents(step1, step2,buffer);
 		return buffer;
 	};
 	
@@ -129,10 +218,14 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
+	FILE_TYPE fileType = FILE_TEXT;
+
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
-                { "config", required_argument, 0, 0 }
+                { "config", required_argument, 0, 0 },
+		{ "writeBinary", no_argument, 0, 0 },
+		{ "writeRoot", no_argument, 0, 0 }
         };
 
         while(true) {
@@ -152,6 +245,8 @@ int main(int argc, char *argv[])
 			switch(optionIndex) {
 			case 0:		displayUsage(argv[0]); exit(0); break;
                         case 1:		configFileName = optarg; break;
+			case 2:		fileType = FILE_BINARY; break;
+			case 3:		fileType = FILE_ROOT; break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -159,7 +254,7 @@ int main(int argc, char *argv[])
 			assert(false);
 		}
 	}
-	
+
 	if(configFileName == NULL) {
 		fprintf(stderr, "--config must be specified\n");
 		exit(1);
@@ -175,20 +270,26 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	SystemConfig *config = SystemConfig::fromFile(configFileName);
-	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), true);
+	
+	// If data was taken in ToT mode, do not attempt to load these files
+	unsigned long long mask = SystemConfig::LOAD_ALL;
+	if(!reader->isQDC()) {
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
+	}
+	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
+	
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  fileType, reader->isQDC());
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
 		reader->getStepValue(stepIndex, step1, step2);
 		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
 		
-		reader->processStep(stepIndex,
+		reader->processStep(stepIndex, true,
 				new CoarseSorter(
-				new ProcessHit(config,
-				new WriteHelper(dataFileWriter,
+				new ProcessHit(config, reader->isQDC(),
+				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<Hit>()
 				))));
 		

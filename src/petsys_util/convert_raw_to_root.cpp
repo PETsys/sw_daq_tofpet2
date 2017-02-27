@@ -60,11 +60,11 @@ public:
 void displayHelp(char * program)
 {
 	fprintf(stderr, "Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", program);
-	fprintf(stderr, "\arguments:\n");
-	fprintf(stderr,  "  --help \t\t\t Show this help message and exit \n");
-	fprintf(stderr,  "  --config \t\t\t Configuration file containing path to tdc calibration table \n");
-	fprintf(stderr,  "  -i \t\t\t Input file prefix for the data to be processed\n");
-	fprintf(stderr,  "  -o \t\t\t Output file prefix containing raw event data in ROOT format (extension .root will be created automatically)\n");
+	fprintf(stderr, "Arguments:\n");
+	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
+	fprintf(stderr,  "  --config \t\t Configuration file containing path to tdc calibration table \n");
+	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
+	fprintf(stderr,  "  -o \t\t\t Output file name - containins raw event data in ROOT format.\n");
 };
 
 
@@ -77,9 +77,8 @@ int main(int argc, char *argv[])
 {
 	char *configFileName = NULL;
         char *inputFilePrefix = NULL;
-        char *outputFileName = NULL;
-	char *outputFilePrefix = NULL;
-
+	char *outputFileName = NULL;
+    
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
                 { "config", required_argument, 0, 0 }
@@ -100,7 +99,7 @@ int main(int argc, char *argv[])
 		}
 		else if(c == 0) {
 			switch(optionIndex) {
-			case 0:		displayUsage(argv[0]); exit(0); break;
+			case 0:		displayHelp(argv[0]); exit(0); break;
                         case 1:		configFileName = optarg; break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
@@ -120,12 +119,14 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	
 	if(outputFileName == NULL) {
 		fprintf(stderr, "-o must be specified\n");
 		exit(1);
 	}
 	
-	sprintf(outputFileName,"%s.root",outputFilePrefix);
+
+	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
 	DataFileWriter *rootFile = new DataFileWriter(outputFileName);
