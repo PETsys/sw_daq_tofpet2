@@ -33,7 +33,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		}
 		else {
 			out.timeEnd = in.timeEnd;
-			float ti = (out.timeEnd - in.time);
+			float ti = (out.timeEnd - out.time);
 			float q0 = cq.p0 +
 				cq.p1 * ti + 
 				cq.p2 * ti * ti + 
