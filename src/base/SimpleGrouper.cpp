@@ -35,7 +35,7 @@ void SimpleGrouper::report()
 	fprintf(stderr, " photons passed\n");
 	fprintf(stderr, "  %10u total\n", nPhotons);
 	for(int i = 0; i < GammaPhoton::maxHits; i++) {
-		float fraction = nHits[i]/nPhotons;
+		float fraction = nHits[i]/((float)nPhotons);
 		if(fraction > 0.10) {
 			fprintf(stderr, "  %10u (%4.1f%%) with %d hits\n", nHits[i], 100.0*fraction, i+1);
 		}
