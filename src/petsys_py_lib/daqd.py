@@ -801,6 +801,52 @@ class Connection:
 		timeTag = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(gray, 46)))
 		frameID = timeTag / 1024
 		return frameID
+	
+	## Initializes the temperature sensors in the FEB/As
+	# Return the number of active sensors found in FEB/As
+	def getNumberOfTMP104(self, portID, slaveID):
+		asicType = self.readFEBDConfig(portID, slaveID, 0, 0)
+		if asicType not in [0x00010001]:
+			return 0
+
+		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
+		din = bytearray(din)
+		dout = self.sendCommand(portID, slaveID, 0x04, din)
+		if len(dout) < 5:
+			raise TMP104CommunicationError(portID, slaveID, din, dout)
+		
+		nSensors = dout[4] & 0x0F
+	
+		din = [ 3, 0x55, 0b11110010, 0b01100011]
+		din = bytearray(din)
+		dout = self.sendCommand(portID, slaveID, 0x04, din)
+		if len(dout) < 5:
+			raise TMP104CommunicationError(portID, slaveID, din, dout)
+
+		din = [ 2 + nSensors, 0x55, 0b11110011 ]
+		din = bytearray(din)
+		dout = self.sendCommand(portID, slaveID, 0x04, din)
+		if len(dout) < (4 + nSensors):
+			raise TMP104CommunicationError(portID, slaveID, din, dout)
+
+		return nSensors
+
+	## Reads the temperature found in the specified FEB/D
+	# @param portID  DAQ port ID where the FEB/D is connected
+	# @param slaveID Slave ID on the FEB/D chain
+	# @param nSensors Number of sensors to read
+	def getTMP104Readings(self, portID, slaveID, nSensors):
+			din = [ 2 + nSensors, 0x55, 0b11110001 ]
+			din = bytearray(din)
+			dout = self.sendCommand(portID, slaveID, 0x04, din)
+			if len(dout) < (4 + nSensors):
+				raise TMP104CommunicationError(portID, slaveID, din, dout)
+
+			temperatures = dout[4:]
+			for i, t in enumerate(temperatures):
+				if t > 127: t = t - 256
+				temperatures[i] = t
+			return temperatures
 
 ## Exception: a command to FEB/D was sent but a reply was not received.
 #  Indicates a communication problem.
