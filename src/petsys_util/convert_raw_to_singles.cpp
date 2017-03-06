@@ -137,10 +137,11 @@ public:
 	};
 	
 	void addEvents(float step1, float step2,EventBuffer<Hit> *buffer) {
-		long long tMin = buffer->getTMin();
-		
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
+		float Eunit = qdcMode ? 1.0 : Tns;
+		
+		long long tMin = buffer->getTMin() * (long long)Tps;
 		
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
@@ -151,10 +152,10 @@ public:
 				brStep1 = step1;
 				brStep2 = step2;
 				
-				brTime = (hit.time * Tps) + tMin;
+				brTime = ((long long)(hit.time * Tps)) + tMin;
 				brChannelID = hit.raw->channelID;
 				brToT = (hit.timeEnd - hit.time) * Tps;
-				brEnergy = hit.energy * (qdcMode ? 1.0f : Tns);
+				brEnergy = hit.energy * Eunit;
 				brTacID = hit.raw->tacID;
 				brTQT = hit.raw->time - hit.time;
 				brTQE = (hit.raw->timeEnd - hit.timeEnd);
@@ -168,16 +169,16 @@ public:
 			}
 			else if(fileType == FILE_BINARY) {
 				Event eo = {
-					(long long)(hit.time * Tps),
-					hit.energy * (qdcMode ? 1.0f : Tns),
+					((long long)(hit.time * Tps)) + tMin,
+					hit.energy * Eunit,
 					(int)hit.raw->channelID
 				};
 				fwrite(&eo, sizeof(eo), 1, dataFile);
 			}
 			else {
 				fprintf(dataFile, "%lld\t%f\t%d\n",
-					(long long)(hit.time * Tps),
-					hit.energy * (qdcMode ? 1.0f : Tns),
+					((long long)(hit.time * Tps)) + tMin,
+					hit.energy * Eunit,
 					(int)hit.raw->channelID
 					);
 			}

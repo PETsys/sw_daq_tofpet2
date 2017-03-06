@@ -161,10 +161,11 @@ public:
 	void addEvents(float step1, float step2,EventBuffer<Coincidence> *buffer) {
 		bool writeMultipleHits = false;
 
-		long long tMin = buffer->getTMin();
-		
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
+		float Eunit = qdcMode ? 1.0 : Tns;
+
+		long long tMin = buffer->getTMin() * (long long)Tps;
 		
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
@@ -188,10 +189,10 @@ public:
 
 					br1N  = p1.nHits;
 					br1J = m;
-					br1Time = (h1.time * Tps) + tMin;
+					br1Time = ((long long)(h1.time * Tps)) + tMin;
 					br1ChannelID = h1.raw->channelID;
 					br1ToT = (h1.timeEnd - h1.time) * Tps;
-					br1Energy = h1.energy * (qdcMode ? 1.0f : Tns);
+					br1Energy = h1.energy * Eunit;
 					br1TacID = h1.raw->tacID;
 					br1X = h1.x;
 					br1Y = h1.y;
@@ -201,10 +202,10 @@ public:
 					
 					br2N  = p2.nHits;
 					br2J = n;
-					br2Time = (h2.time * Tps) + tMin;
+					br2Time = ((long long)(h2.time * Tps)) + tMin;
 					br2ChannelID = h2.raw->channelID;
 					br2ToT = (h2.timeEnd - h2.time) * Tps;
-					br2Energy = h2.energy * (qdcMode ? 2.0f : Tns);
+					br2Energy = h2.energy * Eunit;
 					br2TacID = h2.raw->tacID;
 					br2X = h2.x;
 					br2Y = h2.y;
@@ -217,14 +218,14 @@ public:
 				else if(fileType == FILE_BINARY) {
 					Event eo = { 
 						(uint8_t)p1.nHits, (uint8_t)m,
-						(long long)(h1.time * Tps), //
-						h1.energy * (qdcMode ? 1.0f : Tns),
+						((long long)(h1.time * Tps)) + tMin,
+						h1.energy * Eunit,
 						(int)h1.raw->channelID,
 						
 						
 						(uint8_t)p2.nHits, (uint8_t)n,
-						(long long)(h2.time * Tps),
-						h2.energy * (qdcMode ? 1.0f : Tns),
+						((long long)(h2.time * Tps)) + tMin,
+						h2.energy * Eunit,
 						(int)h2.raw->channelID
 						
 					};
@@ -233,13 +234,13 @@ public:
 				else {
 					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
 						p1.nHits, m,
-						(long long)(h1.time * Tps),
-						h1.energy * (qdcMode ? 1.0f : Tns),
+						((long long)(h1.time * Tps)) + tMin,
+						h1.energy * Eunit,
 						h1.raw->channelID,
 						
 						p2.nHits, n,
-						(long long)(h2.time * Tps),
-						h2.energy * (qdcMode ? 1.0f : Tns),
+						((long long)(h2.time * Tps)) + tMin,
+						h2.energy * Eunit,
 						h2.raw->channelID
 					);
 				}
