@@ -60,11 +60,18 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		loadQDCCalibration(config, fn);
 		
 	}
+	config->mask = mask;
 	
 	iniparser_freedict(configFile);
 	delete [] fn;
 	delete [] path;
 	return config;
+}
+
+
+uint64_t SystemConfig::getMask()
+{
+	return mask;
 }
 
 void SystemConfig::touchChannelConfig(unsigned channelID)

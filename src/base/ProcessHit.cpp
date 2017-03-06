@@ -13,11 +13,16 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<Hit> * outBuffer = new EventBuffer<Hit>(N, inBuffer);
 	
+	uint64_t mask = systemConfig->getMask();
+	bool requireTDC = (mask & SystemConfig::LOAD_TDC_CALIBRATION) != 0;
+	bool requireQDC = (mask & SystemConfig::LOAD_QDC_CALIBRATION) != 0;
+	
 	for(int i = 0; i < N; i++) {
 		RawHit &in = inBuffer->get(i);
 		Hit &out = outBuffer->getWriteSlot();
 		
 		out.raw = &in;
+		bool valid = in.valid;
 		
 		SystemConfig::ChannelConfig &cc = systemConfig->getChannelConfig(in.channelID);
 		SystemConfig::TacConfig &ct = cc.tac_T[in.tacID];
@@ -26,10 +31,13 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		
 		float q_T = +( 2 * ct.p2 * ct.tB + sqrtf(4 * in.tfine * ct.p2 + ct.m*ct.m) - ct.m)/(2 * ct.p2);
 		out.time = in.time - q_T;
+		valid &= (ct.m != 0) || !requireTDC;
+		
 		if(!qdcMode) {
 			float q_E = +( 2 * ce.p2 * ce.tB + sqrtf(4 * in.efine * ce.p2 + ce.m*ce.m) - ce.m)/(2 * ce.p2);
 			out.timeEnd = in.timeEnd - q_E;
 			out.energy = out.timeEnd - out.time;
+			valid &= (ce.m != 0) || !requireTDC;
 		}
 		else {
 			out.timeEnd = in.timeEnd;
@@ -41,6 +49,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				cq.p4 * ti * ti * ti * ti;
 				
 			out.energy = in.efine - q0;
+			valid &= (cq.p1 != 0) || !requireQDC;
 		}
 		
 		// TODO Use channel map table
@@ -48,7 +57,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		out.x = out.y = out.z = 0;
 		out.xi = out.yi = 0;
 		
-		out.valid = true;
+		out.valid = valid;
 		
 		outBuffer->pushWriteSlot();
 	}
