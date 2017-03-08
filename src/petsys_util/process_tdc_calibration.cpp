@@ -45,9 +45,9 @@ const unsigned long MAX_N_TAC = MAX_N_ASIC * 64 * 2 * 4;
 struct CalibrationEntry {
 	float t0;
 	float tEdge;
-	float tB;
-	float m;
-	float p2;
+	float a0;
+	float a1;
+	float a2;
 	bool valid;
 };
 
@@ -267,20 +267,23 @@ static Double_t periodicF1 (Double_t *xx, Double_t *pp)
 	return pp[1] + pp[2]*TDC_PERIOD - pp[2]*x;
 }
 
+
 static const int nPar2 = 4;
-const char *paramNames2[nPar2] = {  "tEdge", "tB", "m", "p2" };
+const char *paramNames2[nPar2] = {  "tEdge", "a0", "a1", "a2" };
 static Double_t periodicF2 (Double_t *xx, Double_t *pp)
 {
 	double tDelay = xx[0];	
 	double tEdge = pp[0];
-	double tB = pp[1];
-	double m = pp[2];
-	double p2 = pp[3];
+	double a0 = pp[1];
+	double a1 = pp[2];
+	double a2 = pp[3];
 	
 	double tQ = (TDC_PERIOD + TDC_SYNC_OFFSET) - fmod(1024.0 + tDelay - tEdge, TDC_PERIOD);
-	double tFine = m * (tQ - tB) + p2 * (tQ - tB) * (tQ - tB);
+	double tFine = a0 + a1*tQ + a2*tQ*tQ;
 	return tFine;
 }
+
+
 
 void calibrateAsic(
 	unsigned long gAsicID,
@@ -363,6 +366,9 @@ void calibrateAsic(
 		unsigned portID = (gid >> 20) % 32;
 		char hName[128];
 		
+
+		//if(channelID!=36)continue;
+		 
 		TH2S *hFine2 = hFine2_list[gid-gidStart];
 		if(hFine2 == NULL) continue;
 		if(hFine2->GetEntries() < 1000) {
@@ -484,6 +490,7 @@ void calibrateAsic(
 		float m;
 		float tB;
 		float p2;
+		float a0, a1, a2;
 		float currChi2 = INFINITY;
 		float prevChi2 = INFINITY;
 		int nTry = 0;
@@ -514,12 +521,17 @@ void calibrateAsic(
 			
 		} while((currChi2 <= 0.95*prevChi2) && (nTry < 10));
 		
+		
+
+
 		if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
 			fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (1). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
 				portID, slaveID, chipID, channelID, tacID, bStr);
 			delete pf;
 			continue;
 		}
+		
+	
 		
 		TF1 *pf2 = new TF1("periodicF2", periodicF2, xMin, xMax,  nPar2);
 		pf2->SetNpx(2*nBinsX);
@@ -528,30 +540,33 @@ void calibrateAsic(
 		currChi2 = INFINITY;
 		prevChi2 = INFINITY;
 		nTry = 0;
-		do {
-			pf2->FixParameter(0, tEdge);
-			pf2->SetParameter(1, tB);		pf2->SetParLimits(1, 1.25*tB, 0);
-			pf2->SetParameter(2, m);		pf2->SetParLimits(2, 1.00 * m, 1.20 * m);
-			pf2->SetParameter(3, -0.1);		pf2->SetParLimits(3, -15.0, 1E-3); // Very small values of p2 cause rouding errors
-			
-			pFine->Fit("periodicF2", "Q", "", xMin, xMax);
+		a0 = 120;
+		a1 = 150;
+		a2 = 4;
+	
+		tEdge = tEdge - 0.05;
 
+		do{
+				
+			pf2->SetParameter(0, tEdge);       pf2->SetParLimits(0, tEdge-0.06, tEdge+0.06); 
+			pf2->SetParameter(1, a0);	   pf2->SetParLimits(1, 0.1, 200.0);
+			pf2->SetParameter(2, a1);	   pf2->SetParLimits(2, 0.1, 300.0);
+			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, 0.1, 10.0); // Very small values of p2 cause rouding errors
+			
+				
+			pFine->Fit("periodicF2", "Q", "", xMin, xMax);
+			
 			TF1 *pf_ = pFine->GetFunction("periodicF2");
 			if(pf_ != NULL) {
 				prevChi2 = currChi2;
-				currChi2 = pf_->GetChisquare() / pf_->GetNDF();	
-				
-				if(currChi2 < prevChi2) {
-					tEdge = pf->GetParameter(0);
-					b  = pf->GetParameter(1);
-					m  = pf->GetParameter(2);
-					tB = - (b/m - TDC_SYNC_OFFSET);
-					p2 = pf->GetParameter(3);
-				}
+				currChi2 = pf_->GetChisquare() / pf_->GetNDF();					
+				tEdge += 0.01;
 			}
+			
 			nTry += 1;
 			
-		} while((currChi2 <= 0.95*prevChi2) && (nTry < 10));
+				
+		} while( (nTry < 10) && (currChi2 > 5));
 		
 		if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
 			fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (2). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
@@ -564,9 +579,9 @@ void calibrateAsic(
 		CalibrationEntry &entry = calibrationTable[gid];
 		entry.t0 = 0;
 		entry.tEdge = tEdge = pf2->GetParameter(0);
-		entry.tB = tB = pf2->GetParameter(1);
-		entry.m  = m  = pf2->GetParameter(2);
-		entry.p2 = p2 = pf2->GetParameter(3);
+		entry.a0 = a0 = pf2->GetParameter(1);
+		entry.a1 = a1 = pf2->GetParameter(2);
+		entry.a2 = a2 = pf2->GetParameter(3);
 		entry.valid = true;
 	
 		delete pf;
@@ -626,8 +641,10 @@ void calibrateAsic(
 				float t = event.phase;
 				float t_ = fmod(1024.0 + t - entry.tEdge, TDC_PERIOD);
 				
-				float qEstimate = +( 2.0f * entry.p2 * entry.tB + sqrtf(4.0f * event.fine * entry.p2 + entry.m*entry.m) - entry.m)/(2.0f * entry.p2);
-				
+				//float qEstimate = +( 2.0f * entry.p2 * entry.tB + sqrtf(4.0f * event.fine * entry.p2 + entry.m*entry.m) - entry.m)/(2.0f * entry.p2);
+				float qEstimate = ( -entry.a1 + sqrtf((entry.a1 * entry.a1) - (4.0f * (entry.a0 - event.fine) * entry.a2))) / (2.0f * entry.a2) ;  
+
+
 				assert(TDC_PERIOD == 1); // No support for TDC_PERIOD != 1 operation
 				
 				float tEstimate = event.coarse - qEstimate - entry.t0;
@@ -695,7 +712,7 @@ void calibrateAsic(
 	
 	
 	double maxCounts = 0;
-	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
+ 	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
 		CalibrationEntry &entry = calibrationTable[gid];
 		if(!entry.valid) continue;
 		
@@ -880,7 +897,7 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
                 exit(1);
 	}
 
-	fprintf(f, "# portID\tslaveID\tchipID\tchannelID\ttacID\tbranch\tt0\ttB\tm\tp2\n");
+	fprintf(f, "# portID\tslaveID\tchipID\tchannelID\ttacID\tbranch\tt0\ta0\ta1\ta2\n");
 
 	for(unsigned long gid = 0; gid < MAX_N_TAC; gid++) {
 		CalibrationEntry &entry = calibrationTable[gid];
@@ -896,7 +913,7 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	
 		fprintf(f, "%d\t%d\t%d\t%d\t%d\t%c\t%8.7e\t%8.7e\t%8.7e\t%8.7e\n",
 			portID, slaveID, chipID, channelID, tacID, bStr,
-			entry.t0, entry.tB, entry.m, entry.p2
+			entry.t0, entry.a0, entry.a1, entry.a2
 		);
 	}
 	fclose(f);

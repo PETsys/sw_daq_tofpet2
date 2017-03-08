@@ -28,16 +28,17 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		SystemConfig::TacConfig &ct = cc.tac_T[in.tacID];
 		SystemConfig::TacConfig &ce = cc.tac_E[in.tacID];
 		SystemConfig::QacConfig &cq = cc.qac_Q[in.tacID];
+			
+		float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
 		
-		float q_T = +( 2 * ct.p2 * ct.tB + sqrtf(4 * in.tfine * ct.p2 + ct.m*ct.m) - ct.m)/(2 * ct.p2);
-		out.time = in.time - q_T;
-		valid &= (ct.m != 0) || !requireTDC;
+		out.time = in.time - q_T - ct.t0;
+		valid &= (ct.a1 != 0) || !requireTDC;
 		
 		if(!qdcMode) {
-			float q_E = +( 2 * ce.p2 * ce.tB + sqrtf(4 * in.efine * ce.p2 + ce.m*ce.m) - ce.m)/(2 * ce.p2);
-			out.timeEnd = in.timeEnd - q_E;
+			float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
+			out.timeEnd = in.timeEnd - q_E - ce.t0;
 			out.energy = out.timeEnd - out.time;
-			valid &= (ce.m != 0) || !requireTDC;
+			valid &= (ce.a1 != 0) || !requireTDC;
 		}
 		else {
 			out.timeEnd = in.timeEnd;

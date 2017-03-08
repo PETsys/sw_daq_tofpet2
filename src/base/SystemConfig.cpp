@@ -167,11 +167,11 @@ void SystemConfig::loadTDCCalibration(SystemConfig *config, const char *fn)
 		
 		unsigned portID, slaveID, chipID, channelID, tacID;
 		char bStr;
-		float t0, tB, m, p2;
+		float t0, a0, a1, a2;
 		
 		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t%c\t%f\t%f\t%f\t%f\n", 
 			&portID, &slaveID, &chipID, &channelID, &tacID, &bStr,
-			&t0, &tB, &m, &p2) != 10) continue;
+			&t0, &a0, &a1, &a2) != 10) continue;
 		
 		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
 		
@@ -181,9 +181,9 @@ void SystemConfig::loadTDCCalibration(SystemConfig *config, const char *fn)
 		TacConfig &tacConfig = (bStr == 'T') ? channelConfig.tac_T[tacID] : channelConfig.tac_E[tacID];
 		
 		tacConfig.t0 = t0;
-		tacConfig.tB = tB;
-		tacConfig.m = m;
-		tacConfig.p2 = p2;
+		tacConfig.a0 = a0;
+		tacConfig.a1 = a1;
+		tacConfig.a2 = a2;
 	}
 	fclose(f);
 }

@@ -16,9 +16,9 @@ namespace PETSYS {
 
 		struct TacConfig {
 			float t0;
-			float tB;
-			float m;
-			float p2;
+			float a0;
+			float a1;
+			float a2;
 		};
 		struct QacConfig {
 			float p0;
