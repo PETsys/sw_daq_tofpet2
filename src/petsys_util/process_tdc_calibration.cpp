@@ -540,18 +540,21 @@ void calibrateAsic(
 		currChi2 = INFINITY;
 		prevChi2 = INFINITY;
 		nTry = 0;
-		a0 = 120;
-		a1 = 150;
-		a2 = 4;
 	
+		a0 = b;
+		a1 = m;
+		a2 = -3;
+
+		//std::cout << b << " " << m << " " <<std::endl;
+ 
 		tEdge = tEdge - 0.05;
 
 		do{
 				
 			pf2->SetParameter(0, tEdge);       pf2->SetParLimits(0, tEdge-0.06, tEdge+0.06); 
-			pf2->SetParameter(1, a0);	   pf2->SetParLimits(1, 0.1, 200.0);
-			pf2->SetParameter(2, a1);	   pf2->SetParLimits(2, 0.1, 300.0);
-			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, 0.1, 10.0); // Very small values of p2 cause rouding errors
+			pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
+			pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
+			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -300, 10); // Very small values of p2 cause rouding errors
 			
 				
 			pFine->Fit("periodicF2", "Q", "", xMin, xMax);
@@ -566,7 +569,7 @@ void calibrateAsic(
 			nTry += 1;
 			
 				
-		} while( (nTry < 10) && (currChi2 > 5));
+		} while( (nTry < 10) && (currChi2 > 4));
 		
 		if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
 			fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (2). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
