@@ -40,7 +40,8 @@ namespace PETSYS {
 		static SystemConfig *fromFile(const char *configFileName);
 		static SystemConfig *fromFile(const char *configFileName, uint64_t mask);
 		
-		uint64_t getMask();
+		bool useTDCCalibration();
+		bool useQDCCalibration();
 		
 		SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
 			unsigned indexH = channelID / 4096;
@@ -61,7 +62,9 @@ namespace PETSYS {
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
 		static void loadQDCCalibration(SystemConfig *config, const char *fn);
 		
-		uint64_t mask;
+		bool hasTDCCalibration;
+		bool hasQDCCalibration;
+		
 		ChannelConfig **channelConfig;
 		ChannelConfig nullChannelConfig;
 		

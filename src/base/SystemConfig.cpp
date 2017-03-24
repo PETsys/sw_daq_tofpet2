@@ -40,6 +40,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 	dictionary * configFile = iniparser_load(configFileName);
 	SystemConfig *config = new SystemConfig();
 	
+	config->hasTDCCalibration = false;
 	if((mask & LOAD_TDC_CALIBRATION) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:tdc_calibration_table", NULL);
 		if(entry == NULL) {
@@ -48,8 +49,10 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		}
 		make_absolute(fn, entry, dn);
 		loadTDCCalibration(config, fn);
+		config->hasTDCCalibration = true;
 	}
 	
+	config->hasQDCCalibration = false;
 	if ((mask & LOAD_QDC_CALIBRATION) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:qdc_calibration_table", NULL);
 		if(entry == NULL) {
@@ -58,9 +61,8 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		}
 		make_absolute(fn, entry, dn);
 		loadQDCCalibration(config, fn);
-		
+		config->hasQDCCalibration = true;
 	}
-	config->mask = mask;
 	
 	iniparser_freedict(configFile);
 	delete [] fn;
@@ -69,9 +71,14 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 }
 
 
-uint64_t SystemConfig::getMask()
+bool SystemConfig::useTDCCalibration()
 {
-	return mask;
+	return hasTDCCalibration;
+}
+
+bool SystemConfig::useQDCCalibration()
+{
+	return hasQDCCalibration;
 }
 
 void SystemConfig::touchChannelConfig(unsigned channelID)

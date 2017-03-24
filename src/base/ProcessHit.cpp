@@ -13,9 +13,8 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<Hit> * outBuffer = new EventBuffer<Hit>(N, inBuffer);
 	
-	uint64_t mask = systemConfig->getMask();
-	bool requireTDC = (mask & SystemConfig::LOAD_TDC_CALIBRATION) != 0;
-	bool requireQDC = (mask & SystemConfig::LOAD_QDC_CALIBRATION) != 0;
+	bool requireTDC = systemConfig->useTDCCalibration();
+	bool requireQDC = systemConfig->useQDCCalibration();
 	
 	for(int i = 0; i < N; i++) {
 		RawHit &in = inBuffer->get(i);
