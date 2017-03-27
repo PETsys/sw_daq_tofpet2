@@ -23,7 +23,7 @@ if args.rootFileName:
 systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_AD5535_CALIBRATION | config.LOAD_SIPM_BIAS)
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_PREBD)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_PREBD)
 asicsConfig = daqd.getAsicsConfig()
 
 COUNTER_SETTING = 0x4
@@ -146,7 +146,7 @@ for ac in asicsConfig.values():
 		cc.setValue("trigger_b_latched", 0)
 		cc.setValue("dead_time", 20)
 
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_ON)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
 darkProfiles = {}
 print "Scanning threshold for dark counts"
 for n, thresholdName, baselineName in thresholdList:
@@ -176,7 +176,7 @@ for n, thresholdName, baselineName in thresholdList:
 		stdout.flush()
 	stdout.write("\n")
 	
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
 fSigmoid = ROOT.TF1("fSigmoid","[0]*ROOT::Math::normal_cdf(x,[1],[2])",0,64);
 fSigmoid.SetParName(0, "C")

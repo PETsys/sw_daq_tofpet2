@@ -16,7 +16,7 @@ systemConfig = config.ConfigFromFile(args.config)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_ON)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
 
 qdcMode = args.mode == "qdc"
 
@@ -41,4 +41,4 @@ daqd.setAsicsConfig(asicsConfig)
 daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=qdcMode)
 daqd.acquire(args.time, 0, 0);
 
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)

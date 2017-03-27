@@ -14,7 +14,7 @@ systemConfig = config.ConfigFromFile(args.config, loadMask=0)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
 daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False)
 asicsConfig = daqd.getAsicsConfig()
@@ -73,4 +73,4 @@ for firstChannel in range(0, 64/simultaneousChannels):
 
 		daqd.acquire(0.02, finePhase, 0)
 
-systemConfig.loadToHardware(daqd, config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)

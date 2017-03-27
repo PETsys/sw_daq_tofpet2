@@ -91,7 +91,7 @@ class Config:
 		self.discConfigTable = {}
 		self.__asicParameterTable = {}
 
-	def loadToHardware(self, daqd, biasMode):
+	def loadToHardware(self, daqd, bias_enable=APPLY_BIAS_OFF):
 		#
 		# Apply bias voltage settings
 		# 
