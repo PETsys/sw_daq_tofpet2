@@ -13,6 +13,7 @@ namespace PETSYS {
 		static const uint64_t LOAD_TDC_CALIBRATION	= 0x0000000000000002ULL;
 		static const uint64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
 		static const uint64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
+		static const uint64_t LOAD_MAPPING		= 0x0000000000000010ULL;
 
 		struct TacConfig {
 			float t0;
@@ -40,10 +41,10 @@ namespace PETSYS {
 		static SystemConfig *fromFile(const char *configFileName);
 		static SystemConfig *fromFile(const char *configFileName, uint64_t mask);
 		
-		bool useTDCCalibration();
-		bool useQDCCalibration();
+		inline bool useTDCCalibration() { return hasTDCCalibration; };
+		inline bool useQDCCalibration() { return hasQDCCalibration; };
 		
-		SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
+		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
 			unsigned indexH = channelID / 4096;
 			unsigned indexL= channelID % 4096;
 			
@@ -54,6 +55,14 @@ namespace PETSYS {
 				return ptr[indexL];
 		};
 
+		inline bool isCoincidenceAllowed(int r1, int r2) {
+			return coincidenceTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
+		};
+
+		inline bool isMultiHitAllowed(int r1, int r2) {
+			return multihitTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
+		};
+
 		SystemConfig();
 		~SystemConfig();
 		
@@ -61,12 +70,18 @@ namespace PETSYS {
 		void touchChannelConfig(unsigned channelID);
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
 		static void loadQDCCalibration(SystemConfig *config, const char *fn);
+		static void loadChannelMap(SystemConfig *config, const char *fn);
+		static void loadTriggerMap(SystemConfig *config, const char *fn);
 		
 		bool hasTDCCalibration;
 		bool hasQDCCalibration;
 		
 		ChannelConfig **channelConfig;
 		ChannelConfig nullChannelConfig;
+		
+		static const unsigned MAX_TRIGGER_REGIONS = 4096; // 1024 FEB/D x 4 regions
+		bool *coincidenceTriggerMap;
+		bool *multihitTriggerMap;
 		
 	};
 	

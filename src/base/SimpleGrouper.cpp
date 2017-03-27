@@ -85,7 +85,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			if(!hit2.valid) continue;
 			if(taken[j]) continue;
 			
-			if(hit2.region != hit.region) continue;
+			if(!systemConfig->isMultiHitAllowed(hit2.region, hit.region)) continue;
 			if((hit2.time - hit.time) > (overlap + timeWindow1)) break;
 			
 			float u = hit.x - hit2.x;

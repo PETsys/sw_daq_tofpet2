@@ -35,9 +35,8 @@ EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPho
 		for(unsigned j = i+1; j < N; j++) {
 			GammaPhoton &photon2 = inBuffer->get(j);			
 			if ((photon2.time - photon1.time) > (overlap + cWindow)) break;
-						
-			// TODO: Use trigger map table
-			if(photon1.region == photon2.region) continue;
+			
+			if(!systemConfig->isCoincidenceAllowed(photon1.region, photon2.region)) continue;
 			
 			if(fabs(photon1.time - photon2.time) <= cWindow) {
 				Coincidence &c = outBuffer->getWriteSlot();

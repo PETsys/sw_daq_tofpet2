@@ -1,0 +1,6 @@
+# Allowed trigger region combinations
+# PAB only has two possible trigger regions
+# R1	R2	Type 
+0	0	M
+1	1	M
+0	1	C

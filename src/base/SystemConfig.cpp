@@ -64,21 +64,28 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		config->hasQDCCalibration = true;
 	}
 	
+	if((mask & LOAD_MAPPING) != 0) {
+		char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
+		if(entry == NULL) {
+			fprintf(stderr, "ERROR: channel_map not specified in section 'main' of '%s'\n", configFileName);
+			exit(1);
+		}
+		make_absolute(fn, entry, dn);
+		loadChannelMap(config, fn);
+		
+		entry = iniparser_getstring(configFile, "main:trigger_map", NULL);
+		if(entry == NULL) {
+			fprintf(stderr, "ERROR: trigger_map not specified in section 'main' of '%s'\n", configFileName);
+			exit(1);
+		}
+		make_absolute(fn, entry, dn);
+		loadTriggerMap(config, fn);
+	}
+	
 	iniparser_freedict(configFile);
 	delete [] fn;
 	delete [] path;
 	return config;
-}
-
-
-bool SystemConfig::useTDCCalibration()
-{
-	return hasTDCCalibration;
-}
-
-bool SystemConfig::useQDCCalibration()
-{
-	return hasQDCCalibration;
 }
 
 void SystemConfig::touchChannelConfig(unsigned channelID)
@@ -119,10 +126,21 @@ SystemConfig::SystemConfig()
 		
 		nullChannelConfig.t0 = 0.0;
 	}
+	
+	coincidenceTriggerMap = new bool[MAX_TRIGGER_REGIONS * MAX_TRIGGER_REGIONS];
+	for(int i = 0; i < MAX_TRIGGER_REGIONS * MAX_TRIGGER_REGIONS; i++)
+		coincidenceTriggerMap[i] = false;
+	
+	multihitTriggerMap = new bool[MAX_TRIGGER_REGIONS * MAX_TRIGGER_REGIONS];
+	for(int i = 0; i < MAX_TRIGGER_REGIONS * MAX_TRIGGER_REGIONS; i++)
+		multihitTriggerMap[i] = false;
 }
 
 SystemConfig::~SystemConfig()
 {
+	delete [] multihitTriggerMap;
+	delete [] coincidenceTriggerMap;
+	
 	for(unsigned n = 0; n < 1024; n++) {
 		if(channelConfig[n] != NULL) {
 			delete [] channelConfig[n];
@@ -227,6 +245,81 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 		qacConfig.p2 = p2;
 		qacConfig.p3 = p3;
 		qacConfig.p4 = p4;
+	}
+	fclose(f);
+}
+
+void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[1024];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+		
+		unsigned portID, slaveID, chipID, channelID;
+		int region, xi, yi;
+		float x, y, z;
+		
+		if(sscanf(line, "%u\t%u\t%u\t%u\t%d\t%d\t%d\t%f\t%f\t%f\n",
+			&portID, &slaveID, &chipID, &channelID,
+			&region, &xi, &yi,
+			&x, &y, &z) != 10) continue;
+		
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+		
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+		channelConfig.triggerRegion = region;
+		channelConfig.xi = xi;
+		channelConfig.yi = yi;
+		channelConfig.x = x;
+		channelConfig.y = y;
+		channelConfig.z = z;
+		
+	}
+	fclose(f);
+}
+
+void SystemConfig::loadTriggerMap(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[1024];
+	int lineNumber = 0;
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		lineNumber += 1;
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+		
+		int r1, r2;
+		char c;
+		if(sscanf(line, "%d\t%d\t%c\n", &r1, &r2, &c) != 3) {
+			fprintf(stderr, "Error on '%s' line %d: line should have 3 entries\n", fn, lineNumber);
+			exit(1);
+		}
+		
+		if((r1 < 0) || (r1 >= MAX_TRIGGER_REGIONS) || (r2 < 0) || (r2 >= MAX_TRIGGER_REGIONS)) {
+			fprintf(stderr, "Error on '%s' line %d: trigger region number must be between 0 and %d", fn, lineNumber, MAX_TRIGGER_REGIONS);
+			exit(1);
+		}
+		c = toupper(c);
+		if((c != 'M') && (c != 'C')) {
+			fprintf(stderr, "Error on '%s' line %d: trigger type must be M or C", fn, lineNumber);
+			exit(1);
+		}
+		
+		config->coincidenceTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2] = (c == 'C');
+		config->coincidenceTriggerMap[r2 * MAX_TRIGGER_REGIONS + r1] = (c == 'C');
+		config->multihitTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2] = (c == 'M');
+		config->multihitTriggerMap[r2 * MAX_TRIGGER_REGIONS + r1] = (c == 'M');
 	}
 	fclose(f);
 }

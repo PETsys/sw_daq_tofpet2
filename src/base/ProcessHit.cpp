@@ -52,10 +52,12 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			valid &= (cq.p1 != 0) || !requireQDC;
 		}
 		
-		// TODO Use channel map table
-		out.region = in.channelID / 128;
-		out.x = out.y = out.z = 0;
-		out.xi = out.yi = 0;
+		out.region = cc.triggerRegion;
+		out.x = cc.x;
+		out.y = cc.y;
+		out.z = cc.z;
+		out.xi = cc.xi;
+		out.yi = cc.yi;
 		
 		out.valid = valid;
 		
