@@ -50,7 +50,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readAD5535CalibrationTable(fn)
-		config._Config__ad5535CalibrationTable = t
+		config.ad5535CalibrationTable = t
 		config._Config__loadMask |= LOAD_AD5535_CALIBRATION
 
 	if (loadMask & LOAD_SIPM_BIAS) != 0:
@@ -85,7 +85,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 class Config:
 	def __init__(self):
 		self.__loadMask = 0x00000000
-		self.__ad5535CalibrationTable = {}
+		self.ad5535CalibrationTable = {}
 		self.sipmBiasTable = {}
 		self.discCalibrationTable = {}
 		self.discConfigTable = {}
@@ -138,9 +138,9 @@ class Config:
 					cc = ac.channelConfig[channelID]
 					cc.setValue("baseline_t", a.baseline_t)
 					cc.setValue("baseline_e", a.baseline_e)
-					cc.setValue("vth_t1", int(b.vth_t1))
-					cc.setValue("vth_t2", int(b.vth_t2))
-					cc.setValue("vth_e", int(b.vth_e))
+					cc.setValue("vth_t1", int(b.zero_t1 - a.vth_t1))
+					cc.setValue("vth_t2", int(a.zero_t2 - b.vth_t2))
+					cc.setValue("vth_e", int(a.zero_e - b.vth_e))
 
 		daqd.setAsicsConfig(asicsConfig)
 
@@ -148,7 +148,7 @@ class Config:
 	
 	def __ad5535VoltageToDAC(self, key, y):
 		# Linear interpolation on closest neighbours
-		xy = self.__ad5535CalibrationTable[key]
+		xy = self.ad5535CalibrationTable[key]
 		for i in range(1, len(xy)):
 			x1, y1 = xy[i-1]
 			x2, y2 = xy[i]

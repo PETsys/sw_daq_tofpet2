@@ -35,6 +35,8 @@ configure_file("src/petsys_util/acquire_tdc_calibration" "acquire_tdc_calibratio
 configure_file("src/petsys_util/calibrate_thresholds" "calibrate_thresholds" COPYONLY)
 configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
+configure_file("src/petsys_util/make_simple_sipm_bias_table" "make_simple_sipm_bias_table" COPYONLY)
+configure_file("src/petsys_util/make_simple_disc_table" "make_simple_disc_table" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
