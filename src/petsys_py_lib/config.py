@@ -101,12 +101,12 @@ class Config:
 			# Set AD5535 to ~1 V, to avoid flow back from amplifier through SiPM
 				ad5535HwConfig[key] = int(round(1.0 * 2**14 / (50 * 2.048)))
 
-		if biasMode == APPLY_BIAS_PREBD or biasMode == APPLY_BIAS_ON:
+		if bias_enable == APPLY_BIAS_PREBD or bias_enable == APPLY_BIAS_ON:
 			assert (self.__loadMask & LOAD_AD5535_CALIBRATION) != 0
 			assert (self.__loadMask & LOAD_SIPM_BIAS) != 0
 			for key in self.sipmBiasTable.keys():
 				entry = self.sipmBiasTable[key]
-				if biasMode == APPLY_BIAS_PREBD:
+				if bias_enable == APPLY_BIAS_PREBD:
 					Vset = entry.Vprebd
 				else:
 					Vset = entry.Vbd + entry.Vover
