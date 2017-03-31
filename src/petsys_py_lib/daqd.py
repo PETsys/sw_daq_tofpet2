@@ -25,7 +25,7 @@ class Connection:
         ## Constructor
 	def __init__(self):
 		socketPath = "/tmp/d.sock"
-		self.__systemFrequency = 160E6
+		self.__systemFrequency = 200E6
 
 		# Open socket to daqd
 		self.__socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
