@@ -138,7 +138,7 @@ class Config:
 					cc = ac.channelConfig[channelID]
 					cc.setValue("baseline_t", a.baseline_t)
 					cc.setValue("baseline_e", a.baseline_e)
-					cc.setValue("vth_t1", int(b.zero_t1 - a.vth_t1))
+					cc.setValue("vth_t1", int(a.zero_t1 - a.vth_t1))
 					cc.setValue("vth_t2", int(a.zero_t2 - b.vth_t2))
 					cc.setValue("vth_e", int(a.zero_e - b.vth_e))
 
