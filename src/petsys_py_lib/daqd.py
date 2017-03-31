@@ -113,7 +113,7 @@ class Connection:
         # @param finePhase Defines the delay of the test pulse regarding the start of the frame, in units of 1/392 of the clock.
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
-		finePhase = int(round(finePhase * 7*56))	# WARNING: This should be firmware dependent..
+		finePhase = int(round(finePhase * 6*56))	# WARNING: This should be firmware dependent..
 
 		value = 0x1 # Enable TP
 		if invert: value |= 0b1 << 1
