@@ -1,9 +1,9 @@
 #HEADER
-# Date: segunda-feira, 3 de Fevereiro de 2014 15:34
+# Date: Tuesday, March 22, 2016 11:25 AM
 # File Version: 3
 # Software Name: Precision Clock EVB Software
-# Software Version: 4.7
-# Software Date: March 18, 2012
+# Software Version: 5.1
+# Software Date: July 23, 2014
 # Part number: Si5326
 #END_HEADER
 #PROFILE
@@ -11,54 +11,54 @@
 #INPUT
 # Name: CKIN
 # Channel: 1
-# Frequency (MHz): 160.000000
-# N3: 80
-# Maximum (MHz): 160.000000
-# Minimum (MHz): 151.562500
+# Frequency (MHz): 200.000000
+# N3: 100
+# Maximum (MHz): 200.000000
+# Minimum (MHz): 173.214285
 #END_INPUT
 #INPUT
 # Name: CKIN
 # Channel: 2
-# Frequency (MHz): 160.000000
-# N3: 80
+# Frequency (MHz): 200.000000
+# N3: 100
 # CKIN2 to CKIN1 Ratio: 1 / 1
-# Maximum (MHz): 160.000000
-# Minimum (MHz): 151.562500
+# Maximum (MHz): 200.000000
+# Minimum (MHz): 173.214285
 #END_INPUT
 #PLL
 # Name: PLL
-# Frequency (MHz): 5120.000000
+# Frequency (MHz): 5600.000000
 # f3 (MHz): 2.000000
-# N1_HS: 4
-# N2_HS: 4
-# N2_LS: 640
-# Phase Offset Resolution (ns): 0.78125
+# N1_HS: 7
+# N2_HS: 10
+# N2_LS: 280
+# Phase Offset Resolution (ns): 1.25000
 # BWSEL_REG Option: Frequency (Hz)
-# 10:  116
-#  9:  232
-#  8:  466
-#  7:  935
-#  6: 1885
-#  5: 3830
-#  4: 7918
+# 10:  121
+#  9:  242
+#  8:  484
+#  7:  972
+#  6: 1957
+#  5: 3973
+#  4: 8191
 #END_PLL
 #OUTPUT
 # Name: CKOUT
 # Channel: 1
-# Frequency (MHz): 160.000000
-# NC1_LS: 8
+# Frequency (MHz): 200.000000
+# NC1_LS: 4
 # CKOUT1 to CKIN1 Ratio: 1 / 1
-# Maximum (MHz): 160.000000
-# Minimum (MHz): 151.562500
+# Maximum (MHz): 200.000000
+# Minimum (MHz): 173.214285
 #END_OUTPUT
 #OUTPUT
 # Name: CKOUT
 # Channel: 2
-# Frequency (MHz): 320.000000
+# Frequency (MHz): 200.000000
 # NC_LS: 4
-# CKOUT2 to CKOUT1 Ratio: 2 / 1
-# Maximum (MHz): 320.000000
-# Minimum (MHz): 303.125000
+# CKOUT2 to CKOUT1 Ratio: 1 / 1
+# Maximum (MHz): 200.000000
+# Minimum (MHz): 173.214285
 #END_OUTPUT
 #CONTROL_FIELD
 # Register-based Controls
@@ -97,7 +97,7 @@
 #            INT_PIN: 0x0
 #         INCDEC_PIN: 0x1
 #       CK1_ACTV_PIN: 0x1
-#          CKSEL_PIN: 0x1
+#          CKSEL_PIN: 0x0
 #        CK_ACTV_POL: 0x1
 #         CK_BAD_POL: 0x1
 #            LOL_POL: 0x1
@@ -108,21 +108,21 @@
 #           FOS2_MSK: 0x1
 #           FOS1_MSK: 0x1
 #            LOL_MSK: 0x1
-#              N1_HS: 0x0
-#             NC1_LS: 0x7
+#              N1_HS: 0x3
+#             NC1_LS: 0x3
 #             NC2_LS: 0x3
-#              N2_LS: 0x27F
-#              N2_HS: 0x0
-#                N31: 0x4F
-#                N32: 0x4F
-#         CLKIN2RATE: 0x3
-#         CLKIN1RATE: 0x3
+#              N2_LS: 0x117
+#              N2_HS: 0x6
+#                N31: 0x63
+#                N32: 0x63
+#         CLKIN2RATE: 0x0
+#         CLKIN1RATE: 0x0
 #            LOS1_EN: 0x3
 #            LOS2_EN: 0x3
 #            FOS1_EN: 0x1
 #            FOS2_EN: 0x1
-#   INDEPENDENTSKEW1: 0x6
-#   INDEPENDENTSKEW2: 0x6
+#   INDEPENDENTSKEW1: 0x0
+#   INDEPENDENTSKEW2: 0x0
 #END_CONTROL_FIELD
 #REGISTER_MAP
   0, 14h
@@ -142,33 +142,33 @@
  18, 00h
  19, 2Ch
  20, 3Eh
- 21, FFh
+ 21, FEh
  22, DFh
  23, 1Fh
  24, 3Fh
- 25, 00h
+ 25, 60h
  31, 00h
  32, 00h
- 33, 07h
+ 33, 03h
  34, 00h
  35, 00h
  36, 03h
- 40, 00h
- 41, 02h
- 42, 7Fh
+ 40, C0h
+ 41, 01h
+ 42, 17h
  43, 00h
  44, 00h
- 45, 4Fh
+ 45, 63h
  46, 00h
  47, 00h
- 48, 4Fh
- 55, 1Bh
+ 48, 63h
+ 55, 00h
 131, 1Fh
 132, 02h
 138, 0Fh
 139, FFh
-142, 06h
-143, 06h
+142, 00h
+143, 00h
 136, 40h
 #END_REGISTER_MAP
 #END_PROFILE
