@@ -33,6 +33,11 @@ namespace PETSYS {
                 };
                 std::vector<Step> steps;
 		int dataFile;
+		char *dataFileBuffer;
+		char *dataFileBufferPtr;
+		char *dataFileBufferEnd;
+		int readFromDataFile(char *buf, int count);
+
 		unsigned frequency;
 		bool qdcMode;
 

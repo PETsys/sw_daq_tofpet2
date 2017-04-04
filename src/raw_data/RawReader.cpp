@@ -13,15 +13,21 @@
 using namespace std;
 using namespace PETSYS;
 
+static const unsigned dataFileBufferSize = 1024*1024;
 RawReader::RawReader() :
         steps(vector<Step>()),
 	dataFile(-1)
 
 {
+	assert(dataFileBufferSize >= MaxRawDataFrameSize * sizeof(uint64_t));
+	dataFileBuffer = new char[dataFileBufferSize];
+	dataFileBufferPtr = dataFileBuffer;
+	dataFileBufferEnd = dataFileBuffer;
 }
 
 RawReader::~RawReader()
 {
+	delete [] dataFileBuffer;
 	close(dataFile);
 }
 
@@ -87,6 +93,34 @@ void RawReader::getStepValue(int n, float &step1, float &step2)
 	step2 = step.step2;
 }
 
+int RawReader::readFromDataFile(char *buf, int count)
+{
+	int rval = 0;
+	while(rval < count) {
+		// Read from file if needed
+		if(dataFileBufferPtr == dataFileBufferEnd) {
+			int r = read(dataFile, dataFileBuffer, dataFileBufferSize);
+			// We should be able to read at least 1 byte here
+			assert(r >= 1);
+			dataFileBufferPtr = dataFileBuffer;
+			dataFileBufferEnd = dataFileBuffer + r;
+
+			off_t current = lseek(dataFile, 0, SEEK_CUR);
+			readahead(dataFile, current, dataFileBufferSize);
+		}
+
+		int countRemaining = count - rval;
+		int bufferRemaining = dataFileBufferEnd - dataFileBufferPtr;
+		int count2 = (countRemaining < bufferRemaining) ? countRemaining : bufferRemaining;
+
+		memcpy(buf, dataFileBufferPtr, count2);
+		dataFileBufferPtr += count2;
+		buf += count2;
+		rval += count2;
+	};
+	return rval;
+}
+
 void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 {
 	Step step = steps[n];
@@ -94,25 +128,30 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	sink->pushT0(0);
 	
 	RawDataFrame *dataFrame = new RawDataFrame;
-	lseek(dataFile, step.stepBegin, SEEK_SET);
 	EventBuffer<RawHit> *outBuffer = NULL; 
 	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
 	
+	// Set file handle to start of step
+	lseek(dataFile, step.stepBegin, SEEK_SET);
 	off_t currentPosition = step.stepBegin;
+	// Reset file buffer pointers
+	dataFileBufferPtr = dataFileBuffer;
+	dataFileBufferEnd = dataFileBuffer;
 	while (currentPosition < step.stepEnd) {
 		int r;
 		// Read frame header
-		r = read(dataFile, (void*)((dataFrame->data)+0), 2*sizeof(uint64_t));
+		r = readFromDataFile((char*)((dataFrame->data)+0), 2*sizeof(uint64_t));
 		assert(r == 2*sizeof(uint64_t));
 		currentPosition += r;
 		
 		int N = dataFrame->getNEvents();
-		r = read(dataFile, (void*)((dataFrame->data)+2), N*sizeof(uint64_t));
+		if(N == 0) continue;
+
+		r = readFromDataFile((char*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
 		currentPosition += r;
 		
-		readahead(dataFile, currentPosition, outBlockSize*sizeof(uint64_t));
 		
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
