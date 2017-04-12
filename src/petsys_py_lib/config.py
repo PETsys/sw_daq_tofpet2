@@ -2,11 +2,14 @@
 import ConfigParser
 import os.path
 import re
+from sys import stderr
+from string import upper
 import tofpet2
 
 LOAD_AD5535_CALIBRATION	= 0x00000001
 LOAD_SIPM_BIAS 		= 0x00000002
 LOAD_DISC_CALIBRATION	= 0x00000004
+LOAD_DISC_SETTINGS	= 0x00000008
 LOAD_ALL		= 0xFFFFFFFF
 
 APPLY_BIAS_OFF		= 0x0
@@ -21,15 +24,30 @@ class SiPMBiasConfigEntry:
 		self.Vover = Vover
 
 class DiscriminatorCalibrationEntry:
-	def __init__(self, baseline_t, zero_t1, noise_t1, zero_t2, noise_t2, baseline_e, zero_e, noise_e):
-		self.baseline_t = baseline_t
-		self.zero_t1 = zero_t1
-		self.noise_t1 = noise_t1
-		self.zero_t2 = zero_t2
-		self.noise_t2 = noise_t2
-		self.baseline_e = baseline_e
-		self.zero_e = zero_e
-		self.noise_e = noise_e
+	def __init__(self, line):
+		self.baseline_t = int(line[0])
+		self.zero_t1 = float(line[1])
+		self.noise_t1 = float(line[2])
+		self.dark_width_t1 = float(line[3])
+		self.rate_10k_t1 = float(line[4])
+		self.rate_20k_t1 = float(line[5])
+		self.rate_50k_t1 = float(line[6])
+		self.rate_100k_t1 = float(line[7])
+
+		self.zero_t2 = float(line[8])
+		self.noise_t2 = float(line[9])
+		self.rate_10k_t2 = float(line[10])
+		self.rate_20k_t2 = float(line[11])
+		self.rate_50k_t2 = float(line[12])
+		self.rate_100k_t2 = float(line[13])
+
+		self.baseline_e = int(line[14])
+		self.zero_e = float(line[15])
+		self.noise_e = float(line[16])
+		self.rate_10k_e = float(line[17])
+		self.rate_20k_e = float(line[18])
+		self.rate_50k_e = float(line[19])
+		self.rate_100k_e = float(line[20])
 
 class DiscriminatorConfigEntry:
 	def __init__(self, vth_t1, vth_t2, vth_e):
@@ -67,13 +85,37 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 			fn = os.path.join(dn, fn)
 		t = readDiscCalibrationsTable(fn)
 		config.discCalibrationTable = t
+		config._Config__loadMask |= LOAD_DISC_CALIBRATION
 
+	if (loadMask & LOAD_DISC_SETTINGS) != 0:
 		fn = configParser.get("main", "disc_settings_table")
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readDiscSettingsTable(fn)
 		config.discConfigTable = t
-		config._Config__loadMask |= LOAD_DISC_CALIBRATION
+		config._Config__loadMask |= LOAD_DISC_SETTINGS
+
+	# Load hw_trigger configuration IF hw_trigger section exists
+	hw_trigger_config = { "type" : None }
+	if configParser.has_section("hw_trigger"):
+	
+		hw_trigger_config["type"] = configParser.get("hw_trigger", "type")
+		if hw_trigger_config["type"] not in [ "builtin" ]:
+			stderr.write("Error: type must be 'builtin'\n")
+			exit(1)
+
+		hw_trigger_config["threshold"] = configParser.getint("hw_trigger", "threshold")
+		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
+		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
+		hw_trigger_config["coincidence_window"] = configParser.getint("hw_trigger", "coincidence_window")
+		hw_trigger_config["single_fraction"] = configParser.getint("hw_trigger", "single_fraction")
+
+		fn = configParser.get("main", "trigger_map")
+		if not os.path.isabs(fn):
+			fn = os.path.join(dn, fn)
+		hw_trigger_config["regions"] = readTriggerMap(fn)
+
+	config._Config__hw_trigger = hw_trigger_config
 
 	# We always load ASIC parameters from config "asic" section, if they exist
 	t = parseAsicParameters(configParser)
@@ -90,8 +132,9 @@ class Config:
 		self.discCalibrationTable = {}
 		self.discConfigTable = {}
 		self.__asicParameterTable = {}
+		self.__hw_trigger = None
 
-	def loadToHardware(self, daqd, bias_enable=APPLY_BIAS_OFF):
+	def loadToHardware(self, daqd, bias_enable=APPLY_BIAS_OFF, hw_trigger_enable=False):
 		#
 		# Apply bias voltage settings
 		# 
@@ -143,6 +186,45 @@ class Config:
 					cc.setValue("vth_e", int(a.zero_e - b.vth_e))
 
 		daqd.setAsicsConfig(asicsConfig)
+
+
+		# Disable builtin hardware trigger (if it exists)
+		for portID, slaveID in daqd.getActiveFEBDs():
+			daqd.writeFEBDConfig(portID, slaveID, 0, 16, 0x0F000000)
+			daqd.writeFEBDConfig(portID, slaveID, 0, 15, 0)
+			daqd.writeFEBDConfig(portID, slaveID, 0, 17, 0)
+
+		if hw_trigger_enable:
+			if self.__hw_trigger["type"] == None:
+				raise "Cannot enable HW trigger: hw_trigger section was not present in configuration file"
+
+			if self.__hw_trigger["type"] == "builtin":
+				portID, slaveID = (0, 0) # There should be only one FEB/D connected via Ethernet when we use the builtin trigger
+				nRegions = 2**daqd.readFEBDConfig(portID, slaveID, 0, 21)
+
+				value = 0
+				value |= self.__hw_trigger["pre_window"]
+				value |= self.__hw_trigger["post_window"] << 4
+				value |= self.__hw_trigger["coincidence_window"] << 20
+				daqd.writeFEBDConfig(portID, slaveID, 0, 16,value)
+
+				value = self.__hw_trigger["threshold"]
+				daqd.writeFEBDConfig(portID, slaveID, 0, 15, value)
+
+				value = 0
+				hw_trigger_regions = self.__hw_trigger["regions"]
+				print nRegions, hw_trigger_regions
+				for r1 in range(nRegions):
+					# Set set bit to 1
+					value |= (1 << (r1*nRegions + r1))
+					for r2 in range(nRegions):
+						if (r1,r2) in hw_trigger_regions or (r2,r1) in hw_trigger_regions:
+							# Enable coincidences between r1 and r2
+							value |= (1 << (r1*nRegions + r2))
+							value |= (1 << (r2*nRegions + r1))
+				print bin(value)
+				daqd.writeFEBDConfig(portID, slaveID, 0, 17, value)
+			
 
 		return None
 	
@@ -245,11 +327,7 @@ def readDiscCalibrationsTable(fn):
 		if l == ['']: continue
 
 		portID, slaveID, chipID, channelID = [ int(v) for v in l[0:4] ]
-		baseline_T = int(l[4])
-		zero_T1, noise_T1, zero_T2, noise_T2 = [ float(v) for v in l[5:9] ]
-		baseline_E = int(l[9])
-		zero_E, noise_E = [ float(v) for v in l[10:12] ]
-		c[(portID, slaveID, chipID, channelID)] = DiscriminatorCalibrationEntry(baseline_T, zero_T1, noise_T1, zero_T2, noise_T2, baseline_E, zero_E, noise_E)
+		c[(portID, slaveID, chipID, channelID)] = DiscriminatorCalibrationEntry(l[4:])
 	return c
 
 def readDiscSettingsTable(fn):
@@ -263,3 +341,21 @@ def readDiscSettingsTable(fn):
 		c[(portID, slaveID, chipID, channelID)] = DiscriminatorConfigEntry(vth_t1, vth_t2, vth_e)
 	return c
 
+def readTriggerMap(fn):
+	f = open(fn)
+	triggerMap = set()
+	ln = 0
+	for l in f:
+		ln += 1
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		r1 = int(l[0])
+		r2 = int(l[1])
+		c = upper(l[2])
+		if c not in ['M', 'C']:
+			stdout.write("Error in '%s' line %d: type must be 'M' or 'C'\n" % (fn, ln))
+			exit(1)
+
+		if c == 'C':
+			triggerMap.add((r1, r2))
+	return triggerMap

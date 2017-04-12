@@ -41,7 +41,7 @@ simultaneousChannels = 7
 
 simultaneousChannels = 1 # For debug
 
-daqd.setTestPulsePLL(100, 0, 0, False)
+daqd.setTestPulsePLL(100, 1024, 0, False)
 for firstChannel in range(0, 64/simultaneousChannels):
 	# Enable triggering for this channel
 	cfg = deepcopy(asicsConfig)

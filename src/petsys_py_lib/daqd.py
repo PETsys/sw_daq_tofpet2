@@ -60,6 +60,10 @@ class Connection:
 		length, s0, p1, s1 = struct.unpack(template, data)
 		name = self.__socket.recv(length - n);
 		return (name, s0, p1, s1)
+
+	## Returns the system reference clock frequency
+	def getSystemFrequency(self):
+		return self.__systemFrequency
 	
 	## Returns an array with the active ports
 	def getActivePorts(self):
@@ -114,6 +118,11 @@ class Connection:
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
 		finePhase = int(round(finePhase * 6*56))	# WARNING: This should be firmware dependent..
+	
+		if interval < (length + 1):
+			raise "Interval (%d) must be greater than length (%d) + 1" % (interval, length)
+
+		interval = interval - (length + 1)
 
 		value = 0x1 # Enable TP
 		if invert: value |= 0b1 << 1
