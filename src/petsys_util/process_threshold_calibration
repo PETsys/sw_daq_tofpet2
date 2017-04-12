@@ -1,0 +1,183 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from petsys.config import normalizeAndSplit
+
+from copy import deepcopy
+import argparse
+from time import sleep
+import ROOT
+from sys import stdout, argv
+from math import sqrt
+
+
+# Create the S-Curve function
+fSigmoid = ROOT.TF1("fSigmoid","[0]*ROOT::Math::normal_cdf(x,[1],[2])",0,64);
+fSigmoid.SetParName(0, "C")
+fSigmoid.SetParName(1, "#sigma")
+fSigmoid.SetParName(2, "x0")
+fSigmoid.SetNpx(64)
+
+
+def getBaselineAndNoise(profile):
+	low = profile.GetBinCenter(profile.FindFirstBinAbove(0.1)) - 0.5
+	high = profile.GetBinCenter(profile.FindFirstBinAbove(0.9)) + 0.5
+
+	fSigmoid.FixParameter(0, 1.0);
+
+	fSigmoid.SetParameter(1, high-low);
+	fSigmoid.SetParLimits(1, 1/sqrt(12), high-low)
+
+	fSigmoid.SetParameter(2, (low+high)/2.0)
+	fSigmoid.SetParLimits(2, low, high)
+
+	profile.Fit("fSigmoid", "", "", 0, 64)
+	f = profile.GetFunction("fSigmoid")
+
+	if f:
+			zero= f.GetParameter(2)
+			noise = f.GetParameter(1)
+	else:
+		print "WARNING: No fit for %s" % profile.GetName()
+		zero = 63.0
+		noise = 10.0
+
+	return zero, noise
+
+def getThresholdForRate(profile, rate):
+	threshold = profile.FindFirstBinAbove(rate) - profile.FindBin(0)
+	if threshold > 63:
+		return 63
+	elif threshold < 0:
+		return 63
+	else:
+		return threshold
+
+def getDarkWidth(profile, baseline):
+	maxBin = profile.GetMaximumBin()
+	while profile.GetBinCenter(maxBin) > baseline:
+		maxBin -= 1
+
+	rate1pe = profile.GetBinContent(maxBin)
+	t1 = profile.GetBinCenter(profile.FindFirstBinAbove(0.5 * rate1pe))
+	return baseline - t1
+
+def main(argv):
+
+	parser = argparse.ArgumentParser(description='Process threshold calibration data')
+	parser.add_argument("--config", type=str, required=True, help="Configuration file")
+	parser.add_argument("-i", type=str, dest="inputFilePrefix", required=True, help="Data file prefix")
+	parser.add_argument("-o", type=str, dest="outFileName", required=True, help="Output table file name")
+	parser.add_argument("--root-file", dest="rootFileName", help="Output ROOT file name")
+	args = parser.parse_args()
+
+
+	rootFile = None
+	if args.rootFileName:
+		rootFile = ROOT.TFile(args.rootFileName, "RECREATE")
+
+
+	baselineSettings = {}
+	activeChannels = set()
+	inputFile = open(args.inputFilePrefix + "_baseline.tsv")
+	for line in inputFile:
+		line = normalizeAndSplit(line)
+		if line == ['']: continue
+		portID, slaveID, chipID, channelID, baseline_T, baseline_E = [ int(v) for v in line ]
+		baselineSettings[(portID, slaveID, chipID, channelID)] = (baseline_T, baseline_E)
+		activeChannels.add((portID, slaveID, chipID, channelID))
+	inputFile.close()
+
+
+	noiseProfiles = {}
+	for portID, slaveID, chipID, channelID in activeChannels:
+		for thresholdName in ["vth_t1", "vth_t2", "vth_e"]:
+			hName = "hNoise_%02d_%02d_%02d_%02d_%s" % (portID, slaveID, chipID, channelID, thresholdName)
+			hTitle = "Noise (%02d %02d %02d %02d) %s" % (portID, slaveID, chipID, channelID, thresholdName)
+			noiseProfiles[(portID, slaveID, chipID, channelID, thresholdName)] = ROOT.TProfile(hName, hTitle, 64, 0, 64)
+
+	inputFile = open(args.inputFilePrefix + "_noise.tsv")
+	for line in inputFile:
+		line = normalizeAndSplit(line)
+		if line == ['']: continue
+		portID, slaveID, chipID, channelID = [ int(v) for v in line[0:4] ]
+		thresholdName = line[4]
+		thresholdValue = int(line[5])
+		v = float(line[6])
+		noiseProfiles[ (portID, slaveID, chipID, channelID, thresholdName)].Fill(thresholdValue, v)
+	inputFile.close()
+
+	darkProfiles = {}
+	for portID, slaveID, chipID, channelID in activeChannels:
+		for thresholdName in ["vth_t1", "vth_t2", "vth_e"]:
+			hName = "hDark_%02d_%02d_%02d_%02d_%s" % (portID, slaveID, chipID, channelID, thresholdName)
+			hTitle = "Dark (%02d %02d %02d %02d) %s" % (portID, slaveID, chipID, channelID, thresholdName)
+			darkProfiles[(portID, slaveID, chipID, channelID, thresholdName)] = ROOT.TProfile(hName, hTitle, 64, 0, 64)
+
+	inputFile = open(args.inputFilePrefix + "_dark.tsv")
+	for line in inputFile:
+		line = normalizeAndSplit(line)
+		if line == ['']: continue
+		portID, slaveID, chipID, channelID = [ int(v) for v in line[0:4] ]
+		thresholdName = line[4]
+		thresholdValue = int(line[5])
+		v = float(line[6])
+		darkProfiles[ (portID, slaveID, chipID, channelID, thresholdName)].Fill(thresholdValue, v)
+	inputFile.close()
+
+
+		
+	outFile = open(args.outFileName, "w")
+
+	rates =  [ 10E3, 20E3, 50E3, 100E3 ]
+
+	fields = [ "portID", "slaveID", "chipID", "channelID" ]
+	fields += [ "baseline_T", "zero_T1", "noise_T1" ]
+	fields += [ "dark_width_T1" ]
+	fields += [ "rate_T1_%d" % v for v in [10, 20, 50, 100 ] ]
+	fields += [ "zero_T2", "noise_T2" ]
+	fields += [ "rate_T2_%d" % v for v in [10, 20, 50, 100 ] ]
+	fields += [ "baseline_E", "zero_E", "noise_E" ]
+	fields += [ "rate_E_%d" % v for v in [10, 20, 50, 100 ] ]
+	
+	print outFile.write("# " + ('\t').join(fields) + '\n')
+
+
+	for portID, slaveID, chipID, channelID in activeChannels:
+		baseline_T, baseline_E = baselineSettings[(portID, slaveID, chipID, channelID)] 
+		
+		zero_T1, noise_T1 = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t1")])
+		thresholds_T1 = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t1")], rate) for rate in rates ]
+		thresholds_T1 = [ zero_T1 - threshold for threshold in thresholds_T1 ]
+		
+		dark_width_T1 = getDarkWidth(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t1")], zero_T1)
+
+		zero_T2, noise_T2 = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t2")])
+		thresholds_T2 = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t2")], rate) for rate in rates ]
+		thresholds_T2 = [ zero_T2 - threshold for threshold in thresholds_T2 ]
+
+		# WARNING: Scan is not working well for vth_E
+		zero_E, noise_E = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_e")])
+		thresholds_E = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_e")], rate) for rate in rates ]
+		thresholds_E = [ zero_E - threshold for threshold in thresholds_E ]
+
+
+		fields = [ str(v) for v in [portID, slaveID, chipID, channelID] ]
+		fields += [ str(v) for v in [baseline_T, zero_T1, noise_T1] ]
+		fields += [ str(dark_width_T1) ]
+		fields += [ str(v) for v in thresholds_T1 ]
+		fields += [ str(v) for v in [zero_T2, noise_T2] ]
+		fields += [ str(v) for v in thresholds_T2 ]
+		fields += [ str(v) for v in [baseline_E, zero_E, noise_E] ]
+		fields += [ str(v) for v in thresholds_E ]
+		
+		outFile.write(("\t").join(fields) + "\n")
+
+
+	if rootFile is not None:
+		rootFile.Write()
+		rootFile.Close()
+
+if __name__ == "__main__":
+	main(argv)
