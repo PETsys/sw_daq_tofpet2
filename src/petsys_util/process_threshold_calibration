@@ -27,7 +27,7 @@ def getBaselineAndNoise(profile):
 	fSigmoid.FixParameter(0, 1.0);
 
 	fSigmoid.SetParameter(1, high-low);
-	fSigmoid.SetParLimits(1, 1/sqrt(12), high-low)
+	fSigmoid.SetParLimits(1, 0.05, high-low)
 
 	fSigmoid.SetParameter(2, (low+high)/2.0)
 	fSigmoid.SetParLimits(2, low, high)
@@ -40,8 +40,8 @@ def getBaselineAndNoise(profile):
 			noise = f.GetParameter(1)
 	else:
 		print "WARNING: No fit for %s" % profile.GetName()
-		zero = 63.0
-		noise = 10.0
+		zero = (low+high)/2.0
+		noise = 0.05
 
 	return zero, noise
 
