@@ -92,6 +92,13 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		if not os.path.isabs(fn):
 			fn = os.path.join(dn, fn)
 		t = readDiscSettingsTable(fn)
+		# We just read a file with settings relative to baseline
+		# Not we need to calculate the threshold DAC value
+		for key in config.discCalibrationTable.keys():
+			a = config.discCalibrationTable[key]
+			b = t[key]
+			t[key] = DiscriminatorConfigEntry(a.zero_t1 - b.vth_t1, a.zero_t2 - b.vth_t2, a.zero_e - b.vth_e)
+
 		config.discConfigTable = t
 		config._Config__loadMask |= LOAD_DISC_SETTINGS
 
@@ -170,20 +177,26 @@ class Config:
 					for cc in ac.channelConfig:
 						cc.setValue(key, value)
 
-		#
-		# Apply discriminator calibrations
+		# Apply discriminator baseline calibrations
 		if (self.__loadMask & LOAD_DISC_CALIBRATION) != 0:
 			for portID, slaveID, chipID in asicsConfig.keys():
 				ac = asicsConfig[(portID, slaveID, chipID)]
 				for channelID in range(64):
 					a = self.discCalibrationTable[(portID, slaveID, chipID, channelID)]
-					b = self.discConfigTable[(portID, slaveID, chipID, channelID)]
 					cc = ac.channelConfig[channelID]
 					cc.setValue("baseline_t", a.baseline_t)
 					cc.setValue("baseline_e", a.baseline_e)
-					cc.setValue("vth_t1", int(a.zero_t1 - b.vth_t1))
-					cc.setValue("vth_t2", int(a.zero_t2 - b.vth_t2))
-					cc.setValue("vth_e", int(a.zero_e - b.vth_e))
+
+		# Apply discriminator settings
+		if (self.__loadMask & LOAD_DISC_SETTINGS) != 0:
+			for portID, slaveID, chipID in asicsConfig.keys():
+				ac = asicsConfig[(portID, slaveID, chipID)]
+				for channelID in range(64):
+					b = self.discConfigTable[(portID, slaveID, chipID, channelID)]
+					cc = ac.channelConfig[channelID]
+					cc.setValue("vth_t1", int(b.vth_t1))
+					cc.setValue("vth_t2", int(b.vth_t2))
+					cc.setValue("vth_e", int(b.vth_e))
 
 		daqd.setAsicsConfig(asicsConfig)
 
