@@ -10,13 +10,14 @@ parser.add_argument("--config", type=str, required=True, help="Configuration fil
 parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help="Data filename (prefix)")
 parser.add_argument("--time", type=float, required=True, help="Acquisition time (in seconds)")
 parser.add_argument("--mode", type=str, required=True, choices=["tot", "qdc"], help="Acquisition mode (ToT or QDC)")
+parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true", help="Enable the hardware coincidence filter")
 args = parser.parse_args()
 
 systemConfig = config.ConfigFromFile(args.config)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger)
 
 qdcMode = args.mode == "qdc"
 

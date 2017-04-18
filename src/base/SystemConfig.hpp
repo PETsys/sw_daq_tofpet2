@@ -37,12 +37,23 @@ namespace PETSYS {
 			TacConfig tac_E[4];
 			QacConfig qac_Q[4];
 		};
+		
+
+		// Software trigger configuration
+		int sw_trigger_group_max_hits;
+		float sw_trigger_group_min_energy;
+		float sw_trigger_group_max_energy;
+		float sw_trigger_group_max_distance;
+		double sw_trigger_group_time_window;
+		double sw_trigger_coincidence_time_window;
+		
 
 		static SystemConfig *fromFile(const char *configFileName);
 		static SystemConfig *fromFile(const char *configFileName, uint64_t mask);
 		
 		inline bool useTDCCalibration() { return hasTDCCalibration; };
 		inline bool useQDCCalibration() { return hasQDCCalibration; };
+		inline bool useXYZ() { return hasXYZ; };
 		
 		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
 			unsigned indexH = channelID / 4096;
@@ -75,6 +86,7 @@ namespace PETSYS {
 		
 		bool hasTDCCalibration;
 		bool hasQDCCalibration;
+		bool hasXYZ;
 		
 		ChannelConfig **channelConfig;
 		ChannelConfig nullChannelConfig;

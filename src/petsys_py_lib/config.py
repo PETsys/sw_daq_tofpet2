@@ -198,6 +198,7 @@ class Config:
 					cc.setValue("vth_t2", int(b.vth_t2))
 					cc.setValue("vth_e", int(b.vth_e))
 
+
 		daqd.setAsicsConfig(asicsConfig)
 
 
@@ -226,7 +227,6 @@ class Config:
 
 				value = 0
 				hw_trigger_regions = self.__hw_trigger["regions"]
-				print nRegions, hw_trigger_regions
 				for r1 in range(nRegions):
 					# Set set bit to 1
 					value |= (1 << (r1*nRegions + r1))
@@ -235,7 +235,6 @@ class Config:
 							# Enable coincidences between r1 and r2
 							value |= (1 << (r1*nRegions + r2))
 							value |= (1 << (r2*nRegions + r1))
-				print bin(value)
 				daqd.writeFEBDConfig(portID, slaveID, 0, 17, value)
 			
 

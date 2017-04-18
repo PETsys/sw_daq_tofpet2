@@ -64,6 +64,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		config->hasQDCCalibration = true;
 	}
 	
+	config->hasXYZ = false;
 	if((mask & LOAD_MAPPING) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
 		if(entry == NULL) {
@@ -72,6 +73,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		}
 		make_absolute(fn, entry, dn);
 		loadChannelMap(config, fn);
+		config->hasXYZ = true;
 		
 		entry = iniparser_getstring(configFile, "main:trigger_map", NULL);
 		if(entry == NULL) {
@@ -81,6 +83,15 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		make_absolute(fn, entry, dn);
 		loadTriggerMap(config, fn);
 	}
+	
+	
+	// Load trigger configuration
+	 config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
+	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
+	 config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
+	 config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
+	 config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 40.0);
+	 config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 5.0);
 	
 	iniparser_freedict(configFile);
 	delete [] fn;
@@ -104,6 +115,10 @@ void SystemConfig::touchChannelConfig(unsigned channelID)
 
 SystemConfig::SystemConfig()
 {
+	hasTDCCalibration = false;
+	hasQDCCalibration = false;
+	hasXYZ = false;
+	
 	channelConfig = new ChannelConfig *[1024];
 	for(unsigned n = 0; n < 1024; n++) {
 		channelConfig[n] = NULL;
@@ -122,7 +137,7 @@ SystemConfig::SystemConfig()
 		nullChannelConfig.z = 0.0;
 		nullChannelConfig.xi = 0;
 		nullChannelConfig.yi = 0;
-		nullChannelConfig.triggerRegion = 0;
+		nullChannelConfig.triggerRegion = -1;
 		
 		nullChannelConfig.t0 = 0.0;
 	}

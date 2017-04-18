@@ -21,10 +21,14 @@ protected:
 private:
 	SystemConfig *systemConfig;
 	
-	u_int32_t nHits[GammaPhoton::maxHits];
-	u_int32_t nHitsOverflow;
+	uint32_t nHitsReceived;
+	uint32_t nHitsReceivedValid;
+	uint32_t nPhotonsFound;
+	uint32_t nPhotonsHits[GammaPhoton::maxHits];
+	uint32_t nPhotonsHitsOverflow;
 	uint32_t nPhotonsLowEnergy;
 	uint32_t nPhotonsHighEnergy;
+	uint32_t nPhotonsPassed;
 };
 
 }

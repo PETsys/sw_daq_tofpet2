@@ -23,7 +23,7 @@ void CoincidenceGrouper::report()
 
 EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPhoton> *inBuffer)
 {
-	double cWindow = 100/5.0;
+	double cWindow = systemConfig->sw_trigger_coincidence_time_window;
 	
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<Coincidence> * outBuffer = new EventBuffer<Coincidence>(N, inBuffer);
@@ -31,7 +31,6 @@ EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPho
 	u_int32_t lPrompts = 0;
 	for(unsigned i = 0; i < N; i++) {
 		GammaPhoton &photon1 = inBuffer->get(i);
-		
 		for(unsigned j = i+1; j < N; j++) {
 			GammaPhoton &photon2 = inBuffer->get(j);			
 			if ((photon2.time - photon1.time) > (overlap + cWindow)) break;
