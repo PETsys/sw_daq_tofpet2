@@ -19,9 +19,9 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<Hit> * outBuffer = new EventBuffer<Hit>(N, inBuffer);
 	
-	bool requireTDC = systemConfig->useTDCCalibration();
-	bool requireQDC = systemConfig->useQDCCalibration();
-	bool requireXYZ = systemConfig->useXYZ();
+	bool useTDC = systemConfig->useTDCCalibration();
+	bool useQDC = systemConfig->useQDCCalibration();
+	bool useXYZ = systemConfig->useXYZ();
 	
 	uint32_t lReceived = 0;
 	uint32_t lReceivedInvalid = 0;
@@ -41,21 +41,28 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		SystemConfig::TacConfig &ct = cc.tac_T[in.tacID];
 		SystemConfig::TacConfig &ce = cc.tac_E[in.tacID];
 		SystemConfig::QacConfig &cq = cc.qac_Q[in.tacID];
-			
-		float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
 		
-		out.time = in.time - q_T - ct.t0;
-		if(ct.a1 == 0 && requireTDC) eventFlags |= 0x2;
+		out.time = in.time;
+		if(useTDC) {
+			float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
+			out.time = in.time - q_T - ct.t0;
+			if(ct.a1 == 0) eventFlags |= 0x2;
+		}
 		
 		if(!qdcMode) {
-			float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
-			out.timeEnd = in.timeEnd - q_E - ce.t0;
+			out.timeEnd = in.timeEnd;
+			if(useQDC) {
+				float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
+				out.timeEnd = in.timeEnd - q_E - ce.t0;
+				if(ce.a1 == 0) eventFlags |= 0x2;
+			}
 			out.energy = out.timeEnd - out.time;
-			if(ce.a1 == 0 && requireTDC) eventFlags |= 0x2;
 		}
 		else {
 			out.timeEnd = in.timeEnd;
-				if(requireQDC) {
+			out.energy = in.efine;
+			
+			if(useQDC) {
 				float ti = (out.timeEnd - out.time);
 				float q0 = cq.p0 +
 					cq.p1 * ti + 
@@ -64,20 +71,22 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					cq.p4 * ti * ti * ti * ti;
 					
 				out.energy = in.efine - q0;
-				if(cq.p1 == 0 && requireQDC) eventFlags |= 0x4;
-			}
-			else {
-				out.energy = in.efine;
+				if(cq.p1 == 0) eventFlags |= 0x4;
 			}
 		}
 		
-		out.region = cc.triggerRegion;
-		out.x = cc.x;
-		out.y = cc.y;
-		out.z = cc.z;
-		out.xi = cc.xi;
-		out.yi = cc.yi;
-		if(cc.triggerRegion == -1 && requireXYZ) eventFlags != 0x8;
+		out.region = -1;
+		out.x = out.y = out.z = 0.0;
+		out.xi = out.yi = 0;
+		if(useXYZ) {
+			out.region = cc.triggerRegion;
+			out.x = cc.x;
+			out.y = cc.y;
+			out.z = cc.z;
+			out.xi = cc.xi;
+			out.yi = cc.yi;
+			if(cc.triggerRegion == -1) eventFlags != 0x8;
+		}
 		
 		lReceived += 1;
 		if((eventFlags & 0x1) != 0) lReceivedInvalid += 1;
