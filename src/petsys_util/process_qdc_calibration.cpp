@@ -199,7 +199,6 @@ public:
 			e.gid = gid;
 			e.ti = hit.timeEnd - hit.time;
 			e.qfine = hit.raw->efine; // E Fine has the ADC output
-			fprintf(stderr, "DEBUG: %lf %4d\n", e.ti, e.qfine);
 			fwrite((void*)&e, sizeof(e), 1, f);
 		}
 	};
