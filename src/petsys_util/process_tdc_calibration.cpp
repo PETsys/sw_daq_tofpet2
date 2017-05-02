@@ -133,7 +133,14 @@ int main(int argc, char *argv[])
 	
 	
 	CalibrationEntry *calibrationTable = (CalibrationEntry *)mmap(NULL, sizeof(CalibrationEntry)*MAX_N_TAC, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-	for(int gid = 0; gid < MAX_N_TAC; gid++) calibrationTable[gid].valid = false;
+	for(int gid = 0; gid < MAX_N_TAC; gid++) {
+		calibrationTable[gid].valid = false;
+		calibrationTable[gid].t0 = 0.0;
+		calibrationTable[gid].tEdge = 0.0;
+		calibrationTable[gid].a0 = 0.0;
+		calibrationTable[gid].a1 = 0.0;
+		calibrationTable[gid].a2 = 0.0;
+	}
 
 	if(doSorting) {
 		sortData(inputFilePrefix, outputFilePrefix);
@@ -554,7 +561,7 @@ void calibrateAsic(
 			pf2->SetParameter(0, tEdge);       pf2->SetParLimits(0, tEdge-0.06, tEdge+0.06); 
 			pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
 			pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
-			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -300, 10); // Very small values of p2 cause rouding errors
+			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.001); // Very small values of a2 cause rouding errors
 			
 				
 			pFine->Fit("periodicF2", "Q", "", xMin, xMax);
@@ -656,7 +663,6 @@ void calibrateAsic(
 				TProfile *pControlT = pControlT_list[event.gid-gidStart];
 				TH1S *hControlE = hControlE_list[event.gid-gidStart];
 				
-				
 				pControlT->Fill(event.phase, tError);
 				// Don't fill if out of histogram's range
 				if(fabs(tError) < ControlHistogramRange ) {
@@ -674,9 +680,17 @@ void calibrateAsic(
 			TProfile *pControlT = pControlT_list[gid-gidStart];
 			TH1S *hControlE = hControlE_list[gid-gidStart];
 			
-			float offset = pControlT->GetMean(2);
-			int nEntries = hControlE->GetEntries();
-			if (nEntries > 1000) {
+			// Initial offset estimate is zero
+			float offset = 0;
+			
+			// Stage 1: Extract offset from pControlT if it has at least 100 entries
+			if(pControlT->GetEntries() > 100) {
+				offset = pControlT->GetMean(2);
+			}
+			
+			// Stage 2: Extract offset from hControlE with gaussian fit, if it has more than 100 entries
+			// and the function fits.
+			if (hControlE->GetEntries() > 1000) {
 				TF1 *f = NULL;
 				hControlE->Fit("gaus", "Q");
 				f = hControlE->GetFunction("gaus");
