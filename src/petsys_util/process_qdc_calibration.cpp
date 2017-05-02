@@ -22,6 +22,7 @@
 
 #include <boost/random.hpp>
 #include <boost/nondet_random.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include <TF1.h>
 #include <TH1S.h>
@@ -56,7 +57,7 @@ struct CalibrationEntry {
 };
 
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix);
+void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity);
 void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix);
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
 void deleteTemporaryFiles(const char *outputFilePrefix);
@@ -72,12 +73,14 @@ int main(int argc, char *argv[])
 	char *outputFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
+	int verbosity;
  
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
                 { "config", required_argument, 0, 0 },
                 { "no-sorting", no_argument, 0, 0 },
-                { "keep-temporary", no_argument, 0, 0 }
+                { "keep-temporary", no_argument, 0, 0 },
+		{ "verbosity", required_argument, 0, 0 }
         };
 
 	while(true) {
@@ -99,6 +102,7 @@ int main(int argc, char *argv[])
 			case 1:		configFileName = optarg; break;
 			case 2:		doSorting = false; break;
 			case 3:		keepTemporary = true; break;
+			case 4:		verbosity = boost::lexical_cast<int>(optarg); break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -117,7 +121,7 @@ int main(int argc, char *argv[])
 	for(int gid = 0; gid < MAX_N_QAC; gid++) calibrationTable[gid].valid = false;
 
 	if(doSorting) {
-		sortData(config, inputFilePrefix, outputFilePrefix);
+		sortData(config, inputFilePrefix, outputFilePrefix, verbosity);
 	}
  	calibrateAllAsics(calibrationTable, outputFilePrefix);
 
@@ -195,6 +199,7 @@ public:
 			e.gid = gid;
 			e.ti = hit.timeEnd - hit.time;
 			e.qfine = hit.raw->efine; // E Fine has the ADC output
+			fprintf(stderr, "DEBUG: %lf %4d\n", e.ti, e.qfine);
 			fwrite((void*)&e, sizeof(e), 1, f);
 		}
 	};
@@ -229,14 +234,14 @@ public:
 	};
 };
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix)
+void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity)
 {
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	assert(reader->isQDC());
 	EventWriter *eventWriter = new EventWriter(outputFilePrefix);
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
-		reader->processStep(stepIndex, false,
+		reader->processStep(stepIndex, (verbosity > 0),
 				new ProcessHit(config, true,
 				new WriteHelper(eventWriter,
 				new NullSink<Hit>()
