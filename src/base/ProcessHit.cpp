@@ -55,15 +55,20 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		}
 		else {
 			out.timeEnd = in.timeEnd;
-			float ti = (out.timeEnd - out.time);
-			float q0 = cq.p0 +
-				cq.p1 * ti + 
-				cq.p2 * ti * ti + 
-				cq.p3 * ti * ti * ti + 
-				cq.p4 * ti * ti * ti * ti;
-				
-			out.energy = in.efine - q0;
-			if(cq.p1 == 0 && requireQDC) eventFlags |= 0x4;
+				if(requireQDC) {
+				float ti = (out.timeEnd - out.time);
+				float q0 = cq.p0 +
+					cq.p1 * ti + 
+					cq.p2 * ti * ti + 
+					cq.p3 * ti * ti * ti + 
+					cq.p4 * ti * ti * ti * ti;
+					
+				out.energy = in.efine - q0;
+				if(cq.p1 == 0 && requireQDC) eventFlags |= 0x4;
+			}
+			else {
+				out.energy = in.efine;
+			}
 		}
 		
 		out.region = cc.triggerRegion;
@@ -75,10 +80,10 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		if(cc.triggerRegion == -1 && requireXYZ) eventFlags != 0x8;
 		
 		lReceived += 1;
-		if((eventFlags) & 0x1 != 0) lReceivedInvalid += 1;
-		if((eventFlags) & 0x2 != 0) lTDCCalibrationMissing += 1;
-		if((eventFlags) & 0x4 != 0) lQDCCalibrationMissing += 1;
-		if((eventFlags) & 0x8 != 0) lXYZMissing += 1;
+		if((eventFlags & 0x1) != 0) lReceivedInvalid += 1;
+		if((eventFlags & 0x2) != 0) lTDCCalibrationMissing += 1;
+		if((eventFlags & 0x4) != 0) lQDCCalibrationMissing += 1;
+		if((eventFlags & 0x8) != 0) lXYZMissing += 1;
 		
 		if(eventFlags == 0) {
 			out.valid = true;
