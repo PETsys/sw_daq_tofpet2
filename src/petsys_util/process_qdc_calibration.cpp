@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 	char *outputFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
-	int verbosity;
+	int verbosity = 0;
  
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
