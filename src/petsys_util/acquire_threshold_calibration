@@ -11,6 +11,8 @@ from sys import stdout
 parser = argparse.ArgumentParser(description='Acquire data for threshold calibration')
 parser.add_argument("--config", type=str, required=True, help="Configuration file")
 parser.add_argument("-o", type=str, dest="outFilePrefix", required=True, help="Data file prefix")
+parser.add_argument("--nreads-noise", dest="noise_reads", type=int, required=False, default=4)
+parser.add_argument("--nreads-dark", dest="dark_reads", type=int, required=False, default=4)
 args = parser.parse_args()
 
 systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_AD5535_CALIBRATION | config.LOAD_SIPM_BIAS)
@@ -21,7 +23,6 @@ asicsConfig = daqd.getAsicsConfig()
 
 COUNTER_SETTING = 0x4
 COUNT_MAX = 1.0 * (2**22)
-N_READS = 4
 T = COUNT_MAX * (1 / daqd.getSystemFrequency())
 
 
@@ -123,7 +124,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue(thresholdName, thresholdValue)
 
 		daqd.setAsicsConfig(asicsConfig)
-		for n in range(N_READS):
+		for n in range(args.noise_reads):
 			sleep(9 * T)
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out fraction of discriminator active time
@@ -164,7 +165,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue(thresholdName, thresholdValue)
 
 		daqd.setAsicsConfig(asicsConfig)
-		for n in range(N_READS):
+		for n in range(args.dark_reads):
 			sleep(9 * T)
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out event frequency
