@@ -90,8 +90,8 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
 	 config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
 	 config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
-	 config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 40.0);
-	 config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 5.0);
+	 config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 20.0);
+	 config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 2.0);
 	
 	iniparser_freedict(configFile);
 	delete [] fn;
