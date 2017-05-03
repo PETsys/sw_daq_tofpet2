@@ -89,6 +89,8 @@ def main(argv):
 		activeChannels.add((portID, slaveID, chipID, channelID))
 	inputFile.close()
 
+	activeChannels = [ x for x in activeChannels ] # Convert to list
+	activeChannels.sort() # and sort the list
 
 	noiseProfiles = {}
 	for portID, slaveID, chipID, channelID in activeChannels:
