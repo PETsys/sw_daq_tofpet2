@@ -85,7 +85,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			out.z = cc.z;
 			out.xi = cc.xi;
 			out.yi = cc.yi;
-			if(cc.triggerRegion == -1) eventFlags != 0x8;
+			if(cc.triggerRegion == -1) eventFlags |= 0x8;
 		}
 		
 		lReceived += 1;
