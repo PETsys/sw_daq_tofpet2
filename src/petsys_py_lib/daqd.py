@@ -124,16 +124,9 @@ class Connection:
 
 		interval = interval - (length + 1)
 
-		value = 0x1 # Enable TP
-		if invert: value |= 0b1 << 1
-		value |= (length & 0x3FF) << 2
-		value |= (interval & 0x7FF) << 12
-		#value |= (DELAY_TP_TO_SYNC & 0x3FF) << 23	# WARNING need to look into this..
-		value |= (finePhase & 0xFFFFFF) << 33
-		
 		value = 0x1 << 63
 		value |= (length & 0x3FF)
-		value |= (interval & 0x7FF) << 10
+		value |= (interval & 0x1FFFFF) << 10
 		value |= (finePhase & 0xFFFFFF) << 31
 		if invert: value |= 1 << 61
 
