@@ -91,6 +91,10 @@ class AsicGlobalConfig(bitarray):
 		self.setValue("fe_ib2", 0)
 		self.setValue("disc_sf_bias", 0)
 		
+		# WARNING These seem to be a reasonable compromise on having widest range for these discriminators
+		# but was obtained with a small sampe
+		self.setValue("disc_lsb_T2", 48)
+		self.setValue("disc_lsb_E", 40)
 
 		return None
 
@@ -209,26 +213,9 @@ class AsicChannelConfig(bitarray):
 		# Specify default value
 		self[0:125] = bitarray('10100100100000100000000001101100000000001111010011101111111000111101000000111000001110111101010100101010111110000000000000000')
 
-		# WARNING: Avoid changing values here, use the .ini file instead
-		#self.setValue("fe_delay", 0b10110) # Maximum delay, ~14 ns
+		# Disable shaping by default
+		self.setValue("postamp_sh_e", 0b00)
 
-		#self.setValue("tac_max_age", 31)
-		#self.setValue("tac_min_age", 20)
-		#self.setValue("qdc_mode", 0)
-		#self.setValue("intg_en", 0)
-		#self.setValue("intg_signal_en", 0)
-		#self.setValue("sync_chain_length", 0b10)
-		#self.setValue("qtx2_en", 1)
-		#self.setValue("hysteresis_en_n", 0b1)
-
-
-		#self.setValue("baseline_T", 55)
-		#self.setValue("baseline_E", 6)
-		#self.setValue("vth_T1", 0)
-		#self.setValue("vth_T2", 0)
-		#self.setValue("vth_E", 0)
-
-		#self.setValue("fe_tp_en", 0b00)
 		return None
 
 	def __deepcopy__(self, memo):
