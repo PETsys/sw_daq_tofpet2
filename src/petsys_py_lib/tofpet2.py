@@ -93,8 +93,8 @@ class AsicGlobalConfig(bitarray):
 		
 		# WARNING These seem to be a reasonable compromise on having widest range for these discriminators
 		# but was obtained with a small sampe
-		self.setValue("disc_lsb_T2", 48)
-		self.setValue("disc_lsb_E", 40)
+		self.setValue("disc_lsb_t2", 48)
+		self.setValue("disc_lsb_e", 40)
 
 		return None
 
