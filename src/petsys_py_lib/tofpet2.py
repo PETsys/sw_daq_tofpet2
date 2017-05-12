@@ -86,43 +86,11 @@ class AsicGlobalConfig(bitarray):
 		# main global dac adjustment due to mismatch
 		self.setValue("main_global_dac", 31 - 20) # default: 31 - 17
 		
-		# WARNING: Avoid changing values here, use the .ini file instead
-		#self.setValue("disc_lsb_t1", 61)
-
+		# WARNING: Pushing these values to maximum seems to lead to better SPTR
+		# but also push power consumption. Needs more study
+		self.setValue("fe_ib2", 0)
+		self.setValue("disc_sf_bias", 0)
 		
-		#self.setValue("tdc_comp_vcas", 15-15)
-		#self.setValue("tdc_comp_bias", 31-31)
-		
-		#self.setValue("tdc_global_dac", 0)
-		#self.setValue("tdc_comp_bias", 0)
-		#self.setValue("tdc_comp_vcas", 0)
-		#self.setValue("tdc_i_lsb", 0)
-		#self.setValue("tdc_i_ref", 0)
-		#self.setValue("tdc_tac_vcas_p", 0)
-		#self.setValue("tdc_tac_vcas_n", 0)
-				
-		
-		#self.setValue("counter_en", 1)
-		#self.setValue("counter_period", 6)
-		#self.setValue("r_clk_en", 7)
-
-		#self.setValue("tac_refresh_en", 1)
-		#self.setValue("tac_refresh_period", 9)
-
-
-
-		#self.setValue("adebug_out_mode", 0b11)
-
-		#self.setValue("main_global_dac", 13)
-		
-		#self.setValue("disc_lsb_T1", 61)
-		#self.setValue("disc_lsb_T2", 50)
-		#self.setValue("disc_lsb_E", 45)
-		#self.setValue("fe_postamp_T", 24)
-
-		#self.setValue("Imirror_bias_top", 23)
-		#self.setValue("V_integ_ref_IG", 56)
-		#self.setValue("attenuator_ls", 28)
 
 		return None
 
