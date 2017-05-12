@@ -222,6 +222,10 @@ class AsicChannelConfig(bitarray):
 		self.setValue("trigger_mode_2_e", 0b010)# not E
 		self.setValue("trigger_mode_2_q", 0b01)	# T2
 		self.setValue("trigger_mode_2_b", 0b101)# T1 or T2 or E
+		
+		# Default integration windows: fixed 300 ns
+		self.setValue("min_intg_time", 15)
+		self.setValue("max_intg_time", 15)
 
 		return None
 
