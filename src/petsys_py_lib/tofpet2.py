@@ -215,6 +215,13 @@ class AsicChannelConfig(bitarray):
 
 		# Disable shaping by default
 		self.setValue("postamp_sh_e", 0b00)
+		
+		# Default triggering
+		self.setValue("fe_delay", 0b01011)	# Maximum T1 delay
+		self.setValue("trigger_mode_2_t", 0b01)	# T1'delayed and T2
+		self.setValue("trigger_mode_2_e", 0b010)# not E
+		self.setValue("trigger_mode_2_q", 0b01)	# T2
+		self.setValue("trigger_mode_2_b", 0b101)# T1 or T2 or E
 
 		return None
 
