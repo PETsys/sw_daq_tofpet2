@@ -38,6 +38,7 @@ configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibratio
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
 configure_file("src/petsys_util/make_simple_sipm_bias_table" "make_simple_sipm_bias_table" COPYONLY)
 configure_file("src/petsys_util/make_simple_disc_table" "make_simple_disc_table" COPYONLY)
+configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})

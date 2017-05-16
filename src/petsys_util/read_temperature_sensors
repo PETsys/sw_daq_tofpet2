@@ -1,0 +1,15 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from petsys import daqd
+from time import sleep
+
+daqd = daqd.Connection()
+for portID, slaveID in daqd.getActiveFEBDs():
+	try:
+		nSensors = daqd.getNumberOfTMP104(portID, slaveID)
+		s = "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, nSensors)
+		t = daqd.getTMP104Readings(portID, slaveID, nSensors)
+		s += (", ").join([str(x) + "ºC" for x in t])
+		print s
+	except Exception as e:
+		print "FEB/D at port %d slave %d had an error: %s" % (portID, slaveID, e)

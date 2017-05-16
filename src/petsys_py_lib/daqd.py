@@ -807,10 +807,6 @@ class Connection:
 	## Initializes the temperature sensors in the FEB/As
 	# Return the number of active sensors found in FEB/As
 	def getNumberOfTMP104(self, portID, slaveID):
-		asicType = self.readFEBDConfig(portID, slaveID, 0, 0)
-		if asicType not in [0x00010001]:
-			return 0
-
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
