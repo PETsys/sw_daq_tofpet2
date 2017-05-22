@@ -148,6 +148,8 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		int N = dataFrame->getNEvents();
 		if(N == 0) continue;
 
+		assert((N+2) < MaxRawDataFrameSize);
+
 		r = readFromDataFile((char*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
 		currentPosition += r;
@@ -197,6 +199,8 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		fprintf(stderr, "RawReader report\n");
 		sink->report();
 	}
+
+	delete dataFrame;
 	delete sink;
 	
 }
