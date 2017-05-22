@@ -115,7 +115,7 @@ int main(int argc, char *argv[])
 				// ...and we write the first frameID of the lost batch to the datafile...
 				uint64_t lostFrameBuffer[2];
 				lostFrameBuffer[0] = (2ULL << 36) | (lastFrameID + 1);
-				lostFrameBuffer[1] = 1ULL << 15;
+				lostFrameBuffer[1] = 1ULL << 16;
 				fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
 
 				// .. and we set the lastFrameType
