@@ -96,6 +96,11 @@ class AsicGlobalConfig(bitarray):
 		self.setValue("disc_lsb_t2", 48)
 		self.setValue("disc_lsb_e", 40)
 
+		# Default FETP settings
+		self.setValue("v_cal_tp_top", 1)
+		self.setValue("v_cal_diff_bias_ig", 0)
+		self.setValue("v_cal_ref_ig", 31);
+
 		return None
 
 	def __deepcopy__(self, memo):
@@ -226,7 +231,7 @@ class AsicChannelConfig(bitarray):
 		# Default integration windows: fixed 300 ns
 		self.setValue("min_intg_time", 15)
 		self.setValue("max_intg_time", 15)
-
+		
 		return None
 
 	def __deepcopy__(self, memo):
