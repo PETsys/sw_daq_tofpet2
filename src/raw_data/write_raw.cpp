@@ -27,6 +27,8 @@ struct BlockHeader  {
 	int32_t endOfStep;
 };
 
+enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
+
 int main(int argc, char *argv[])
 {
 	assert(argc == 5);
@@ -82,6 +84,7 @@ int main(int argc, char *argv[])
 	long long stepFirstFrameID = -1;
 	
 	long stepStartOffset = ftell(dataFile);
+	FrameType lastFrameType = FRAME_TYPE_UNKNOWN;
 	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1) {
 
 		step1 = blockHeader.step1;
@@ -104,24 +107,35 @@ int main(int argc, char *argv[])
 			}
 			else if ((lastFrameID >= 0) && (frameID != (lastFrameID + 1))) {
 				// We have skipped one or more frame ID, so 
-				// we account them as lost
+				// we account them as lost...
 				long long skippedFrames = (frameID - lastFrameID) - 1;
 				stepAllFrames += skippedFrames;
 				stepLostFrames0 += skippedFrames;
+
+				// ...and we write the first frameID of the lost batch to the datafile...
+				uint64_t lostFrameBuffer[2];
+				lostFrameBuffer[0] = (2ULL << 36) | (lastFrameID + 1);
+				lostFrameBuffer[1] = 1ULL << 15;
+				fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
+
+				// .. and we set the lastFrameType
+				lastFrameType = FRAME_TYPE_ALL_LOST;
 			}
 
 			lastFrameID = frameID;
 			minFrameID = minFrameID < frameID ? minFrameID : frameID;
 			maxFrameID = maxFrameID > frameID ? maxFrameID : frameID;
-			
-			// Simply dump the raw data frame
-			int frameSize = shm->getFrameSize(index);
-			PETSYS::RawDataFrame *dataFrame = shm->getRawDataFrame(index);
-			fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
 
+			// Get the pointer to the raw data frame
+			PETSYS::RawDataFrame *dataFrame = shm->getRawDataFrame(index);
+			// Increase the circular buffer pointer
+			rdPointer = (rdPointer+1) % (2*bs);
+			
+			int frameSize = shm->getFrameSize(index);
 			int nEvents = shm->getNEvents(index);
 			bool frameLost = shm->getFrameLost(index);
 
+			// Accounting
 			stepEvents += nEvents;
 			stepMaxFrame = stepMaxFrame > nEvents ? stepMaxFrame : nEvents;
 			if(frameLost) {
@@ -131,8 +145,30 @@ int main(int argc, char *argv[])
 					stepLostFramesN += 1;
 			}			
 			stepAllFrames += 1;
+
+			// Determine this frame type
+			FrameType frameType = FRAME_TYPE_UNKNOWN;
+			if(frameLost) {
+				frameType = (nEvents == 0) ? FRAME_TYPE_ZERO_DATA : FRAME_TYPE_SOME_DATA;
+			}
+			else {
+				frameType = (nEvents == 0) ? FRAME_TYPE_ALL_LOST : FRAME_TYPE_SOME_LOST;
+			}
+
+			// Do not write sequences of normal empty frames, unless we're closing a step
+			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
+				continue;
+			}
+
+			// Do not write sequences of all lost frames, unless we're closing a step
+			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
+				continue;
+			}
+			lastFrameType = frameType;
 			
-			rdPointer = (rdPointer+1) % (2*bs);
+			// Write out the data frame contents
+			fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
+
 		}		
 		
 		if(blockHeader.endOfStep != 0) {
@@ -160,6 +196,7 @@ int main(int argc, char *argv[])
 			stepLostFrames0 = 0;
 			lastFrameID = -1;
 			stepFirstFrameID = -1;
+			lastFrameType = FRAME_TYPE_UNKNOWN;
 		}
 
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
