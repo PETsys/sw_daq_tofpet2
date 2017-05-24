@@ -13,6 +13,7 @@ namespace PETSYS {
 		double timeEnd;
 		unsigned int channelID;
 
+		unsigned long frameID;
 		unsigned short tcoarse;
 		unsigned short ecoarse;
 		unsigned short tfine;

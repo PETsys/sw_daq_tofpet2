@@ -203,6 +203,7 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 			
 			e.channelID = dataFrame->getChannelID(i);
 			e.tacID = dataFrame->getTacID(i);
+			e.frameID = frameID;
 			e.tcoarse = dataFrame->getTCoarse(i);
 			e.tfine = dataFrame->getTFine(i);
 			e.ecoarse = dataFrame->getECoarse(i);

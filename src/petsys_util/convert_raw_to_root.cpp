@@ -17,7 +17,7 @@ private:
 public:
 	DataFileWriter(char *fName) {
 		hFile = new TFile(fName, "RECREATE");
-		hData = new TNtuple("data", "Event List", "step1:step2:channelID:tacID:tcoarse:tfine:ecoarse:efine");
+		hData = new TNtuple("data", "Event List", "step1:step2:channelID:tacID:tcoarse:tfine:ecoarse:efine:frameID");
 	};
 	
 	~DataFileWriter() {
@@ -29,7 +29,7 @@ public:
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
 			RawHit &e = buffer->get(i);
-			hData->Fill(step1, step2, e.channelID, e.tacID, e.tcoarse, e.tfine, e.ecoarse, e.efine);
+			hData->Fill(step1, step2, e.channelID, e.tacID, e.tcoarse, e.tfine, e.ecoarse, e.efine, e.frameID);
 		}
 		
 	};
