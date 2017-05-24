@@ -132,6 +132,13 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
 	
+	long long lastFrameID = -1;
+	bool lastFrameWasLost0 = false;
+	long long nFrameLost0 = 0;
+	long long nFrameLostN = 0;
+	long long nEventsNoLost = 0;
+	long long nEventsSomeLost = 0;
+	
 	// Set file handle to start of step
 	lseek(dataFile, step.stepBegin, SEEK_SET);
 	off_t currentPosition = step.stepBegin;
@@ -167,6 +174,29 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		}
 		
 		long long frameID = dataFrame->getFrameID();
+		bool frameLost = dataFrame->getFrameLost();
+		
+		// Account skipped frames with all events lost
+		if (frameID != lastFrameID + 1) {
+			// We have skipped frames...
+			if(lastFrameWasLost0) {
+				// ... and they indicate lost frames
+				nFrameLost0 += (frameID - lastFrameID) - 1;
+			}
+		}
+		
+		// Account frames with lost data
+		if(frameLost && N == 0) nFrameLost0 += 1;
+		if(frameLost && N != 0) nFrameLostN += 1;
+		
+		if(frameLost) 
+			nEventsSomeLost += N;
+		else
+			nEventsNoLost += N;
+		
+		// Keep track of frame with all event lost
+		lastFrameWasLost0 = (frameLost && N == 0);
+		lastFrameID = frameID;
 		
 		for(int i = 0; i < N; i++) {
 			RawHit &e = outBuffer->getWriteSlot();
@@ -197,6 +227,15 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	sink->finish();
 	if(verbose) {
 		fprintf(stderr, "RawReader report\n");
+		fprintf(stderr, "step values: %f %f\n", step.step1, step.step2);
+		fprintf(stderr, " data frames\n");
+		fprintf(stderr, " %10lld total\n", step.stepLastFrame - step.stepFirstFrame);
+		fprintf(stderr, " %10lld (%4.1f%%) were missing all data\n", nFrameLost0, 100.0 * nFrameLost0 / (step.stepLastFrame - step.stepFirstFrame));
+		fprintf(stderr, " %10lld (%4.1f%%) were missing some data\n", nFrameLostN, 100.0 * nFrameLost0 / (step.stepLastFrame - step.stepFirstFrame));
+		fprintf(stderr, " events frames\n");
+		fprintf(stderr, " %10lld total\n", nEventsNoLost + nEventsSomeLost);
+		long long goodFrames = step.stepLastFrame - step.stepFirstFrame - nFrameLost0 - nFrameLostN;
+		fprintf(stderr, " %10.1f events per frame avergage\n", 1.0 * nEventsNoLost / goodFrames);
 		sink->report();
 	}
 
