@@ -27,12 +27,12 @@ struct RawDataFrame {
 
 	bool getFrameLost() {
 		uint64_t eventWord = data[1];
-		return (eventWord & 0x10000) != 0;
+		return (eventWord & 0x18000) != 0;
 	};
 
 	int getNEvents() {
 		uint64_t eventWord = data[1];
-		return eventWord & 0xFFFF;
+		return eventWord & 0x7FFF;
 	}; 
 	
 	unsigned getEFine(int event) {
