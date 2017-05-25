@@ -413,7 +413,44 @@ void calibrateAsic(
 		}
 	}
 
-	
+
+	double maxCounts = 0;
+	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
+		CalibrationEntry &entry = calibrationTable[gid];
+		if(!entry.valid) continue;
+
+		TH1S *hControlE = hControlE_list[gid-gidStart];
+		double counts = hControlE->GetEntries();
+		maxCounts = (maxCounts > counts) ? maxCounts : counts;
+	}
+
+	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
+	for(unsigned long channelID = 0; channelID < 64; channelID++) {
+		for(unsigned long tacID = 0; tacID < 4; tacID++) {
+			unsigned long gid = gidStart | (channelID << 2) | tacID;
+			CalibrationEntry &entry = calibrationTable[gid];
+			if(!entry.valid) continue;
+
+			TH1S *hControlE = hControlE_list[gid-gidStart];
+			double counts = hControlE->GetEntries();
+			hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
+		}
+	}
+
+	TCanvas *c = new TCanvas();
+	c->Divide(2, 2);
+	c->cd(1);
+	hCounts->GetXaxis()->SetTitle("Channel");
+	hCounts->GetYaxis()->SetRangeUser(0, maxCounts * 1.10);
+	hCounts->Draw("HIST");
+
+	sprintf(fName, "%s.pdf", summaryFilePrefix);
+	c->SaveAs(fName);
+
+	sprintf(fName, "%s.png", summaryFilePrefix);
+	c->SaveAs(fName);
+	delete c;
+
 	rootFile->Write();
 	delete rootFile;
 
