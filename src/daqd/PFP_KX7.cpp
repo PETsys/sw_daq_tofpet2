@@ -18,9 +18,9 @@
 #include <unistd.h>
 #include "boost/date_time/posix_time/posix_time.hpp"
 
-static unsigned long long TARGET_EXT_CLK_FREQUENCY = 160000000;
+static unsigned long long TARGET_EXT_CLK_FREQUENCY = 200000000;
 
-using namespace DAQd;
+using namespace PETSYS;
 
 static const unsigned DMA_TRANS_BYTE_SIZE = 262144;  // max for USER_FIFO_THRESHOLD 262128
 static const unsigned wordBufferSize = DMA_TRANS_BYTE_SIZE / 8;

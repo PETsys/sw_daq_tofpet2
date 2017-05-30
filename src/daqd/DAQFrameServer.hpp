@@ -7,7 +7,7 @@
 #include <boost/unordered_map.hpp> 
 #include "boost/date_time/posix_time/posix_time.hpp"
 
-namespace DAQd {
+namespace PETSYS {
 	
 class AbstractDAQCard {
 public:
