@@ -9,6 +9,7 @@
 #include "DAQFrameServer.hpp"
 
 extern "C" {
+//#define LINUX
 #include <pfp_api_monitor.h>
 }
 #ifdef LINUX
@@ -18,7 +19,7 @@ extern "C" {
 	#include <conio.h>
 #endif
 
-namespace DAQd {
+namespace PETSYS {
 class PFP_KX7 : public AbstractDAQCard {
 public:
 	  PFP_KX7();

@@ -1,5 +1,4 @@
 #include "DAQFrameServer.hpp"
-#include "SHM.hpp"
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -15,7 +14,7 @@
 #include <assert.h>
 #include <errno.h>
 
-using namespace DAQd;
+using namespace PETSYS;
 
 AbstractDAQCard::AbstractDAQCard()
 {
@@ -114,7 +113,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 
 static bool isFull(unsigned writePointer, unsigned readPointer)
 {
-	return (writePointer != readPointer) && ((writePointer % MaxDataFrameQueueSize) == (readPointer % MaxDataFrameQueueSize));
+	return (writePointer != readPointer) && ((writePointer % MaxRawDataFrameQueueSize) == (readPointer % MaxRawDataFrameQueueSize));
 }
 
 void *DAQFrameServer::doWork()
@@ -124,7 +123,7 @@ void *DAQFrameServer::doWork()
 	printf("DP object is %p\n", DP);
 	DAQFrameServer *m = this;
 	
-	DataFrame *devNull = new DataFrame;
+	RawDataFrame *devNull = new RawDataFrame;
 	
 	
 	long nFramesFound = 0;
@@ -175,8 +174,8 @@ void *DAQFrameServer::doWork()
 		unsigned long long nEvents = headerWords[1] & 0xFFFF;
 		bool frameLost = (headerWords[1] & 0x10000) != 0;
 
-		if(frameSize > MaxDataFrameSize) {
-			fprintf(stderr, "Excessive frame size: %u\n word (max is %u)", frameSize, MaxDataFrameSize);
+		if(frameSize > MaxRawDataFrameQueueSize) {
+			fprintf(stderr, "Excessive frame size: %u\n word (max is %u)", frameSize, MaxRawDataFrameQueueSize);
 			lastFrameWasBad = true; skippedLoops = 1000007; continue;
 		}
 
@@ -185,13 +184,13 @@ void *DAQFrameServer::doWork()
 		bool dropLostFrame = (nEvents == 0) && frameLost &&  (frameCount % 128 != 0);
 		frameCount += 1;
 
-		DataFrame *dataFrame = devNull;
+		RawDataFrame *dataFrame = devNull;
 		if (m->acquisitionMode != 0 && !dropLostFrame) {
 			// Get a free frame from the queue, if possible
 			// If not, just carry on with the devNull frame
 			pthread_mutex_lock(&m->lock);
 			if(!isFull(m->dataFrameWritePointer, m->dataFrameReadPointer)) {
-				dataFrame = &dataFrameSharedMemory[m->dataFrameWritePointer % MaxDataFrameQueueSize];
+				dataFrame = &dataFrameSharedMemory[m->dataFrameWritePointer % MaxRawDataFrameQueueSize];
 			}
 			pthread_mutex_unlock(&m->lock);
 		}
@@ -222,7 +221,7 @@ void *DAQFrameServer::doWork()
 
 		if(dataFrame != devNull) {
 			pthread_mutex_lock(&m->lock);
-			m->dataFrameWritePointer = (m->dataFrameWritePointer + 1)  % (2*MaxDataFrameQueueSize);
+			m->dataFrameWritePointer = (m->dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
 			pthread_mutex_unlock(&m->lock);
 		}
 	}	

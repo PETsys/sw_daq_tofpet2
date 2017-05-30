@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 project(sw_daq_tofpet2)
 find_package(PythonLibs)
 find_package(Boost REQUIRED python regex)
+include(CheckIncludeFiles)
 
 include_directories(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 link_libraries("rt" "pthread")
@@ -9,16 +10,33 @@ link_libraries("rt" "pthread")
 include_directories("src/raw_data")
 include_directories("src/base")
 
+# Need to define LINUX for WINDRIVER
+# even if just to check it's presence.
+if(UNIX AND NOT APPLE)
+set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
+set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
+endif()
+
+check_include_files( "pfp_api.h" HAVE_PFP_KX7 )
+
+set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/raw_data/shm_raw.cpp" )
+if(HAVE_PFP_KX7)
+	set( DAQD_SOURCES ${DAQD_SOURCES} "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp" )
+	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__PFP_KX7__" )
+endif()
+add_executable("daqd" ${DAQD_SOURCES})
+if(HAVE_PFP_KX7)
+	target_link_libraries (daqd -lpfp_kx7_api -lwdapi1160 )
+endif()
+add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp")
+
 execute_process(COMMAND root-config --incdir OUTPUT_VARIABLE ROOT_INCDIR)
 string(STRIP ${ROOT_INCDIR} ROOT_INCDIR)
 execute_process(COMMAND root-config --libs OUTPUT_VARIABLE ROOT_LIBS)
 string(STRIP ${ROOT_LIBS} ROOT_LIBS)
 execute_process(COMMAND root-config --cflags OUTPUT_VARIABLE ROOT_CXX_FLAGS)
 string(STRIP ${ROOT_CXX_FLAGS} ROOT_CXX_FLAGS)
-
-
-add_executable("daqd" "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/raw_data/shm_raw.cpp")
-add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp")
 
 link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser")
 add_library(shm_raw_py MODULE "src/raw_data/shm_raw.cpp" "src/raw_data/shm_raw_py.cpp")
