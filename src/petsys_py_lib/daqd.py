@@ -117,6 +117,22 @@ class Connection:
         # @param finePhase Defines the delay of the test pulse regarding the start of the frame, in units of 1/392 of the clock.
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
+		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
+		problematicSettings = set()
+		asicsConfig = self.getAsicsConfig()
+		for ac in asicsConfig.values():
+			gc = ac.globalConfig
+			if gc.getValue("tac_refresh_en") == 0: continue
+			tacRefreshPeriod_1 = gc.getValue("tac_refresh_period")
+		 	for cc in ac.channelConfig:
+				tacRefreshPeriod_2 = cc.getValue("tac_max_age")
+				tacRefreshPeriod = 64 * (tacRefreshPeriod_1 + 1) * (tacRefreshPeriod_2 + 1)
+				if interval % tacRefreshPeriod == 0:
+					problematicSettings.add((tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2))
+
+		for tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2 in problematicSettings:
+			print "WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d)." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2)
+
 		finePhase = int(round(finePhase * 6*56))	# WARNING: This should be firmware dependent..
 	
 		if interval < (length + 1):

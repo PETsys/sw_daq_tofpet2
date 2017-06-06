@@ -231,6 +231,9 @@ class AsicChannelConfig(bitarray):
 		# Default integration windows: fixed 300 ns
 		self.setValue("min_intg_time", 15)
 		self.setValue("max_intg_time", 15)
+
+		# Avoid powers of 2
+		self.setValue("tac_max_age", 30)
 		
 		return None
 
