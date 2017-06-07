@@ -4,6 +4,7 @@
 from petsys import daqd, config
 from copy import deepcopy
 import argparse
+import math
 
 parser = argparse.ArgumentParser(description='Acquire data for TDC calibration')
 parser.add_argument("--config", type=str, required=True, help="Configuration file")
@@ -56,11 +57,12 @@ simultaneousChannels = 7
 
 simultaneousChannels = 1 # For debug
 
-for firstChannel in range(0, 64/simultaneousChannels):
+channelStep = int(math.ceil(64.0/simultaneousChannels))
+for firstChannel in range(0, channelStep): 
 	# Enable triggering for this channel
 	cfg = deepcopy(asicsConfig)
 	for ac in cfg.values():
-		for channel in range(firstChannel, 64, 64/simultaneousChannels):
+		for channel in range(firstChannel, 64, channelStep):
 			print channel
 			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
 	daqd.setAsicsConfig(cfg)
