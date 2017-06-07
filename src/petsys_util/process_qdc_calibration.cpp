@@ -58,7 +58,7 @@ struct CalibrationEntry {
 
 
 void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity);
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix);
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax);
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
 void deleteTemporaryFiles(const char *outputFilePrefix);
 
@@ -116,6 +116,18 @@ int main(int argc, char *argv[])
 	
 
 	char fName[1024];
+	sprintf(fName, "%s.bins", inputFilePrefix);
+	FILE *binsFile = fopen(fName, "r");
+	if(binsFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+		exit(1);
+	}
+	int nBins;
+	float xMin, xMax;
+	if(fscanf(binsFile, "%d\t%f\t%f\n", &nBins, &xMin, &xMax) != 3) {
+		fprintf(stderr, "Error parsing %s\n", fName);
+		exit(1);
+	}
 	
 	CalibrationEntry *calibrationTable = (CalibrationEntry *)mmap(NULL, sizeof(CalibrationEntry)*MAX_N_QAC, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 	for(int gid = 0; gid < MAX_N_QAC; gid++) calibrationTable[gid].valid = false;
@@ -123,7 +135,7 @@ int main(int argc, char *argv[])
 	if(doSorting) {
 		sortData(config, inputFilePrefix, outputFilePrefix, verbosity);
 	}
- 	calibrateAllAsics(calibrationTable, outputFilePrefix);
+ 	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
@@ -255,7 +267,8 @@ void calibrateAsic(
 	unsigned long gAsicID,
 	int dataFile,
 	CalibrationEntry *calibrationTable,
-	char *summaryFilePrefix
+	char *summaryFilePrefix,
+	int nBins, float xMin, float xMax
 )
 {
 	// Allocate a dummy canvas, otherwise one will be created for fits
@@ -285,7 +298,7 @@ void calibrateAsic(
 		unsigned portID = (gid >> 19) % 32;
 		char hName[128];
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_hFine2", portID, slaveID, chipID, channelID, tacID);
-		hFine2_list[gid-gidStart] = new TH2S(hName, hName, 128, 0, 128*4, 1024, 0, 1024);
+		hFine2_list[gid-gidStart] = new TH2S(hName, hName, nBins, xMin, xMax, 1024, 0, 1024);
 	}
 	
 	struct timespec t0;
@@ -330,8 +343,14 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
-		float yMin = pFine->GetMinimum();
-		float yMax = pFine->GetMaximum();
+		float yMin = FLT_MAX;
+		float yMax = FLT_MIN;
+		for(int i = 1; i < nBins+1; i++) {
+			if(pFine->GetBinEntries(i) < 10) continue;
+			float v = pFine->GetBinContent(i);
+			if(v < yMin) yMin = v;
+			if(v > yMax) yMax = v;
+		}
 		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMin));
 		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(0.90 * yMax));
 		
@@ -457,7 +476,7 @@ void calibrateAsic(
 	delete tmp0;	
 }
 
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix)
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax)
 {
 	char fName[1024];
 	sprintf(fName, "%s_list.tmp", outputFilePrefix);
@@ -492,7 +511,7 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
 			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
-			calibrateAsic(gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix);
+			calibrateAsic(gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix, nBins, xMin, xMax);
 			exit(0);
 		} else {
 			nWorkers += 1;
