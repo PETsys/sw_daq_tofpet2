@@ -61,16 +61,17 @@ void displayHelp(char * program)
 {
 	fprintf(stderr, "Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", program);
 	fprintf(stderr, "Arguments:\n");
-	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 	fprintf(stderr,  "  --config \t\t Configuration file containing path to tdc calibration table \n");
 	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
 	fprintf(stderr,  "  -o \t\t\t Output file name - containins raw event data in ROOT format.\n");
+	fprintf(stderr, "Optional flags:\n");
+	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 
 
 void displayUsage(char *argv0)
 {
-	printf("Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n");
+	printf("Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", argv0);
 }
 
 int main(int argc, char *argv[])

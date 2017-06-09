@@ -269,10 +269,25 @@ public:
 	};
 };
 
+void displayHelp(char * program)
+{
+	fprintf(stderr, "Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", program);
+	fprintf(stderr, "Arguments:\n");
+	fprintf(stderr,  "  --config \t\t Configuration file containing path to tdc calibration table \n");
+	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
+	fprintf(stderr,  "  -o \t\t\t Output file name - by default in text data format\n");
+	fprintf(stderr, "Optional flags:\n");
+	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
+	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
+	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
+	
+};
+
 void displayUsage(char *argv0)
 {
-	printf("Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n");
+	printf("Usage: %s --config <config_file> -i <input_file_prefix> -o <output_file_prefix> [optional arguments]\n", argv0);
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -303,7 +318,7 @@ int main(int argc, char *argv[])
 		}
 		else if(c == 0) {
 			switch(optionIndex) {
-			case 0:		displayUsage(argv[0]); exit(0); break;
+			case 0:		displayHelp(argv[0]); exit(0); break;
                         case 1:		configFileName = optarg; break;
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
