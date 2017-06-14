@@ -16,7 +16,7 @@ daqd = daqd.Connection()
 daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
-f = open(args.fileNamePrefx + '.bins', 'w')
+f = open(args.fileNamePrefix + '.bins', 'w')
 f.write("%d\t%f\t%f\n" % (3*4*128, 0, 4*128))
 f.close()
 
