@@ -1,12 +1,14 @@
 #!/usr/bin/sh
+CONFIG_FILE=config.ini
+DATA_DIR=data
 
-mkdir -p data/cal
+./acquire_threshold_calibration --config ${CONFIG_FILE} -o ${DATA_DIR}/disc_calibration
+./process_threshold_calibration --config ${CONFIG_FILE} -i  ${DATA_DIR}/disc_calibration -o ${DATA_DIR}/disc_calibration.tsv 
 
-./acquire_tdc_calibration --config config.ini -o data/cal/tdca
-./process_tdc_calibration -i data/cal/tdca -o data/cal/tdca
+./make_simple_disc_table --config ${CONFIG_FILE} --vth_t1 20 --vth_t2 20 --vth_e 15 > ${DATA_DIR}/disc_settings.tsv
 
-./acquire_qdc_calibration --config config.ini -o data/cal/qdca
-./process_qdc_calibration --config config.ini -i data/cal/qdca -o data/cal/qdca 
+./acquire_tdc_calibration --config ${CONFIG_FILE} -o ${DATA_DIR}/tdc_calibration
+./acquire_qdc_calibration --config ${CONFIG_FILE} -o ${DATA_DIR}/qdc_calibration
 
-./acquire_threshold_calibration --config config.ini -o data/cal/disc 
-./process_threshold_calibration --config config.ini -i data/cal/disc -o data/cal/disc.tsv 
+./process_tdc_calibration --config ${CONFIG_FILE} -i ${DATA_DIR}/tdc_calibration -o ${DATA_DIR}/tdc_calibration 
+./process_qdc_calibration --config ${CONFIG_FILE} -i ${DATA_DIR}/qdc_calibration -o ${DATA_DIR}/qdc_calibration 
