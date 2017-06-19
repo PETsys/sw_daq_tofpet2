@@ -164,26 +164,27 @@ def main(argv):
 	gnoise_T2 = {}
 	gnoise_E = {}
 
-
-	NPoints = [[[0 for portID in range(12)]for slaveID in range(4)] for chipID in range(16)]
-	
+	nPoints = {}
 	for portID, slaveID, chipID in activeChips:
-                gbaseline_T[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gbaseline_E[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gzero_T1[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gzero_T2[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gzero_E[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gnoise_T1[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gnoise_T2[(portID, slaveID, chipID)]=ROOT.TGraph(64)
-                gnoise_E[(portID, slaveID, chipID)]=ROOT.TGraph(64)
+                gbaseline_T[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gbaseline_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gzero_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gzero_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gzero_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gnoise_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gnoise_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+                gnoise_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		nPoints[(portID, slaveID, chipID)] = 0
 	
 
 
 	for portID, slaveID, chipID, channelID in activeChannels:
 
 		baseline_T, baseline_E = baselineSettings[(portID, slaveID, chipID, channelID)] 
-		gbaseline_T[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, baseline_T)
-		gbaseline_E[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, baseline_E)
+		print "**** A", (portID, slaveID, chipID), gbaseline_T[(portID, slaveID, chipID)]
+		print "**** B", nPoints[(portID, slaveID, chipID)]
+		gbaseline_T[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, baseline_T)
+		gbaseline_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, baseline_E)
 		
 		zero_T1, noise_T1 = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t1")])
 		thresholds_T1 = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t1")], rate) for rate in rates ]
@@ -200,18 +201,16 @@ def main(argv):
 		thresholds_E = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_e")], rate) for rate in rates ]
 		thresholds_E = [ zero_E - threshold for threshold in thresholds_E ]
 		
-		gzero_T1[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, zero_T1)
-		gzero_T2[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, zero_T2)
-		gzero_E[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, zero_E)
+		gzero_T1[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, zero_T1)
+		gzero_T2[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, zero_T2)
+		gzero_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, zero_E)
 
-		gnoise_T1[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, noise_T1)
-		gnoise_T2[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, noise_T2)
-		gnoise_E[(portID, slaveID, chipID)].SetPoint(NPoints[portID][slaveID][chipID],channelID, noise_E)
-
-
-		NPoints[portID][slaveID][chipID]+=1
+		gnoise_T1[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, noise_T1)
+		gnoise_T2[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, noise_T2)
+		gnoise_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, noise_E)
 
 
+		nPoints[(portID, slaveID, chipID)] += 1
 
 		fields = [ str(v) for v in [portID, slaveID, chipID, channelID] ]
 		fields += [ str(v) for v in [baseline_T, zero_T1, noise_T1] ]
@@ -224,7 +223,17 @@ def main(argv):
 		
 		outFile.write(("\t").join(fields) + "\n")
 
-        
+
+	for portID, slaveID, chipID in activeChips:
+		gbaseline_T[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gbaseline_E[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gzero_T1[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gzero_T2[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gzero_E[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gnoise_T1[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gnoise_T2[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+		gnoise_E[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
+	
         for portID, slaveID, chipID in activeChips:
                 c1 = ROOT.TCanvas()
                 multi1= ROOT.TMultiGraph()
