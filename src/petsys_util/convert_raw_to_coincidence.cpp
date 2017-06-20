@@ -8,6 +8,8 @@
 #include <SimpleGrouper.hpp>
 #include <CoincidenceGrouper.hpp>
 
+#include <boost/lexical_cast.hpp>
+
 #include <TFile.h>
 #include <TNtuple.h>
 
@@ -21,6 +23,8 @@ private:
 	double frequency;
 	FILE_TYPE fileType;
 	bool qdcMode;
+	int hitLimitToWrite;
+
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
@@ -63,10 +67,11 @@ private:
 	};
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode, int hitLimitToWrite) {
 		this->frequency = frequency;
 		this->fileType = fileType;
 		this->qdcMode = qdcMode;
+		this->hitLimitToWrite = hitLimitToWrite;
 
 		stepBegin = 0;
 		
@@ -176,8 +181,8 @@ public:
 			GammaPhoton &p1 = *e.photons[0];
 			GammaPhoton &p2 = *e.photons[1];
 			
-			int limit1 = writeMultipleHits ? p1.nHits : 1;
-			int limit2 = writeMultipleHits ? p2.nHits : 1;
+			int limit1 = (hitLimitToWrite < p1.nHits) ? hitLimitToWrite : p1.nHits;
+			int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
 			for(int m = 0; m < limit1; m++) for(int n = 0; n < limit2; n++) {
 				if(m != 0 && n != 0) continue;
 				Hit &h1 = *p1.hits[m];
@@ -279,6 +284,7 @@ void displayHelp(char * program)
 	fprintf(stderr, "Optional flags:\n");
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
+	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -295,12 +301,14 @@ int main(int argc, char *argv[])
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
+	int hitLimitToWrite = 1;
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
                 { "config", required_argument, 0, 0 },
 		{ "writeBinary", no_argument, 0, 0 },
-		{ "writeRoot", no_argument, 0, 0 }
+		{ "writeRoot", no_argument, 0, 0 },
+		{ "writeMultipleHits", required_argument, 0, 0}
         };
 
         while(true) {
@@ -322,6 +330,7 @@ int main(int argc, char *argv[])
                         case 1:		configFileName = optarg; break;
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
+			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg);
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -354,7 +363,7 @@ int main(int argc, char *argv[])
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, reader->isQDC());
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, reader->isQDC(), hitLimitToWrite);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
