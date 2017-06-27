@@ -77,6 +77,7 @@ set ( COMMON_SOURCES
 add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" ${COMMON_SOURCES} )
 add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_root" "src/petsys_util/convert_raw_to_root.cpp" ${COMMON_SOURCES} )
+add_executable("convert_raw_to_group" "src/petsys_util/convert_raw_to_group.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" ${COMMON_SOURCES} )
 add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" ${COMMON_SOURCES} )
 add_executable("print_raw" "src/petsys_util/print_raw.cpp" ${COMMON_SOURCES} )
