@@ -278,7 +278,7 @@ int main(int argc, char *argv[])
                         case 1:		configFileName = optarg; break;
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
-			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg);
+			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
