@@ -497,11 +497,13 @@ void calibrateAsic(
 		float m;
 		float tB;
 		float p2;
+		float tE; 
 		float a0, a1, a2;
 		float currChi2 = INFINITY;
 		float prevChi2 = INFINITY;
+		float minChi2 = INFINITY;
 		int nTry = 0;
-		float maxChi2 = 2E6;
+		float maxChi2 = 2E4;
 		do {
 			pf->SetParameter(0, tEdge);		pf->SetParLimits(0, lowerT0, upperT0);
 			pf->SetParameter(1, adcMin);		pf->SetParLimits(1, adcMin - estimatedM * tEdgeTolerance, adcMin);
@@ -531,12 +533,12 @@ void calibrateAsic(
 		
 
 
-		if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
-			fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (1). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
-				portID, slaveID, chipID, channelID, tacID, bStr);
-			delete pf;
-			continue;
-		}
+		//if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
+		//	fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (1). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
+		//	portID, slaveID, chipID, channelID, tacID, bStr);
+	//	delete pf;
+	//		continue;
+	//	}
 		
 	
 		
@@ -550,34 +552,79 @@ void calibrateAsic(
 	
 		a0 = b;
 		a1 = m;
-		a2 = -3;
+		a2 = -1;
 
 		//std::cout << b << " " << m << " " <<std::endl;
  
-		tEdge = tEdge - 0.05;
+		tE = tEdge - 0.05;
 
 		do{
 				
-			pf2->SetParameter(0, tEdge);       pf2->SetParLimits(0, tEdge-0.06, tEdge+0.06); 
+			pf2->SetParameter(0, tE);       pf2->SetParLimits(0, tE-0.06, tE+0.06); 
 			pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
 			pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
-			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.001); // Very small values of a2 cause rouding errors
+			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.01); // Very small values of a2 cause rouding errors
 			
 				
 			pFine->Fit("periodicF2", "Q", "", xMin, xMax);
 			
 			TF1 *pf_ = pFine->GetFunction("periodicF2");
+
 			if(pf_ != NULL) {
+		   
 				prevChi2 = currChi2;
 				currChi2 = pf_->GetChisquare() / pf_->GetNDF();					
-				tEdge += 0.01;
+				
+				tE += 0.001;
 			}
+			if(currChi2<minChi2)
+				minChi2=currChi2;
+
 			
 			nTry += 1;
+		
+				
+		} while( (nTry < 100) && (currChi2 > 2));
+
+		if(currChi2 > 2) {
+				
+			currChi2 = INFINITY;
+			prevChi2 = INFINITY;
+			nTry = 0;
+	
+			a0 = b;
+			a1 = m;
+			a2 = -1;
+
+			//std::cout << b << " " << m << " " <<std::endl;
+ 
+			tE = tEdge - 0.05;
+
+			do{
+				
+				pf2->SetParameter(0, tE);       pf2->SetParLimits(0, tE-0.06, tE+0.06); 
+				pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
+				pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
+				pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.01); // Very small values of a2 cause rouding errors
 			
 				
-		} while( (nTry < 10) && (currChi2 > 4));
+				pFine->Fit("periodicF2", "Q", "", xMin, xMax);
+			
+				TF1 *pf_ = pFine->GetFunction("periodicF2");
+				if(pf_ != NULL) {
+					prevChi2 = currChi2;
+					currChi2 = pf_->GetChisquare() / pf_->GetNDF();					
+					tE+= 0.001;
+				}
+			
+				nTry += 1;
+			
+				
+			} while( (nTry < 100) && (currChi2 > minChi2+0.0001));
+		}
 		
+		
+
 		if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
 			fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (2). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
 				portID, slaveID, chipID, channelID, tacID, bStr);
@@ -585,7 +632,7 @@ void calibrateAsic(
 			delete pf2;
 			continue;
 		}
-		
+	
 		CalibrationEntry &entry = calibrationTable[gid];
 		entry.t0 = 0;
 		entry.tEdge = tEdge = pf2->GetParameter(0);
