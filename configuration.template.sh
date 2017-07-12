@@ -1,5 +1,5 @@
 #!/usr/bin/sh
-CONFIG_FILE=config.ini
+CONFIG_FILE=config_example.ini
 DATA_DIR=data
 
 ./acquire_threshold_calibration --config ${CONFIG_FILE} -o ${DATA_DIR}/disc_calibration
