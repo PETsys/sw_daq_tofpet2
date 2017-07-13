@@ -64,13 +64,28 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			
 			if(useQDC) {
 				float ti = (out.timeEnd - out.time);
-				float q0 = cq.p0 +
-					cq.p1 * ti + 
-					cq.p2 * ti * ti + 
-					cq.p3 * ti * ti * ti + 
-					cq.p4 * ti * ti * ti * ti;
+				
+				// Convert ADC into equivalent DC integration time t_eq
+				// Solve P(t_eq) - in.efine = 0 using Newton–Raphson method
+				float p0 = cq.p0 - in.efine;
+				float t_eq = ti;
+				for(int iter = 0; iter < 5; iter++) {
+				
+					float f = (cq.p0 - in.efine) +
+						cq.p1 * t_eq + 
+						cq.p2 * t_eq * t_eq + 
+						cq.p3 * t_eq * t_eq * t_eq + 
+						cq.p4 * t_eq * t_eq * t_eq * t_eq;
 					
-				out.energy = in.efine - q0;
+					float f_ = cq.p1 +
+						cq.p2 * t_eq * 2 + 
+						cq.p3 * t_eq * t_eq * 3+ 
+						cq.p4 * t_eq * t_eq * t_eq * 4;
+						
+					t_eq = t_eq - f / f_;
+				}
+				
+				out.energy = t_eq - ti;
 				if(cq.p1 == 0) eventFlags |= 0x4;
 			}
 		}

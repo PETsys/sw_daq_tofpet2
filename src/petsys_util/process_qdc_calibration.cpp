@@ -352,9 +352,9 @@ void calibrateAsic(
 // 			if(v > yMax) yMax = v;
 // 		}
 // 		
-		// Try to calibrate only between 100 and 250 ADC
+		// Try to calibrate only between 100 and 400 ADC
 		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(100));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(250));
+		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(400));
 		
 		pFine->Fit("pol3", "QW", "", xMin, xMax);
 		TF1 *polN = pFine->GetFunction("pol3");
