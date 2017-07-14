@@ -28,7 +28,7 @@ struct Event {
         float e2;
         int id2;
 
-};
+} __attribute__((__packed__));
 
 
 int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
