@@ -648,7 +648,7 @@ void calibrateAsic(
 	TProfile **pControlT_list = new TProfile *[nTAC];
 	TH1S **hControlE_list = new TH1S *[nTAC];
 	
-	int ControlHistogramNBins = 512;
+	int ControlHistogramNBins = 128;
 	float ControlHistogramRange = 0.5;
 	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
 		pControlT_list[gid-gidStart] = NULL;
