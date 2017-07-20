@@ -49,8 +49,8 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 	
 
 	int minToT = 0;
-	TH1F * hE1 = new TH1F("hE1", "E 1", 128, 0, 400);
-	TH1F * hE2 = new TH1F("hE2", "E 2", 128, 0, 400);
+	TH1F * hE1 = new TH1F("hE1", "E 1", 128, 0, 400/5);
+	TH1F * hE2 = new TH1F("hE2", "E 2", 128, 0, 400/5);
 	
 	struct CEvent {
 		Long64_t	time1;
