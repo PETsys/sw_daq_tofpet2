@@ -64,7 +64,7 @@ private:
 		long long time2;
 		float e2;
 		int id2;
-	};
+	} __attribute__((__packed__));
 	
 public:
 	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode, int hitLimitToWrite) {

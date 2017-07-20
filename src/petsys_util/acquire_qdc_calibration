@@ -17,7 +17,7 @@ daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
 f = open(args.fileNamePrefix + '.bins', 'w')
-f.write("%d\t%f\t%f\n" % (3*4*128, 0, 4*128))
+f.write("%d\t%f\t%f\n" % (3*200, 0, 200))
 f.close()
 
 daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=True)
@@ -35,7 +35,11 @@ for ac in asicsConfig.values():
 		cc.setValue("trigger_mode_2_e", 0b000)
 		cc.setValue("trigger_mode_2_q", 0b00)
 		cc.setValue("trigger_mode_2_b", 0b000)
-
+		
+		# Allow full range integration time
+		cc.setValue("min_intg_time", 0)
+		cc.setValue("max_intg_time", 127)
+	
 		# Disable channel from triggering.
 		# Will selectively enable channels below
 		cc.setValue("trigger_mode_1", 0b11)
@@ -48,17 +52,16 @@ simultaneousChannels = 1 # For debug
 
 
 channelStep = int(math.ceil(64.0/simultaneousChannels))
-for phase in [0, 0.33, 0.66]:
+for phase in [0.0/3, 1.0/3, 2.0/3]:
 	daqd.setTestPulsePLL(100, 1024, phase, False)
 	for firstChannel in range(0, channelStep):
 		# Enable triggering for this channel
 		cfg = deepcopy(asicsConfig)
-		for integrationTime in range(0, 128):
+		for integrationTime in range(0, 200):
+			daqd.setTestPulsePLL(integrationTime, 1024, phase, False)
 			for ac in cfg.values():
 				for channel in range(firstChannel, 64, channelStep):
 					ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
-					ac.channelConfig[channel].setValue("min_intg_time", integrationTime)
-					ac.channelConfig[channel].setValue("max_intg_time", integrationTime)
 				
 			daqd.setAsicsConfig(cfg)
 			daqd.acquire(0.02, integrationTime, 0)

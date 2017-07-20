@@ -343,31 +343,33 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
-		float yMin = FLT_MAX;
-		float yMax = FLT_MIN;
-		for(int i = 1; i < nBins+1; i++) {
-			if(pFine->GetBinEntries(i) < 10) continue;
-			float v = pFine->GetBinContent(i);
-			if(v < yMin) yMin = v;
-			if(v > yMax) yMax = v;
-		}
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMin));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(0.90 * yMax));
+// 		float yMin = FLT_MAX;
+// 		float yMax = FLT_MIN;
+// 		for(int i = 1; i < nBins+1; i++) {
+// 			if(pFine->GetBinEntries(i) < 10) continue;
+// 			float v = pFine->GetBinContent(i);
+// 			if(v < yMin) yMin = v;
+// 			if(v > yMax) yMax = v;
+// 		}
+// 		
+		// Try to calibrate only between 100 and 400 ADC
+		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(100));
+		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(400));
 		
-		pFine->Fit("pol4", "Q", "", xMin, xMax);
-		TF1 *pol2 = pFine->GetFunction("pol4");
-		if(pol2 == NULL) {
+		pFine->Fit("pol3", "QW", "", xMin, xMax);
+		TF1 *polN = pFine->GetFunction("pol3");
+		if(polN == NULL) {
 			fprintf(stderr, "WARNING: Could not make a fit. Skipping TAC (%02u %02d %02d %02d %u)\n",
 				portID, slaveID, chipID, channelID, tacID);
 			continue;
 		}
 		
 		CalibrationEntry &entry = calibrationTable[gid];
-		entry.p0 = pol2->GetParameter(0);
-		entry.p1 = pol2->GetParameter(1);
-		entry.p2 = pol2->GetParameter(2);
-		entry.p3 = pol2->GetParameter(3);
-		entry.p4 = pol2->GetParameter(4);
+		entry.p0 = polN->GetParameter(0);
+		entry.p1 = polN->GetParameter(1);
+		entry.p2 = polN->GetParameter(2);
+		entry.p3 = polN->GetParameter(3);
+		entry.p4 = 0; //polN->GetParameter(4);
 		entry.xMin = xMin;
 		entry.xMax = xMax;
 		entry.valid = true;
