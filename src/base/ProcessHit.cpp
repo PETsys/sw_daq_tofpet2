@@ -67,6 +67,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				
 				// Convert ADC into equivalent DC integration time t_eq
 				// Solve P(t_eq) - in.efine = 0 using Newton–Raphson method
+				// 5 iterations are more than enought
 				float p0 = cq.p0 - in.efine;
 				float t_eq = ti;
 				for(int iter = 0; iter < 5; iter++) {
@@ -85,7 +86,10 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					t_eq = t_eq - f / f_;
 				}
 				
-				out.energy = t_eq - ti;
+				// Express energy as t_eq - actual integration time
+				// WARNING Adding 1.0 clock to shift spectrum into positive range
+				// .. needs better understanding.
+				out.energy = t_eq - ti + 1.0;
 				if(cq.p1 == 0) eventFlags |= 0x4;
 			}
 		}
