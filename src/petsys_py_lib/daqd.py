@@ -261,9 +261,19 @@ class Connection:
 		# (Locally) Sync ASICs
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b100);
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b000);
-		# Generate local sync (if available) and start acquisition
+
+		# Generate master sync (if available) and start acquisition
+		# First, cycle master sync enable on/off to calibrate sync reception
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b000);
+		sleep(0.010)
+		# Then enable master sync reception...
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
+		# ... and generate the sync
 		self.__setAcquisitionMode(1)
 		sleep (0.120)	# Sync is at least 100 ms
+		# Finally, disable it
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
 
 		# Check that the ASIC configuration has not changed after sync
 		for portID, slaveID in self.getActiveFEBDs():
