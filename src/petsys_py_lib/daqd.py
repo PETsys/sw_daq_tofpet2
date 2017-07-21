@@ -286,6 +286,9 @@ class Connection:
 					raise tofpet2.ConfigurationErrorBadRead(portID, slaveID, i, asicConfigByFEBD[(portID, slaveID)], readback)
 			
 		
+		# Enable ASIC receiver logic for all ASIC
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 23, 0xFFFFFFFFFFFFFFFF)
+
 		# Set ASIC receiver logic to calibration mode
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 4, 0b0)
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 4, 0b1)
@@ -370,9 +373,15 @@ class Connection:
 		print "INFO: Active ASICs found:"
 		for portID, slaveID in self.getActiveFEBDs():
 			lst = []
+
+			enable_vector = 0x0
 			for lPortID, lSlaveID, lChipID in self.getActiveAsics():
 				if lPortID != portID or lSlaveID != slaveID: continue
 				lst.append(lChipID)
+				enable_vector |= (1 << lChipID)
+
+			# Enable ASIC receiver logic only for ASICs detected by software
+			self.writeFEBDConfig(portID, slaveID, 0, 23, enable_vector)
 
 			if lst != []:
 				lst = (", ").join([str(lChipID) for lChipID in lst])
