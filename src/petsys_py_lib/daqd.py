@@ -845,9 +845,18 @@ class Connection:
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
+
+		print "DIN : ", [ hex(c) for c in din ]
+		print "DOUT: ", [ hex(c) for c in dout ]
+
 		if len(dout) < 5:
+			# Reply is too short, chain is probably open
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 		
+		if (dout[2:3] != din[1:2]) or ((dout[4] & 0xF0) != din[3]):
+			# Reply does not match what is expected; a sensor is probably broken
+			raise TMP104CommunicationError(portID, slaveID, din, dout)
+
 		nSensors = dout[4] & 0x0F
 	
 		din = [ 3, 0x55, 0b11110010, 0b01100011]
@@ -931,7 +940,7 @@ class TMP104CommunicationError(Exception):
 		self.__din = din
 		self.__dout = dout
 	def __str__(self):
-		return "TMP104 read error at port %d, slave %d. IN = %s, OUT = %s" % (self.__portID, self.__slaveID, [ hex(x) for x in self.__din ], [ hex(x) for x in self.__dout ])
+		return "TMP104 read error at port %d, slave %d. Debug information:\nIN  = %s\nOUT = %s" % (self.__portID, self.__slaveID, [ hex(x) for x in self.__din ], [ hex(x) for x in self.__dout ])
 
 ## Exception: main FPGA clock is not locked
 class ClockNotOK(Exception):
