@@ -656,7 +656,9 @@ void calibrateAsic(
 		
 		CalibrationEntry &entry = calibrationTable[gid];
 		if(!entry.valid) continue;
-		
+
+		ControlHistogramNBins = entry.a1;
+
 		unsigned branchID = gid % 2;
 		char bStr = (branchID == 0) ? 'T' : 'E';
 		unsigned tacID = (gid >> 1) % 4;
