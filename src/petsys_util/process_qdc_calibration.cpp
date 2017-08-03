@@ -491,7 +491,8 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 	sysinfo(&si);
 	int maxWorkersByMem = si.totalram * si.mem_unit / (4LL * 1024*1024*1024);
 	int maxWorkers = (nCPU < maxWorkersByMem) ? nCPU : maxWorkersByMem;
-	
+	maxWorkers = maxWorkers > 1 ? maxWorkers : 1;
+
 	unsigned long gAsicID;
 	char tmpDataFileName[1024];
 	int nWorkers = 0;
