@@ -13,7 +13,7 @@
 using namespace std;
 using namespace PETSYS;
 
-static const unsigned dataFileBufferSize = 1024*1024;
+static const unsigned dataFileBufferSize = 131072; // 128K
 RawReader::RawReader() :
         steps(vector<Step>()),
 	dataFile(-1)

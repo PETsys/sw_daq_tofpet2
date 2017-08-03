@@ -35,6 +35,9 @@
 
 using namespace PETSYS;
 
+// Use 128K file buffers
+#define BUFFER_SIZE	131072
+
 struct CalibrationEvent {
 	unsigned long gid;
 	double ti;
@@ -57,10 +60,10 @@ struct CalibrationEntry {
 };
 
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity);
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax);
+void sortData(SystemConfig *config, char *inputFilePrefix, char *tmpFilePrefix, int verbosity);
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix);
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
-void deleteTemporaryFiles(const char *outputFilePrefix);
+void deleteTemporaryFiles(const char *tmpFilePrefix);
 
 void displayUsage() {
 }
@@ -71,6 +74,7 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
 	char *inputFilePrefix = NULL;
 	char *outputFilePrefix = NULL;
+	char *tmpFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
 	int verbosity = 0;
@@ -80,7 +84,8 @@ int main(int argc, char *argv[])
                 { "config", required_argument, 0, 0 },
                 { "no-sorting", no_argument, 0, 0 },
                 { "keep-temporary", no_argument, 0, 0 },
-		{ "verbosity", required_argument, 0, 0 }
+		{ "verbosity", required_argument, 0, 0 },
+		{ "tmp", required_argument }
         };
 
 	while(true) {
@@ -103,6 +108,7 @@ int main(int argc, char *argv[])
 			case 2:		doSorting = false; break;
 			case 3:		keepTemporary = true; break;
 			case 4:		verbosity = boost::lexical_cast<int>(optarg); break;
+			case 5:		tmpFilePrefix = optarg; break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -111,6 +117,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	if(tmpFilePrefix == NULL) tmpFilePrefix = outputFilePrefix;
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, SystemConfig::LOAD_TDC_CALIBRATION);
 	
@@ -133,13 +140,13 @@ int main(int argc, char *argv[])
 	for(int gid = 0; gid < MAX_N_QAC; gid++) calibrationTable[gid].valid = false;
 
 	if(doSorting) {
-		sortData(config, inputFilePrefix, outputFilePrefix, verbosity);
+		sortData(config, inputFilePrefix, tmpFilePrefix, verbosity);
 	}
- 	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax);
+	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax, tmpFilePrefix);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
-		deleteTemporaryFiles(outputFilePrefix);
+		deleteTemporaryFiles(tmpFilePrefix);
 	}
 
 	return 0;
@@ -147,16 +154,16 @@ int main(int argc, char *argv[])
 
 class EventWriter {
 private:
-	char *outputFilePrefix;
+	char *tmpFilePrefix;
 	unsigned long maxgAsicID;
 	char **tmpDataFileNames;
 	FILE **tmpDataFiles;
 	FILE *tmpListFile;
 	
 public:
-	EventWriter(char *outputFilePrefix)
+	EventWriter(char *tmpFilePrefix)
 	{
-		this->outputFilePrefix = outputFilePrefix;
+		this->tmpFilePrefix = tmpFilePrefix;
 		maxgAsicID = 0;	
 		tmpDataFileNames = new char *[MAX_N_ASIC];
 		tmpDataFiles = new FILE *[MAX_N_ASIC];
@@ -168,7 +175,7 @@ public:
 		
 		// Create the temporary list file
 		char fName[1024];
-		sprintf(fName, "%s_list.tmp", outputFilePrefix);
+		sprintf(fName, "%s_list.tmp", tmpFilePrefix);
 		tmpListFile = fopen(fName, "w");
 		if(tmpListFile == NULL) {
 			fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
@@ -197,12 +204,14 @@ public:
 				unsigned slaveID = (gChannelID >> 12) % 32;
 				unsigned portID = (gChannelID >> 17) % 32;
 				char *fn = new char[1024];
-				sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", outputFilePrefix, portID, slaveID, chipID);
+				sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", tmpFilePrefix, portID, slaveID, chipID);
 				f = fopen(fn, "w");
 				if(f == NULL) {
-					fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+					fprintf(stderr, "Could not open '%s' for writing: %s\n", fn, strerror(errno));
 					exit(1);
 				}
+				setbuffer(f, new char[BUFFER_SIZE], BUFFER_SIZE);
+				posix_fadvise(fileno(f), 0, 0, POSIX_FADV_SEQUENTIAL);
 				tmpDataFiles[gAsicID] = f;
 				tmpDataFileNames[gAsicID] = fn;
 			}
@@ -245,12 +254,12 @@ public:
 	};
 };
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity)
+void sortData(SystemConfig *config, char *inputFilePrefix, char *tmpFilePrefix, int verbosity)
 {
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	assert(reader->isQDC());
-	EventWriter *eventWriter = new EventWriter(outputFilePrefix);
+	EventWriter *eventWriter = new EventWriter(tmpFilePrefix);
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		reader->processStep(stepIndex, (verbosity > 0),
 				new ProcessHit(config, true,
@@ -304,12 +313,13 @@ void calibrateAsic(
 	struct timespec t0;
 	clock_gettime(CLOCK_REALTIME, &t0);
 
-	unsigned READ_BUFFER_SIZE = 32*1024*1024 / sizeof(CalibrationEvent);
+	unsigned READ_BUFFER_SIZE = BUFFER_SIZE / sizeof(CalibrationEvent);
 	CalibrationEvent *eventBuffer = new CalibrationEvent[READ_BUFFER_SIZE];
 	int r;
 	bool asicPresent = false;
 	lseek(dataFile, 0, SEEK_SET);
 	while((r = read(dataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
+		readahead(dataFile, lseek(dataFile, 0, SEEK_CUR), BUFFER_SIZE);
 		int nEvents = r / sizeof(CalibrationEvent);
 		for(int i = 0; i < nEvents; i++) {
 			CalibrationEvent &event = eventBuffer[i];
@@ -407,6 +417,7 @@ void calibrateAsic(
 	
 	lseek(dataFile, 0, SEEK_SET);
 	while((r = read(dataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
+		readahead(dataFile, lseek(dataFile, 0, SEEK_CUR), BUFFER_SIZE);
 		int nEvents = r / sizeof(CalibrationEvent);
 		for (int i = 0; i < nEvents; i++) {
 			CalibrationEvent &event = eventBuffer[i];
@@ -478,10 +489,10 @@ void calibrateAsic(
 	delete tmp0;	
 }
 
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax)
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix)
 {
 	char fName[1024];
-	sprintf(fName, "%s_list.tmp", outputFilePrefix);
+	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
 	FILE *tmpListFile = fopen(fName, "r");
 	if(tmpListFile == NULL) {
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
@@ -514,7 +525,9 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
 			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
+			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
 			calibrateAsic(gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix, nBins, xMin, xMax);
+			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_DONTNEED);
 			exit(0);
 		} else {
 			nWorkers += 1;
@@ -574,10 +587,10 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	fclose(f);
 }
 
-void deleteTemporaryFiles(const char *outputFilePrefix) 
+void deleteTemporaryFiles(const char *tmpFilePrefix)
 {
         char fName[1024];
-        sprintf(fName, "%s_list.tmp", outputFilePrefix);
+        sprintf(fName, "%s_list.tmp", tmpFilePrefix);
         FILE *tmpListFile = fopen(fName, "r");
         if(tmpListFile == NULL) {
                 fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));

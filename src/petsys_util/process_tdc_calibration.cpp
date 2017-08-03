@@ -31,6 +31,9 @@
 
 using namespace PETSYS;
 
+// Use 128K file buffers
+#define BUFFER_SIZE	131072
+
 struct CalibrationEvent {
 	unsigned long gid;
 	unsigned short coarse;
@@ -52,7 +55,7 @@ struct CalibrationEntry {
 };
 
 
-void sortData(char *inputFilePrefix, char *outputFilePrefix);
+void sortData(char *inputFilePrefix, char *tmpFilePrefix);
 void calibrateAsic(
 	unsigned long gAsicID,
 	int linearityDataFile, int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
@@ -62,13 +65,13 @@ void calibrateAsic(
 );
 
 void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
-		CalibrationEntry *calibrationTable,  float nominalM, char *outputFilePrefix);
+		CalibrationEntry *calibrationTable,  float nominalM, char *outputFilePrefix, char *tmpFilePrefix);
 		
 void adjustCalibrationTable(CalibrationEntry *calibrationTable);
 
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
 
-void deleteTemporaryFiles(const char *outputFilePrefix);
+void deleteTemporaryFiles(const char *tmpFilePrefix);
 
 void displayUsage() {
 }
@@ -79,6 +82,7 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
 	char *inputFilePrefix = NULL;
 	char *outputFilePrefix = NULL;
+	char *tmpFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
  
@@ -86,7 +90,8 @@ int main(int argc, char *argv[])
                 { "help", no_argument, 0, 0 },
                 { "config", required_argument, 0, 0 },
                 { "no-sorting", no_argument, 0, 0 },
-                { "keep-temporary", no_argument, 0, 0 }
+                { "keep-temporary", no_argument, 0, 0 },
+                { "tmp-prefix", required_argument, 0, 0 }
         };
 
 	while(true) {
@@ -108,6 +113,7 @@ int main(int argc, char *argv[])
 			case 1:		configFileName = optarg; break;
 			case 2:		doSorting = false; break;
 			case 3:		keepTemporary = true; break;
+			case 4:		tmpFilePrefix = optarg; break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -116,6 +122,7 @@ int main(int argc, char *argv[])
 		}
 
 	}
+	if(tmpFilePrefix == NULL) tmpFilePrefix = outputFilePrefix;
 
 	char fName[1024];
 	sprintf(fName, "%s.bins", inputFilePrefix);
@@ -143,19 +150,19 @@ int main(int argc, char *argv[])
 	}
 
 	if(doSorting) {
-		sortData(inputFilePrefix, outputFilePrefix);
+		sortData(inputFilePrefix, tmpFilePrefix);
 	}
-	calibrateAllAsics(nBins, xMin, xMax, calibrationTable, nominalM, outputFilePrefix);
+	calibrateAllAsics(nBins, xMin, xMax, calibrationTable, nominalM, outputFilePrefix, tmpFilePrefix);
 	adjustCalibrationTable(calibrationTable);
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
-		deleteTemporaryFiles(outputFilePrefix);
+		deleteTemporaryFiles(tmpFilePrefix);
 	}
 
 	return 0;
 }
 
-void sortData(char *inputFilePrefix, char *outputFilePrefix)
+void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 {
 	printf("Sorting data into temporary files...\n");
 	 
@@ -190,7 +197,7 @@ void sortData(char *inputFilePrefix, char *outputFilePrefix)
 	}
 
 	// Create the temporary list file
-	sprintf(fName, "%s_list.tmp", outputFilePrefix);
+	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
 	FILE *tmpListFile = fopen(fName, "w");
 	if(tmpListFile == NULL) {
 		fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
@@ -222,12 +229,14 @@ void sortData(char *inputFilePrefix, char *outputFilePrefix)
 					unsigned slaveID = (gChannelID >> 12) % 32;
 					unsigned portID = (gChannelID >> 17) % 32;
 					char *fn = new char[1024];
-					sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", outputFilePrefix, portID, slaveID, chipID);
+					sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", tmpFilePrefix, portID, slaveID, chipID);
 					f = fopen(fn, "w");
 					if(f == NULL) {
 						fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 						exit(1);
 					}
+					setbuffer(f, new char[BUFFER_SIZE], BUFFER_SIZE);
+					posix_fadvise(fileno(f), 0, 0, POSIX_FADV_SEQUENTIAL);
 					tmpDataFiles[gAsicID] = f;
 					tmpDataFileNames[gAsicID] = fn;
 				}
@@ -339,12 +348,13 @@ void calibrateAsic(
 	struct timespec t0;
 	clock_gettime(CLOCK_REALTIME, &t0);
 
-	unsigned READ_BUFFER_SIZE = 32*1024*1024 / sizeof(CalibrationEvent);
+	unsigned READ_BUFFER_SIZE = BUFFER_SIZE / sizeof(CalibrationEvent);
 	CalibrationEvent *eventBuffer = new CalibrationEvent[READ_BUFFER_SIZE];
 	int r;
 	bool asicPresent = false;
 	lseek(linearityDataFile, 0, SEEK_SET);
 	while((r = read(linearityDataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
+		readahead(linearityDataFile, lseek(linearityDataFile, 0, SEEK_CUR), BUFFER_SIZE);
 		int nEvents = r / sizeof(CalibrationEvent);
 		for(int i = 0; i < nEvents; i++) {
 			CalibrationEvent &event = eventBuffer[i];
@@ -685,6 +695,7 @@ void calibrateAsic(
 		lseek(linearityDataFile, 0, SEEK_SET);
 		int r;
 		while((r = read(linearityDataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
+			readahead(linearityDataFile, lseek(linearityDataFile, 0, SEEK_CUR), BUFFER_SIZE);
 			int nEvents = r / sizeof(CalibrationEvent);
 			for (int i = 0; i < nEvents; i++) {
 				CalibrationEvent &event = eventBuffer[i];
@@ -861,10 +872,10 @@ void calibrateAsic(
 }
 
 void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
-		       CalibrationEntry *calibrationTable, float nominalM, char *outputFilePrefix)
+		       CalibrationEntry *calibrationTable, float nominalM, char *outputFilePrefix, char *tmpFilePrefix)
 {
 	char fName[1024];
-	sprintf(fName, "%s_list.tmp", outputFilePrefix);
+	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
 	FILE *tmpListFile = fopen(fName, "r");
 	if(tmpListFile == NULL) {
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
@@ -896,8 +907,10 @@ void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float li
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
 			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
+			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
 			calibrateAsic(gAsicID, tmpDataFile, linearityNbins, linearityRangeMinimum, linearityRangeMaximum,
 				      calibrationTable, nominalM, summaryFilePrefix);
+			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_DONTNEED);
 			exit(0);
 		} else {
 			nWorkers += 1;
@@ -984,10 +997,10 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	fclose(f);
 }
 
-void deleteTemporaryFiles(const char *outputFilePrefix) 
+void deleteTemporaryFiles(const char *tmpFilePrefix)
 {
         char fName[1024];
-        sprintf(fName, "%s_list.tmp", outputFilePrefix);
+        sprintf(fName, "%s_list.tmp", tmpFilePrefix);
         FILE *tmpListFile = fopen(fName, "r");
         if(tmpListFile == NULL) {
                 fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
