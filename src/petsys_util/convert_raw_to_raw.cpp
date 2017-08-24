@@ -10,46 +10,137 @@ using namespace PETSYS;
 
 
 
+enum FILE_TYPE { FILE_TEXT, FILE_ROOT };
+
 class DataFileWriter {
 private:
+	FILE_TYPE fileType;
+	FILE *dataFile;
+	FILE *indexFile;
+	off_t stepBegin;
+	
+	TTree *hData;
+	TTree *hIndex;
 	TFile *hFile;
-	TNtuple *hData;
+	// ROOT Tree fields
+	float		brStep1;
+	float		brStep2;
+	long long 	brStepBegin;
+	long long 	brStepEnd;
+
+	long long	brFrameID;
+	unsigned short	brChannelID;
+	unsigned short	brTacID;
+	unsigned short	brTCoarse;
+	unsigned short	brECoarse;
+	unsigned short	brTFine;
+	unsigned short	brEFine;
+	
+
+
 public:
-	DataFileWriter(char *fName) {
-		hFile = new TFile(fName, "RECREATE");
-		hData = new TNtuple("data", "Event List", "step1:step2:channelID:tacID:tcoarse:tfine:ecoarse:efine:frameID");
+	DataFileWriter(char *fName, FILE_TYPE fileType) {
+		this->fileType = fileType;
+		stepBegin = 0;
+		
+		if (fileType == FILE_ROOT){
+			hFile = new TFile(fName, "RECREATE");
+			int bs = 512*1024;
+
+			hData = new TTree("data", "Event List", 2);
+			hData->Branch("step1", &brStep1, bs);
+			hData->Branch("step2", &brStep2, bs);
+			hData->Branch("frameID", &brFrameID, bs);
+			hData->Branch("channelID", &brChannelID, bs);
+			hData->Branch("tacID", &brTacID, bs);
+			hData->Branch("tcoarse", &brTCoarse, bs);
+			hData->Branch("ecoarse", &brECoarse, bs);
+			hData->Branch("tfine", &brTFine, bs);
+			hData->Branch("efine", &brEFine, bs);
+			
+			hIndex = new TTree("index", "Step Index", 2);
+			hIndex->Branch("step1", &brStep1, bs);
+			hIndex->Branch("step2", &brStep2, bs);
+			hIndex->Branch("stepBegin", &brStepBegin, bs);
+			hIndex->Branch("stepEnd", &brStepEnd, bs);
+		}
+		else {
+			dataFile = fopen(fName, "w");
+			assert(dataFile != NULL);
+			indexFile = NULL;
+		}
 	};
 	
 	~DataFileWriter() {
-		hFile->Write();
-		hFile->Close();
+		if (fileType == FILE_ROOT){
+			hFile->Write();
+			hFile->Close();
+		}
+		else {
+			fclose(dataFile);
+		}
 	}
 	
-	void addEvents(float step1, float step2, EventBuffer<RawHit> *buffer) {
+	void closeStep(float step1, float step2) {
+		if (fileType == FILE_ROOT){
+			brStepBegin = stepBegin;
+			brStepEnd = hData->GetEntries();
+			brStep1 = step1;
+			brStep2 = step2;
+			hIndex->Fill();
+			stepBegin = hData->GetEntries();
+			hFile->Write();
+		}
+		else {
+			// Do nothing
+		}
+	};
+	
+	void addEvents(float step1, float step2,EventBuffer<RawHit> *buffer) {
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
-			RawHit &e = buffer->get(i);
-			hData->Fill(step1, step2, e.channelID, e.tacID, e.tcoarse, e.tfine, e.ecoarse, e.efine, e.frameID);
+			RawHit &hit = buffer->get(i);
+			if (fileType == FILE_ROOT){
+				brStep1 = step1;
+				brStep2 = step2;
+				
+				brFrameID = hit.frameID;
+				brChannelID = hit.channelID;
+				brTacID = hit.tacID;
+				brTCoarse = hit.tcoarse;
+				brECoarse = hit.ecoarse;
+				brTFine = hit.tfine;
+				brEFine = hit.efine;
+				hData->Fill();
+			}
+			else {
+				fprintf(dataFile, "%lld\t%hu\t%hu\t%hu\t%hu\t%hu\t%hu\n",
+					hit.frameID,
+					hit.channelID, hit.tacID,
+					hit.tcoarse, hit.ecoarse,
+					hit.tfine, hit.efine
+				);
+			}
 		}
 		
-	};
+	}
 	
 };
 
 class WriteHelper : public OverlappedEventHandler<RawHit, RawHit> {
 private: 
-	DataFileWriter *rootFile;
+	DataFileWriter *dataFileWriter;
 	float step1;
 	float step2;
 public:
-	WriteHelper(DataFileWriter *rootFile, float step1, float step2, EventSink<RawHit> *sink) :
+	WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, EventSink<RawHit> *sink) :
 		OverlappedEventHandler<RawHit, RawHit>(sink, true),
-		rootFile(rootFile), step1(step1), step2(step2)
+		dataFileWriter(dataFileWriter), step1(step1), step2(step2)
 	{
 	};
 	
 	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
-		rootFile->addEvents(step1, step2, buffer);
+		dataFileWriter->addEvents(step1, step2,buffer);
 		return buffer;
 	};
 	
@@ -130,21 +221,22 @@ int main(int argc, char *argv[])
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
-	DataFileWriter *rootFile = new DataFileWriter(outputFileName);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, FILE_ROOT);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
 		reader->getStepValue(stepIndex, step1, step2);
-		printf("Processing step %d of %d: (%f, %f)\n", stepIndex, reader->getNSteps(), step1, step2);
+		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
 		
 		reader->processStep(stepIndex, true,
-				new WriteHelper(rootFile, step1, step2,
+				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<RawHit>()
 				));
 		
+		dataFileWriter->closeStep(step1, step2);
 	}
 
-	delete rootFile;
+	delete dataFileWriter;
 	delete reader;
 
 	return 0;
