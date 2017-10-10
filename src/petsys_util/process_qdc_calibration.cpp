@@ -353,17 +353,8 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
-// 		float yMin = FLT_MAX;
-// 		float yMax = FLT_MIN;
-// 		for(int i = 1; i < nBins+1; i++) {
-// 			if(pFine->GetBinEntries(i) < 10) continue;
-// 			float v = pFine->GetBinContent(i);
-// 			if(v < yMin) yMin = v;
-// 			if(v > yMax) yMax = v;
-// 		}
-// 		
-		// Try to calibrate only between 100 and 400 ADC
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(100));
+		// Try to calibrate only between 80 and 400 ADC
+		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(80));
 		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(400));
 		
 		pFine->Fit("pol3", "QW", "", xMin, xMax);
@@ -457,6 +448,7 @@ void calibrateAsic(
 	}
 
 	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
+	TH1F *hXMin = new TH1F("hXMin", "", 64*4, 0, 64);
 	for(unsigned long channelID = 0; channelID < 64; channelID++) {
 		for(unsigned long tacID = 0; tacID < 4; tacID++) {
 			unsigned long gid = gidStart | (channelID << 2) | tacID;
@@ -466,6 +458,8 @@ void calibrateAsic(
 			TH1S *hControlE = hControlE_list[gid-gidStart];
 			double counts = hControlE->GetEntries();
 			hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
+			
+			hXMin->SetBinContent(1 + 4*channelID + tacID, entry.xMin);
 		}
 	}
 
@@ -475,6 +469,12 @@ void calibrateAsic(
 	hCounts->GetXaxis()->SetTitle("Channel");
 	hCounts->GetYaxis()->SetRangeUser(0, maxCounts * 1.10);
 	hCounts->Draw("HIST");
+
+	c->cd(2);
+	hXMin->GetXaxis()->SetTitle("Channel");
+	hXMin->GetYaxis()->SetTitle("Min integratin time");
+	hXMin->GetYaxis()->SetRangeUser(0, 200);
+	hXMin->Draw("HIST");
 
 	sprintf(fName, "%s.pdf", summaryFilePrefix);
 	c->SaveAs(fName);
