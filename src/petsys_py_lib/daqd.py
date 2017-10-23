@@ -159,6 +159,24 @@ class Connection:
 	def disableCoincidenceTrigger(self):
 		pass
 
+	def disableAuxIO(self):
+		for portID, slaveID in self.getActiveFEBDs():
+			self.writeFEBDConfig(portID, slaveID, 0, 24, 0x0)
+
+	def setAuxIO(self, which, mode):
+		which = which.upper()
+		ioList = [ "LEMO_J3_J4", "LEMO_J5_J6", "LEMO_J7_J8", "LEMO_J9_J10", "LEMO_J12_J11", "LEMO_J14_J13", "LEMO_J15" ]
+		if which not in ioList:
+			raise UnknownAuxIO(which)
+
+		n = ioList.index(which) * 8
+		mode = mode & 0xFF
+		mask = m = (0xFF << n) ^ 0
+		for portID, slaveID in self.getActiveFEBDs():
+			current = self.readFEBDConfig(portID, slaveID, 0, 24)
+			current = (current & m) | (mode << n)
+			self.writeFEBDConfig(portID, slaveID, 0, 24, current)
+
 
 	## Reads a configuration register from a FEB/D
 	# @param portID  DAQ port ID where the FEB/D is connected
@@ -212,6 +230,7 @@ class Connection:
 		self.setTestPulseNone()
 		self.disableEventGate()
 		self.disableCoincidenceTrigger()
+		self.disableAuxIO()
 
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
@@ -957,3 +976,10 @@ class ClockNotOK(Exception):
 		self.__slaveID = slaveID
 	def __str__(self):
 		return "Clock not locked at port %d, slave %d" % (self.__portID, self.__slaveID)
+
+## Exception: trying to set a unknown auxilliary I/O
+class UnknownAuxIO(Exception):
+	def __init__(self, which):
+		self.__which = which
+	def __str__(self):
+		return "Unkown auxilliary I/O: %s" % self.__which
