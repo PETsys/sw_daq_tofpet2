@@ -235,6 +235,9 @@ class AsicChannelConfig(bitarray):
 		# Avoid powers of 2
 		self.setValue("tac_max_age", 30)
 		
+		# This setting gives better time resolution
+		self.setValue("fe_delay", 14)
+
 		return None
 
 	def __deepcopy__(self, memo):
