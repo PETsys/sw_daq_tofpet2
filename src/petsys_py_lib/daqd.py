@@ -659,6 +659,14 @@ class Connection:
 		cmd = [ "./write_raw", self.__shmName, fileNamePrefix, str(int(self.__systemFrequency)), qdcMode and 'Q' or 'T' ]
 		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
+	## Closes the current acquisition file
+	def closeAcquisition(self):
+		self.__helperPipe.terminate()
+		sleep(0.5)
+		self.__helperPipe.kill()
+		self.__helperPipe = None
+
+
         ## Acquires data and decodes it, while writting through the acquisition pipeline 
         # @param step1 Tag to a given variable specific to this acquisition 
         # @param step2 Tag to a given variable specific to this acquisition
