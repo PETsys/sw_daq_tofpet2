@@ -238,6 +238,9 @@ class AsicChannelConfig(bitarray):
 		# This setting gives better time resolution
 		self.setValue("fe_delay", 14)
 
+		# This setting has better linearity
+		self.setValue("att", 1)
+
 		return None
 
 	def __deepcopy__(self, memo):
