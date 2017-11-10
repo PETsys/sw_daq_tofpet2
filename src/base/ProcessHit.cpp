@@ -51,7 +51,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		
 		if(!qdcMode) {
 			out.timeEnd = in.timeEnd;
-			if(useQDC) {
+			if(useTDC) {
 				float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
 				out.timeEnd = in.timeEnd - q_E - ce.t0;
 				if(ce.a1 == 0) eventFlags |= 0x2;
