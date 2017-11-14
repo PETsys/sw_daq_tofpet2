@@ -658,7 +658,7 @@ void calibrateAsic(
 	TProfile **pControlT_list = new TProfile *[nTAC];
 	TH1S **hControlE_list = new TH1S *[nTAC];
 	
-	int ControlHistogramNBins = 512;
+	int ControlHistogramNBins = 128;
 	float ControlHistogramRange = 0.5;
 	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
 		pControlT_list[gid-gidStart] = NULL;
@@ -666,7 +666,9 @@ void calibrateAsic(
 		
 		CalibrationEntry &entry = calibrationTable[gid];
 		if(!entry.valid) continue;
-		
+
+		ControlHistogramNBins = entry.a1;
+
 		unsigned branchID = gid % 2;
 		char bStr = (branchID == 0) ? 'T' : 'E';
 		unsigned tacID = (gid >> 1) % 4;
