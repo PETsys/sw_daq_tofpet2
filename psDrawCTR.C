@@ -40,18 +40,18 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 	sprintf(fn, "%s.lidx", filePrefix);
         FILE * indexFile = fopen(fn, "rb");
 		
-	Double_t tBinWidth = 45;
-	Double_t wMax = 3000;
+	Double_t tBinWidth = 30;
+	Double_t wMax = 2000;
 	TH1F *hDelta = new TH1F("hDelta", "Coincidence time difference", 2*wMax/tBinWidth, -wMax, wMax);
 	
 	const Int_t N_CHANNELS = 1024;
 	TH2F *hC2 = new TH2F("hC2", "C2", N_CHANNELS, 0, N_CHANNELS, N_CHANNELS, 0, N_CHANNELS);
 	
-
 	int minToT = 0;
-	TH1F * hE1 = new TH1F("hE1", "E 1", 128, 0, 400/5);
-	TH1F * hE2 = new TH1F("hE2", "E 2", 128, 0, 400/5);
-	
+	int maxToT = 70;
+	TH1F * hE1 = new TH1F("hE1", "E 1", (maxToT-minToT)*5, minToT, maxToT);
+	TH1F * hE2 = new TH1F("hE2", "E 2", (maxToT-minToT)*5, minToT, maxToT);
+
 	struct CEvent {
 		Long64_t	time1;
 		Long64_t	time2;
@@ -59,7 +59,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		Float_t		tot2;
 	};
 
-	const Int_t MAX_EVENTS = 100000;
+	const Int_t MAX_EVENTS = 1000000;
 	const Int_t MAX_EVENTS_TOTAL = 250000000;
 	CEvent *eventBuffer = new CEvent[MAX_EVENTS];
 
@@ -97,7 +97,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 			hC2->GetBinXYZ(binMax, binx, biny, binz);
 			channelA=binx-1;
 			channelB=biny-1;
-			printf("CA max=%d  CB max=%d\n",channelA, channelB);
+			//printf("CA max=%d  CB max=%d\n",channelA, channelB);
 		}
 		
 		count=0;
@@ -106,7 +106,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		while(ftell(dataFile) < stepEnd && fread(&ei, sizeof(ei), 1, dataFile) == 1 && count < MAX_EVENTS) {
 			nRead ++;
 			if(nRead % 10000 == 0) {
-				printf("Read %d\r", nRead);
+				//printf("Read %d\r", nRead);
 				fflush(stdout);
 			}
 			if(ei.e1 < minToT || ei.e2 < minToT) continue;
@@ -114,6 +114,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 			hC2->Fill(ei.id1, ei.id2);
 			
 			bool selectedPair = ((ei.id1 == channelA) || (ei.id1 == channelB)) && ((ei.id2 == channelA) || (ei.id2 == channelB));
+			
 			if(!selectedPair) {
 				continue;
 			}
@@ -133,8 +134,8 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		//hE1->Smooth();
 		//hE2->Smooth();
 		
-		TSpectrum *spectrum = new TSpectrum();
-		spectrum->Search(hE1, 3, " ",  0.2);
+		TSpectrum *spectrum = new TSpectrum(1,3);
+		spectrum->Search(hE1, 3, " ",  0.1);
 		Int_t nPeaks = spectrum->GetNPeaks();
 		if (nPeaks == 0) {
 			printf("No peaks in hE1!!!\n");
@@ -156,8 +157,8 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		} 
 
 
-		spectrum = new TSpectrum();
-		spectrum->Search(hE2, 3, " ",  0.2);
+		spectrum = new TSpectrum(1,3);
+		spectrum->Search(hE2, 3, " ",  0.1);
 		nPeaks = spectrum->GetNPeaks();
 		if (nPeaks == 0) {
 			printf("No peaks in hE2!!!\n");
@@ -183,7 +184,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		Float_t x2 = x2_pe;
 		
 
-		hE1->Fit("gaus", "", "", x1-10, x1+10);
+		hE1->Fit("gaus", "", "", x1-0.7, x1+0.7);
 		if(hE1->GetFunction("gaus") == NULL) {
 			return -1;
 		}
@@ -192,7 +193,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		
 		
 
-		hE2->Fit("gaus", "", "", x2-10, x2+10);
+		hE2->Fit("gaus", "", "", x2-0.7, x2+0.7);
 		if(hE2->GetFunction("gaus") == NULL) { 
 			return -1;
 		}
@@ -229,28 +230,32 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 				continue;
 			
 			Float_t delta = e.time1 - e.time2;
-			//delta *= 1E-12;
+		
 			
 			hDelta->Fill(delta);
 		}
 		int binmax = hDelta->GetMaximumBin();
 		Float_t hmax= hDelta->GetXaxis()->GetBinCenter(binmax);
 		
-		hDelta->Fit("gaus", "", "", hmax-350, hmax+300);
+		hDelta->Fit("gaus", "", "", hmax-350, hmax+350);
 
 
 		gStyle->SetPalette(1);
 		gStyle->SetOptFit(1);
-	//	if(c2 != NULL) delete c2;
-	//	TCanvas *c2 = new TCanvas();
 		c2 = c1; c2->Clear();
 		c2->Divide(3, 1);
 		c2->cd(1); hE1->Draw();
-		hE1->GetXaxis()->SetTitle("");
+		char title[1024];
+		sprintf(title,"Charge Spectrum (Channel %d)", channelB);
+		hE1->SetTitle(title);
+		hE1->GetXaxis()->SetTitle("Charge [a.u.]");
+
 		c2->cd(2); hDelta->Draw();
 		hDelta->GetXaxis()->SetTitle("time1-time2 [ps]");
 		c2->cd(3); hE2->Draw();
-		hE2->GetXaxis()->SetTitle("");
+		sprintf(title,"Charge Spectrum (Channel %d)", channelA);	
+		hE2->SetTitle(title);
+		hE2->GetXaxis()->SetTitle("Charge [a.u.]");
 		c2->Modified();
 		char pdfName[1024];
 		sprintf(pdfName, "%s_%08.2f_%08.2f.pdf", filePrefix, step1, step2);
