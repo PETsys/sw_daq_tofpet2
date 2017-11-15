@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+#-*- coding: utf-8 -*-
+#
+
+from petsys import daqd
+from time import sleep
+
+daqd = daqd.Connection()
+
+print "--- DAQ PORTS ---" 
+for portID in daqd.getActivePorts():
+	print "DAQ Port %2d: " % portID, "%12d transmitted %12d received (%d errors)" % daqd.getPortCounts(portID)
+
+print "--- FEB/Ds ---"
+for portID, slaveID in daqd.getActiveFEBDs():
+	mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad = daqd.getFEBDCount1(portID, slaveID)
+	print "FEB/D %2d slave %2d\n" % (portID, slaveID),
+	print "  MASTER link %12d transmitted %12d received (%d errors)" % (mtx, mrx, mrxBad)
+	if slaveOn:
+		print "  SLAVE  link %12d transmitted %12d received (%d errors)" % (stx, srx, srxBad)
+	else:
+		print "  SLAVE  link off"

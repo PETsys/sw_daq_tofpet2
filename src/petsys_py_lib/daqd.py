@@ -916,6 +916,46 @@ class Connection:
 				if t > 127: t = t - 256
 				temperatures[i] = t
 			return temperatures
+		
+	## Returns a 3 element tupple with the number of transmitted, received, and error packets for a given port 
+	# @param port The port for which to get the desired output 
+	def getPortCounts(self, port):
+		template = "@HHH"
+		n = struct.calcsize(template)
+		data = struct.pack(template, 0x07, n, port)
+		self.__socket.send(data);
+
+		template = "@HQQQ"
+		n = struct.calcsize(template)
+		data = self.__socket.recv(n);
+		length, tx, rx, rxBad = struct.unpack(template, data)		
+		tx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(tx, 48)))
+		rx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(rx, 48)))
+		rxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(rxBad, 48)))
+		return (tx, rx, rxBad)
+
+	## Returns a 3 element tupple with the number of transmitted, received, and error packets for a given FEB/D
+	# @param portID  DAQ port ID where the FEB/D is connected
+	# @param slaveID Slave ID on the FEB/D chain
+	def getFEBDCount1(self, portID, slaveID):
+		mtx = self.readFEBDConfig(portID, slaveID, 1, 0)
+		mrx = self.readFEBDConfig(portID, slaveID, 1, 1)
+		mrxBad = self.readFEBDConfig(portID, slaveID, 1, 2)
+
+		slaveOn = self.readFEBDConfig(portID, slaveID, 0, 12) != 0x0
+
+		stx = self.readFEBDConfig(portID, slaveID, 1, 3)
+		srx = self.readFEBDConfig(portID, slaveID, 1, 4)
+		srxBad = self.readFEBDConfig(portID, slaveID, 1, 5)
+		
+		mtx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mtx, 48)))
+		mrx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mrx, 48)))
+		mrxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mrxBad, 48)))
+		stx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(stx, 48)))
+		srx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(srx, 48)))
+		srxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(srxBad, 48)))
+		return (mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad)
+	
 
 ## Exception: a command to FEB/D was sent but a reply was not received.
 #  Indicates a communication problem.
