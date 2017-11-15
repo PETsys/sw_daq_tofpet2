@@ -236,10 +236,12 @@ def main(argv):
 	
         for portID, slaveID, chipID in activeChips:
                 c1 = ROOT.TCanvas()
-                multi1= ROOT.TMultiGraph()
-                multi2= ROOT.TMultiGraph()
-                multi3= ROOT.TMultiGraph()
+                multi1 = ROOT.TMultiGraph()
+                multi2 = ROOT.TMultiGraph()
+                multi3 = ROOT.TMultiGraph()
                 c1.Divide(2,2)
+
+
                 c1.cd(1)
                 gbaseline_T[(portID, slaveID, chipID)].SetMarkerColor(1)
                 gbaseline_T[(portID, slaveID, chipID)].SetMarkerSize(0.6)
@@ -257,7 +259,13 @@ def main(argv):
                 multi1.Add(gbaseline_E[(portID, slaveID, chipID)])
                 multi1.Draw("AP")
                 multi1.GetXaxis().SetTitle("Channel")
-               
+                multi1.GetYaxis().SetTitle("DAC Units")
+
+                leg1 = ROOT.TLegend(0.75,0.45,0.89,0.55)
+                leg1.AddEntry(gbaseline_T[(portID, slaveID, chipID)],"t1 and t2","p");
+                leg1.AddEntry(gbaseline_E[(portID, slaveID, chipID)],"E","p");                
+                leg1.Draw()
+
                 c1.cd(2)
                 gzero_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
                 gzero_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
@@ -282,7 +290,14 @@ def main(argv):
 
                 multi2.Draw("AP")
                 multi2.GetXaxis().SetTitle("Channel")
-                 
+                multi2.GetYaxis().SetTitle("DAC Units")
+
+                leg2 = ROOT.TLegend(0.75,0.425,0.89,0.575)
+                leg2.AddEntry(gzero_T1[(portID, slaveID, chipID)],"t1","p");
+                leg2.AddEntry(gzero_T2[(portID, slaveID, chipID)],"t2","p");
+                leg2.AddEntry(gzero_E[(portID, slaveID, chipID)],"E","p");
+                leg2.Draw()
+                
                 c1.cd(3)
                 gnoise_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
                 gnoise_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
@@ -303,7 +318,14 @@ def main(argv):
                 multi3.SetMinimum(0)
                 multi3.SetTitle("Noise")
                 multi3.Draw("AP")
+                multi3.GetYaxis().SetTitle("DAC Units")
                 multi3.GetXaxis().SetTitle("Channel")
+
+                leg3 = ROOT.TLegend(0.75,0.74,0.89,0.89)
+                leg3.AddEntry(gnoise_T1[(portID, slaveID, chipID)],"t1","p");
+                leg3.AddEntry(gnoise_T2[(portID, slaveID, chipID)],"t2","p");
+                leg3.AddEntry(gnoise_E[(portID, slaveID, chipID)],"E","p");
+                leg3.Draw()
                
                 plotName = "%s_%02d_%02d_%02d.pdf" % (args.inputFilePrefix, portID, slaveID, chipID)
         

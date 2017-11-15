@@ -467,12 +467,13 @@ void calibrateAsic(
 	c->Divide(2, 2);
 	c->cd(1);
 	hCounts->GetXaxis()->SetTitle("Channel");
+	hCounts->GetYaxis()->SetTitle("Counts");
 	hCounts->GetYaxis()->SetRangeUser(0, maxCounts * 1.10);
 	hCounts->Draw("HIST");
 
 	c->cd(2);
 	hXMin->GetXaxis()->SetTitle("Channel");
-	hXMin->GetYaxis()->SetTitle("Min integratin time");
+	hXMin->GetYaxis()->SetTitle("Min integration time [Clock]");
 	hXMin->GetYaxis()->SetRangeUser(0, 200);
 	hXMin->Draw("HIST");
 
