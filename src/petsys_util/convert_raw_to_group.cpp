@@ -40,6 +40,7 @@ private:
 	unsigned short	brN;
 	unsigned short	brJ;
 	long long	brTime;
+	long long	brTimeDelta;
 	unsigned short	brChannelID;
 	float		brToT;
 	float		brEnergy;
@@ -79,6 +80,7 @@ public:
 			hData->Branch("mh_j", &brJ, bs);
 			hData->Branch("tot", &brToT, bs);
 			hData->Branch("time", &brTime, bs);
+			hData->Branch("timeDelta", &brTimeDelta, bs);
 			hData->Branch("channelID", &brChannelID, bs);
 			hData->Branch("energy", &brEnergy, bs);
 			hData->Branch("tacID", &brTacID, bs);
@@ -156,7 +158,7 @@ public:
 			GammaPhoton &p = buffer->get(i);
 			
 			if(!p.valid) continue;
-			
+			Hit &h0 = *p.hits[0];
 			int limit = (hitLimitToWrite < p.nHits) ? hitLimitToWrite : p.nHits;
 			for(int m = 0; m < limit; m++) {
 				Hit &h = *p.hits[m];
@@ -168,6 +170,7 @@ public:
 					brN  = p.nHits;
 					brJ = m;
 					brTime = ((long long)(h.time * Tps)) + tMin;
+					brTimeDelta = (long long)(h.time - h0.time) * Tps;
 					brChannelID = h.raw->channelID;
 					brToT = (h.timeEnd - h.time) * Tps;
 					brEnergy = h.energy * Eunit;
