@@ -5,6 +5,9 @@
 #include <boost/regex.hpp>
 #include <string.h>
 #include <libgen.h>
+#include <limits.h>
+#include <string>
+#include <boost/algorithm/string/replace.hpp>
 
 extern "C" {
 #include <iniparser.h>
@@ -19,23 +22,24 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName)
 }
 
 
-static void make_absolute(char *fn, char *entry, char *dn)
+static void replace_variables(char *fn, char *entry, char *cdir)
 {
-	if(entry[0] == '/') {
-			strcpy(fn, entry);
-	}
-	else {
-		sprintf(fn, "%s/%s", dn, entry);
-	}
+	std::string tmp(entry);
+	
+	boost::ireplace_all(tmp, "!PWD!", ".");
+	boost::ireplace_all(tmp, "!CDIR!", cdir);
+	
+	strncpy(fn, tmp.c_str(), PATH_MAX);
+	
 }
 
 SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 {
-	char *path = new char[1024];
+	char *path = new char[PATH_MAX];
 	strcpy(path, configFileName);
-	char *dn = dirname(path);
+	char *cdir = dirname(path);
 	
-	char *fn = new char[1024];
+	char *fn = new char[PATH_MAX];
 	
 	dictionary * configFile = iniparser_load(configFileName);
 	SystemConfig *config = new SystemConfig();
@@ -47,7 +51,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 			fprintf(stderr, "ERROR: tdc_calibration_table not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
-		make_absolute(fn, entry, dn);
+		replace_variables(fn, entry, cdir);
 		loadTDCCalibration(config, fn);
 		config->hasTDCCalibration = true;
 	}
@@ -59,7 +63,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 			fprintf(stderr, "ERROR: qdc_calibration_table not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
-		make_absolute(fn, entry, dn);
+		replace_variables(fn, entry, cdir);
 		loadQDCCalibration(config, fn);
 		config->hasQDCCalibration = true;
 	}
@@ -71,7 +75,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 			fprintf(stderr, "ERROR: channel_map not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
-		make_absolute(fn, entry, dn);
+		replace_variables(fn, entry, cdir);
 		loadChannelMap(config, fn);
 		config->hasXYZ = true;
 		
@@ -80,7 +84,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 			fprintf(stderr, "ERROR: trigger_map not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
-		make_absolute(fn, entry, dn);
+		replace_variables(fn, entry, cdir);
 		loadTriggerMap(config, fn);
 	}
 	
@@ -119,8 +123,8 @@ SystemConfig::SystemConfig()
 	hasQDCCalibration = false;
 	hasXYZ = false;
 	
-	channelConfig = new ChannelConfig *[1024];
-	for(unsigned n = 0; n < 1024; n++) {
+	channelConfig = new ChannelConfig *[PATH_MAX];
+	for(unsigned n = 0; n < PATH_MAX; n++) {
 		channelConfig[n] = NULL;
 	}
 	
@@ -156,7 +160,7 @@ SystemConfig::~SystemConfig()
 	delete [] multihitTriggerMap;
 	delete [] coincidenceTriggerMap;
 	
-	for(unsigned n = 0; n < 1024; n++) {
+	for(unsigned n = 0; n < PATH_MAX; n++) {
 		if(channelConfig[n] != NULL) {
 			delete [] channelConfig[n];
 		}
@@ -200,7 +204,7 @@ void SystemConfig::loadTDCCalibration(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
-	char line[1024];
+	char line[PATH_MAX];
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		normalizeLine(line);
 		if(strlen(line) == 0) continue;
@@ -236,7 +240,7 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
-	char line[1024];
+	char line[PATH_MAX];
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		normalizeLine(line);
 		if(strlen(line) == 0) continue;
@@ -271,7 +275,7 @@ void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
-	char line[1024];
+	char line[PATH_MAX];
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		normalizeLine(line);
 		if(strlen(line) == 0) continue;
@@ -307,7 +311,7 @@ void SystemConfig::loadTriggerMap(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
-	char line[1024];
+	char line[PATH_MAX];
 	int lineNumber = 0;
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		lineNumber += 1;

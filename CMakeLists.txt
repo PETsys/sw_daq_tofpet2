@@ -61,6 +61,12 @@ configure_file("src/petsys_util/read_communication_counters" "read_communication
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 
+configure_file("src/petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" "petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/pab_trigger_map.tsv" "petsys_tables/pab_trigger_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/febd_gbe_trigger_map.tsv" "petsys_tables/febd_gbe_trigger_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/febd_tofpet2tb_fake_channel_map.tsv" "petsys_tables/febd_tofpet2tb_fake_channel_map.tsv" COPYONLY)
+
+
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROOT_CXX_FLAGS}")

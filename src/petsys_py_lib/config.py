@@ -55,9 +55,14 @@ class DiscriminatorConfigEntry:
 		self.vth_t2 = vth_t2
 		self.vth_e = vth_e
 
+def replace_variables(entry, cdir):
+	tmp = entry
+	tmp = re.sub("!PWD!", ".", tmp, re.I);
+	tmp = re.sub("!CDIR!", cdir, tmp, re.I);
+	return tmp
 
 def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
-	dn = os.path.dirname(configFileName)
+	cdir = os.path.dirname(configFileName)
 
 	config = Config()
 	configParser = ConfigParser.SafeConfigParser()
@@ -65,32 +70,28 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	
 	if (loadMask & LOAD_AD5535_CALIBRATION) != 0:
 		fn = configParser.get("main", "ad5535_calibration_table")
-		if not os.path.isabs(fn):
-			fn = os.path.join(dn, fn)
+		fn = replace_variables(fn, cdir)
 		t = readAD5535CalibrationTable(fn)
 		config.ad5535CalibrationTable = t
 		config._Config__loadMask |= LOAD_AD5535_CALIBRATION
 
 	if (loadMask & LOAD_SIPM_BIAS) != 0:
 		fn = configParser.get("main", "sipm_bias_table")
-		if not os.path.isabs(fn):
-			fn = os.path.join(dn, fn)
+		fn = replace_variables(fn, cdir)
 		t = readSiPMBiasTable(fn)
 		config.sipmBiasTable = t
 		config._Config__loadMask |= LOAD_SIPM_BIAS
 
 	if (loadMask & LOAD_DISC_CALIBRATION) != 0:
 		fn = configParser.get("main", "disc_calibration_table")
-		if not os.path.isabs(fn):
-			fn = os.path.join(dn, fn)
+		fn = replace_variables(fn, cdir)
 		t = readDiscCalibrationsTable(fn)
 		config.discCalibrationTable = t
 		config._Config__loadMask |= LOAD_DISC_CALIBRATION
 
 	if (loadMask & LOAD_DISC_SETTINGS) != 0:
 		fn = configParser.get("main", "disc_settings_table")
-		if not os.path.isabs(fn):
-			fn = os.path.join(dn, fn)
+		fn = replace_variables(fn, cdir)
 		t = readDiscSettingsTable(fn)
 		# We just read a file with settings relative to baseline
 		# Not we need to calculate the threshold DAC value
@@ -118,8 +119,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		hw_trigger_config["single_fraction"] = configParser.getint("hw_trigger", "single_fraction")
 
 		fn = configParser.get("main", "trigger_map")
-		if not os.path.isabs(fn):
-			fn = os.path.join(dn, fn)
+		fn = replace_variables(fn, cdir)
 		hw_trigger_config["regions"] = readTriggerMap(fn)
 
 	config._Config__hw_trigger = hw_trigger_config
