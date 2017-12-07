@@ -26,9 +26,9 @@ static void replace_variables(char *fn, char *entry, char *cdir)
 {
 	std::string tmp(entry);
 	
-	boost::ireplace_all(tmp, "!PWD!", ".");
-	boost::ireplace_all(tmp, "!CDIR!", cdir);
-	
+	boost::ireplace_all(tmp, "%PWD%", ".");
+	boost::ireplace_all(tmp, "%CDIR%", cdir);
+	boost::ireplace_all(tmp, "%HOME%",  getenv("HOME"));
 	strncpy(fn, tmp.c_str(), PATH_MAX);
 	
 }

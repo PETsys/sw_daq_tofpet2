@@ -57,15 +57,16 @@ class DiscriminatorConfigEntry:
 
 def replace_variables(entry, cdir):
 	tmp = entry
-	tmp = re.sub("!PWD!", ".", tmp, re.I);
-	tmp = re.sub("!CDIR!", cdir, tmp, re.I);
+	tmp = re.sub("%PWD%", ".", tmp, re.I);
+	tmp = re.sub("%CDIR%", cdir, tmp, re.I);
+	tmp = re.sub("%HOME%", os.getenv("HOME"), tmp, re.I);
 	return tmp
 
 def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	cdir = os.path.dirname(configFileName)
 
 	config = Config()
-	configParser = ConfigParser.SafeConfigParser()
+	configParser = ConfigParser.RawConfigParser()
 	configParser.read(configFileName)
 	
 	if (loadMask & LOAD_AD5535_CALIBRATION) != 0:
