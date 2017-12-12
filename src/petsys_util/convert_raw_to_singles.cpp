@@ -8,6 +8,8 @@
 #include <SimpleGrouper.hpp>
 #include <CoincidenceGrouper.hpp>
 
+#include <boost/lexical_cast.hpp>
+
 #include <TFile.h>
 #include <TTree.h>
 
@@ -21,6 +23,9 @@ private:
 	double frequency;
 	FILE_TYPE fileType;
 	bool qdcMode;
+	int eventFractionToWrite;
+	long long eventCounter;
+
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
@@ -55,10 +60,13 @@ private:
 	} __attribute__((__packed__));
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode, int eventFractionToWrite) {
 		this->frequency = frequency;
 		this->fileType = fileType;
 		this->qdcMode = qdcMode;
+		this->eventFractionToWrite = eventFractionToWrite;
+		this->eventCounter = 0;
+
 		stepBegin = 0;
 		
 		if (fileType == FILE_ROOT){
@@ -145,6 +153,10 @@ public:
 		
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
+			long long tmpCounter = eventCounter;
+			eventCounter += 1;
+			if((tmpCounter % 1024) >= eventFractionToWrite) continue;
+
 			Hit &hit = buffer->get(i);
 			if(!hit.valid) continue;
 			
@@ -219,6 +231,7 @@ void displayHelp(char * program)
 	fprintf(stderr, "Optional flags:\n");
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
+	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -234,13 +247,16 @@ int main(int argc, char *argv[])
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
+	long long eventFractionToWrite = 1024;
 
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
                 { "config", required_argument, 0, 0 },
 		{ "writeBinary", no_argument, 0, 0 },
-		{ "writeRoot", no_argument, 0, 0 }
+		{ "writeRoot", no_argument, 0, 0 },
+		{ "writeFraction", required_argument }
+		
         };
 
         while(true) {
@@ -262,6 +278,8 @@ int main(int argc, char *argv[])
                         case 1:		configFileName = optarg; break;
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
+			case 4:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -294,7 +312,7 @@ int main(int argc, char *argv[])
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  fileType, reader->isQDC());
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  fileType, reader->isQDC(), eventFractionToWrite);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
