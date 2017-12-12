@@ -353,10 +353,18 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
-		// Try to calibrate only between 80 and 400 ADC
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(80));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(400));
 		
+		float yMin = pFine->GetMinimum(0.0);
+		float yMax = pFine->GetMaximum(1024.0);
+		float yRange = (yMax - yMin);
+
+		// Calibration range: 20% to 80%
+		float yLow = yMin + 0.2 * yRange;
+		float yHigh = yMax - 0.2 * yRange;
+
+		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yLow));
+		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(yHigh));
+
 		pFine->Fit("pol3", "QW", "", xMin, xMax);
 		TF1 *polN = pFine->GetFunction("pol3");
 		if(polN == NULL) {
