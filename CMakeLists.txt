@@ -71,7 +71,7 @@ include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROOT_CXX_FLAGS}")
 
-set ( COMMON_SOURCES 
+add_library ( common STATIC
 	"src/base/ThreadPool.cpp"
 	"src/base/SystemConfig.cpp"
 	"src/raw_data/RawReader.cpp"
@@ -81,10 +81,23 @@ set ( COMMON_SOURCES
 	"src/base/SimpleGrouper.cpp"
 	"src/base/CoincidenceGrouper.cpp"
 )
-add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" ${COMMON_SOURCES} )
-add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_raw" "src/petsys_util/convert_raw_to_raw.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_group" "src/petsys_util/convert_raw_to_group.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" ${COMMON_SOURCES} )
-add_executable("print_raw" "src/petsys_util/print_raw.cpp" ${COMMON_SOURCES} )
+add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" )
+target_link_libraries("process_tdc_calibration" common)
+
+add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" )
+target_link_libraries("process_qdc_calibration" common)
+
+add_executable("convert_raw_to_raw" "src/petsys_util/convert_raw_to_raw.cpp" )
+target_link_libraries("convert_raw_to_raw" common)
+
+add_executable("convert_raw_to_group" "src/petsys_util/convert_raw_to_group.cpp" )
+target_link_libraries("convert_raw_to_group" common)
+
+add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" )
+target_link_libraries("convert_raw_to_coincidence" common)
+
+add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" )
+target_link_libraries("convert_raw_to_singles" common)
+
+add_executable("print_raw" "src/petsys_util/print_raw.cpp" )
+target_link_libraries("print_raw" common)
