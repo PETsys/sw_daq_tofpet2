@@ -7,15 +7,22 @@ import argparse
 
 parser = argparse.ArgumentParser(description='Make a simple SiPM bias voltage table')
 parser.add_argument("--config", type=str, required=True, help="Configuration file")
+parser.add_argument("--offset", type=float, required=True, help="Bias channel offset")
 parser.add_argument("--prebd", type=float, required=True, help="Pre-breakdown voltage")
 parser.add_argument("--bd", type=float, required=True, help="Breakdown voltage")
 parser.add_argument("--over", type=float, required=True, help="Nominal overvoltage")
+parser.add_argument("-o", type=str, required=True, help="Output file")
+
 
 
 args = parser.parse_args()
-systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_AD5535_CALIBRATION)
+daqd = daqd.Connection()
+daqd.initializeSystem()
 
-print "# portID\tslaveID\tchannelID\tPre-breakdown\tBreakdown\tOvervoltage"
-for (portID, slaveID, channelID) in systemConfig.ad5535CalibrationTable.keys():
-	print "%d\t%d\t%d\t%4.2f\t%4.2f\t%4.2f" % (portID, slaveID, channelID, args.prebd, args.bd, args.over)
+outputFile = open(args.o, "w")
 
+outputFile.write("# portID\tslaveID\tchannelID\tPre-breakdown\tBreakdown\tOvervoltage\n")
+for (portID, slaveID, channelID) in daqd.getActiveBiasChannels():
+	outputFile.write("%d\t%d\t%d\t%4.2f\t%4.2f\t%4.2f\t%4.2f\n" % (portID, slaveID, channelID, args.offset, args.prebd, args.bd, args.over))
+
+outputFile.close()

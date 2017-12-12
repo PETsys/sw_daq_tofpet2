@@ -142,13 +142,9 @@ def main(argv):
 	rates =  [ 10E3, 20E3, 50E3, 100E3 ]
 
 	fields = [ "portID", "slaveID", "chipID", "channelID" ]
-	fields += [ "baseline_T", "zero_T1", "noise_T1" ]
-	fields += [ "dark_width_T1" ]
-	fields += [ "rate_T1_%d" % v for v in [10, 20, 50, 100 ] ]
-	fields += [ "zero_T2", "noise_T2" ]
-	fields += [ "rate_T2_%d" % v for v in [10, 20, 50, 100 ] ]
-	fields += [ "baseline_E", "zero_E", "noise_E" ]
-	fields += [ "rate_E_%d" % v for v in [10, 20, 50, 100 ] ]
+	fields += [ "baseline_T", "baseline_E" ]
+	fields += [ "zero_T1", "zero_T2", "zero_E" ]
+	fields += [ "noise_T1", "noise_T2", "noise_E" ]
 	
 	print outFile.write("# " + ('\t').join(fields) + '\n')
 	
@@ -187,19 +183,10 @@ def main(argv):
 		gbaseline_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, baseline_E)
 		
 		zero_T1, noise_T1 = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t1")])
-		thresholds_T1 = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t1")], rate) for rate in rates ]
-		thresholds_T1 = [ zero_T1 - threshold for threshold in thresholds_T1 ]
-		
-		dark_width_T1 = getDarkWidth(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t1")], zero_T1)
-
 		zero_T2, noise_T2 = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_t2")])
-		thresholds_T2 = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_t2")], rate) for rate in rates ]
-		thresholds_T2 = [ zero_T2 - threshold for threshold in thresholds_T2 ]
 
 		# WARNING: Scan is not working well for vth_E
 		zero_E, noise_E = getBaselineAndNoise(noiseProfiles[(portID, slaveID, chipID, channelID, "vth_e")])
-		thresholds_E = [ getThresholdForRate(darkProfiles[(portID, slaveID, chipID, channelID, "vth_e")], rate) for rate in rates ]
-		thresholds_E = [ zero_E - threshold for threshold in thresholds_E ]
 		
 		gzero_T1[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, zero_T1)
 		gzero_T2[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, zero_T2)
@@ -209,18 +196,12 @@ def main(argv):
 		gnoise_T2[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, noise_T2)
 		gnoise_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, noise_E)
 
-
 		nPoints[(portID, slaveID, chipID)] += 1
 
 		fields = [ str(v) for v in [portID, slaveID, chipID, channelID] ]
-		fields += [ str(v) for v in [baseline_T, zero_T1, noise_T1] ]
-		fields += [ str(dark_width_T1) ]
-		fields += [ str(v) for v in thresholds_T1 ]
-		fields += [ str(v) for v in [zero_T2, noise_T2] ]
-		fields += [ str(v) for v in thresholds_T2 ]
-		fields += [ str(v) for v in [baseline_E, zero_E, noise_E] ]
-		fields += [ str(v) for v in thresholds_E ]
-		
+		fields += [ str(v) for v in [baseline_T, baseline_E] ]
+		fields += [ str(v) for v in [zero_T1, zero_T2,  zero_E] ]
+		fields += [ str(v) for v in [noise_T1, noise_T2,  noise_E] ]
 		outFile.write(("\t").join(fields) + "\n")
 
 

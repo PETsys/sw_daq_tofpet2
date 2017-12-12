@@ -10,11 +10,17 @@ parser.add_argument("--config", type=str, required=True, help="Configuration fil
 parser.add_argument("--vth_t1", type=int, required=True, help="Discriminator T1 (DAC above zero)")
 parser.add_argument("--vth_t2", type=int, required=True, help="Discriminator T2 (DAC above zero)")
 parser.add_argument("--vth_e", type=int, required=True, help="Discriminator E (DAC above zero)")
+parser.add_argument("-o", type=str, required=True, help="Output file")
 
 
 args = parser.parse_args()
-systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_DISC_CALIBRATION)
+daqd = daqd.Connection()
+daqd.initializeSystem()
 
-print "# portID\tslaveID\tchipID\tchannelID\tvth_t1\tvth_t2\tvth_e"
-for portID, slaveID, chipID, channelID in systemConfig.discCalibrationTable.keys():
-	print "%d\t%d\t%d\t%d\t%d\t%d\t%d" % (portID, slaveID, chipID, channelID, args.vth_t1, args.vth_t2, args.vth_e)
+outputFile = open(args.o, "w")
+
+outputFile.write("# portID\tslaveID\tchipID\tchannelID\tvth_t1\tvth_t2\tvth_e\n")
+for portID, slaveID, chipID, channelID in daqd.getActiveAsicsChannels():
+	outputFile.write("%d\t%d\t%d\t%d\t%d\t%d\t%d\n" % (portID, slaveID, chipID, channelID, args.vth_t1, args.vth_t2, args.vth_e))
+
+outputFile.close()

@@ -103,6 +103,12 @@ class Connection:
 
 	def getActiveAsics(self):
 		return self.__activeAsics
+	
+	def getActiveAsicsChannels(self):
+		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
+	
+	def getActiveBiasChannels(self):
+		return [ (p, s, c) for c in range(64) for (p, s) in self.getActiveFEBDs() ]
 
 	## Disables test pulse 
 	def setTestPulseNone(self):
