@@ -40,19 +40,27 @@ int main(int argc, char *argv[])
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 
-	char fName[1024];
-	sprintf(fName, "%s.rawf", outputFilePrefix);
-	FILE * dataFile = fopen(fName, "wb");
+	char fNameRaw[1024];
+	char fNameIdx[1024];
+	if(strcmp(outputFilePrefix, "/dev/null") == 0) {
+		sprintf(fNameRaw, "%s", outputFilePrefix);
+		sprintf(fNameIdx, "%s", outputFilePrefix);
+	}
+	else {
+		sprintf(fNameRaw, "%s.rawf", outputFilePrefix);
+		sprintf(fNameIdx, "%s.idxf", outputFilePrefix);
+	}
+	
+	FILE * dataFile = fopen(fNameRaw, "wb");
 	assert(dataFile != NULL);
 	if(dataFile == NULL) {
-		fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
+		fprintf(stderr, "Could not open '%s' for writing: %s\n", fNameRaw, strerror(errno));
 		return 1;
 	}
 
-	sprintf(fName, "%s.idxf", outputFilePrefix);
-	FILE * indexFile = fopen(fName, "wb");
+	FILE * indexFile = fopen(fNameIdx, "wb");
 	if(indexFile == NULL) {
-		fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
+		fprintf(stderr, "Could not open '%s' for writing: %s\n", fNameIdx, strerror(errno));
 		return 1;
 	}
 	fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);

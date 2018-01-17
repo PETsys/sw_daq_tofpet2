@@ -43,7 +43,8 @@ class Connection:
 		self.__activeFEBDs = []
 		self.__activeAsics = []
 
-		self.__asicConfigCache = {}
+		self.__asicConfigCache = None
+		self.__asicConfigCache_TAC_Refresh = None
 		self.__ad5553ConfigCache = {}
 
 		self.__helperPipe = None
@@ -124,21 +125,15 @@ class Connection:
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
 		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
-		problematicSettings = set()
-		asicsConfig = self.getAsicsConfig()
-		for ac in asicsConfig.values():
-			gc = ac.globalConfig
-			if gc.getValue("tac_refresh_en") == 0: continue
-			tacRefreshPeriod_1 = gc.getValue("tac_refresh_period")
-		 	for cc in ac.channelConfig:
-				tacRefreshPeriod_2 = cc.getValue("tac_max_age")
-				tacRefreshPeriod = 64 * (tacRefreshPeriod_1 + 1) * (tacRefreshPeriod_2 + 1)
-				if interval % tacRefreshPeriod == 0:
-					problematicSettings.add((tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2))
-
-		for tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2 in problematicSettings:
-			print "WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d)." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2)
-
+		# First, make sure we have a cache of settings
+		if self.__asicConfigCache_TAC_Refresh is None:
+			self.getAsicsConfig()
+			
+		for tacRefreshPeriod_1, tacRefreshPeriod_2 in self.__asicConfigCache_TAC_Refresh:
+			tacRefreshPeriod = 64 * (tacRefreshPeriod_1 + 1) * (tacRefreshPeriod_2 + 1)
+			if interval % tacRefreshPeriod == 0:
+				print "WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d) in some ASICs." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2)
+		
 		finePhase = int(round(finePhase * 6*56))	# WARNING: This should be firmware dependent..
 	
 		if interval < (length + 1):
@@ -252,7 +247,8 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b011);
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b001);
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b000);
-		self.__asicConfigCache = {}
+		self.__asicConfigCache = None
+		self.__asicConfigCache_TAC_Refresh = None
 
 		# Check which ASICs react to the configuration
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
@@ -523,18 +519,18 @@ class Connection:
 	# @param command Command type to be sent. The list of possible keys for this parameter is hardcoded in this function
         # @param value The actual value to be transmitted to the ASIC if it applies to the command type   
         # @param channel If the command is destined to a specific channel, this parameter sets its ID. 	  
-	def __doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None, forceAccess=False):
+	def __doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None):
 		nTry = 0
 		while True:
 			try:
-				return self.___doAsicCommand(portID, slaveID, chipID, command, value=value, channel=channel, forceAccess=forceAccess)
+				return self.___doAsicCommand(portID, slaveID, chipID, command, value=value, channel=channel)
 			except tofpet2.ConfigurationError as e:
 				nTry = nTry + 1
 				if nTry >= 5:
 					raise e
 
 
-	def ___doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None, forceAccess=False):
+	def ___doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None):
 		commandInfo = {
 		#	commandID 	: (code,   ch,   read, data length)
 			"wrChCfg"	: (0b0000, True, False, 125),
@@ -544,23 +540,6 @@ class Connection:
 		}
 	
 		commandCode, isChannel, isRead, dataLength = commandInfo[command]
-
-		cacheKey = (command[2:], portID, slaveID, chipID, channel)
-		if not forceAccess:
-			# Let's see if we have this in cache
-			if not isRead:
-				try:
-					lastValue = self.__asicConfigCache[cacheKey]
-					if value == lastValue:
-						return (0, None)
-				except KeyError:
-					pass
-			else:
-				try:
-					lastValue = self.__asicConfigCache[cacheKey]
-					return (0, lastValue)
-				except KeyError:
-					pass
 
 
 		ccBits = bitarray_utils.intToBin(commandCode, 4)
@@ -607,12 +586,11 @@ class Connection:
 			data = bitarray()
 			data.frombytes(reply)
 			value = data[0:dataLength]
-			self.__asicConfigCache[cacheKey] = bitarray(value)
 			return (status, value)
 		else:
 			# Check what we wrote
 			readCommand = 'rd' + command[2:]
-			readStatus, readValue = self.__doAsicCommand(portID, slaveID, chipID, readCommand, channel=channel, forceAccess=True)
+			readStatus, readValue = self.__doAsicCommand(portID, slaveID, chipID, readCommand, channel=channel)
 			if readValue != value:
 				raise tofpet2.ConfigurationErrorBadRead(portID, slaveID, chipID, value, readValue)
 
@@ -623,26 +601,74 @@ class Connection:
 	## - value: a tofpet2.AsicConfig object
 	## @param forceAccess Ignores the software cache and forces hardware access.
 	def getAsicsConfig(self, forceAccess=False):
-		data = {}
-		for portID, slaveID, chipID in self.getActiveAsics():
-			ac = tofpet2.AsicConfig()
-			status, value = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg", forceAccess=forceAccess)
-			ac.globalConfig = tofpet2.AsicGlobalConfig(value)
-			for n in range(64):
-				status, value = self.__doAsicCommand(portID, slaveID, chipID, "rdChCfg", channel=n, forceAccess=forceAccess)
-				ac.channelConfig[n] = tofpet2.AsicChannelConfig(value)
-			data[(portID, slaveID, chipID)] = ac
-		return data
+		if (forceAccess is True) or (self.__asicConfigCache is None):
+			# Build the ASIC configuration cache
+			self.__asicConfigCache = {}
+			self.__asicConfigCache_TAC_Refresh = set()
+			
+			for portID, slaveID, chipID in self.getActiveAsics():
+				ac = tofpet2.AsicConfig()
+				status, value = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
+				ac.globalConfig = tofpet2.AsicGlobalConfig(value)
+				for n in range(64):
+					status, value = self.__doAsicCommand(portID, slaveID, chipID, "rdChCfg", channel=n)
+					ac.channelConfig[n] = tofpet2.AsicChannelConfig(value)
+					
+				# Store the ASIC configuration
+				self.__asicConfigCache[(portID, slaveID, chipID)] = ac
+				tacRefreshPeriod_1 = ac.globalConfig.getValue("tac_refresh_period")
+				# Store a set of ASIC refresh settings
+				tacRefreshPeriod_2 = ac.channelConfig[n].getValue("tac_max_age")
+				self.__asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
+				
+		return deepcopy(self.__asicConfigCache)
 
 	## Sets the configuration into the ASICs registers
 	# @param config is a dictionary, with the same form as returned by getAsicsConfig
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def setAsicsConfig(self, config, forceAccess=False):
-		for (portID, slaveID, chipID), ac in config.items():
-			self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=ac.globalConfig, forceAccess=forceAccess)
-			for n in range(64):
-				self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=n, value=ac.channelConfig[n], forceAccess=forceAccess)
-
+		# If the ASIC config cache does not exist, make sure it exists
+		if self.__asicConfigCache is None:
+			self.getAsicsConfig()
+		
+		tacRefreshHardwareUpdated = False
+		for portID, slaveID, chipID in self.getActiveAsics():
+			cachedAC = self.__asicConfigCache[(portID, slaveID, chipID)]
+			newAC = config[(portID, slaveID, chipID)]
+		   
+			cachedGC = cachedAC.globalConfig
+			newGC = newAC.globalConfig
+			
+			if (forceAccess is True) or (newGC != cachedGC):
+				self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=newGC)
+				if (forceAccess is True) or (cachedGC.getValue("tac_refresh_period") != newGC.getValue("tac_refresh_period")):
+					tacRefreshHardwareUpdated = True
+				cachedAC.globalConfig = deepcopy(newGC)
+			
+			for channelID in range(64):
+				cachedCC = cachedAC.channelConfig[channelID]
+				newCC = newAC.channelConfig[channelID]
+				
+				if (forceAccess is True) or (newCC != cachedCC):
+					self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=channelID, value=newCC)
+					if (forceAccess is True) or (cachedCC.getValue("tac_max_age") != newCC.getValue("tac_max_age")):
+						tacRefreshHardwareUpdated = True
+					cachedAC.channelConfig[channelID] = deepcopy(newCC)
+				
+		if tacRefreshHardwareUpdated:
+			# Rebuild the TAC refresh settings summary cache
+			self.__asicConfigCache_TAC_Refresh = set()
+			for portID, slaveID, chipID in self.getActiveAsics():
+				cachedAC = self.__asicConfigCache[(portID, slaveID, chipID)]
+				cachedGC = cachedAC.globalConfig
+				for channelID in range(64):
+					cachedCC = cachedAC.channelConfig[channelID]
+					tacRefreshPeriod_1 = cachedGC.getValue("tac_refresh_period")
+					tacRefreshPeriod_2 = cachedCC.getValue("tac_max_age")
+					self.__asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
+					
+			
+				
 		return None
 
 	## Sets a channel of the AD5535 DAC
