@@ -637,7 +637,7 @@ class Connection:
 				self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=newGC)
 				if (forceAccess is True) or (cachedGC.getValue("tac_refresh_period") != newGC.getValue("tac_refresh_period")):
 					tacRefreshHardwareUpdated = True
-				cachedAC.globalConfig = newGC
+				cachedAC.globalConfig = deepcopy(newGC)
 			
 			for channelID in range(64):
 				cachedCC = cachedAC.channelConfig[channelID]
@@ -647,7 +647,7 @@ class Connection:
 					self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=channelID, value=newCC)
 					if (forceAccess is True) or (cachedCC.getValue("tac_max_age") != newCC.getValue("tac_max_age")):
 						tacRefreshHardwareUpdated = True
-					cachedAC.channelConfig[channelID] = newCC
+					cachedAC.channelConfig[channelID] = deepcopy(newCC)
 				
 		if tacRefreshHardwareUpdated:
 			# Rebuild the TAC refresh settings summary cache
