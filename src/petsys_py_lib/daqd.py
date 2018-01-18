@@ -48,6 +48,8 @@ class Connection:
 		self.__ad5553ConfigCache = {}
 
 		self.__helperPipe = None
+		
+		self.__temperatureSensorList = {}
 
 	def __getSharedMemoryInfo(self):
 		template = "@HH"
@@ -892,15 +894,77 @@ class Connection:
 		frameID = timeTag / 1024
 		return frameID
 	
+	
+	def getTemperatureSensorsList(self, portID, slaveID):
+		if not self.__temperatureSensorList.has_key((portID, slaveID)):
+			boardType = self.readFEBDConfig(portID, slaveID, 0, 22)
+			boardType = boardType & 0xFFFF # WARNING: Need to check this..
+			if boardType == 0x64:
+				nSensors = self.__getNumberOfTMP104(portID, slaveID)
+				self.__temperatureSensorList[(portID, slaveID)] = [ (0x0000, i, 0) for i in range(nSensors) ]
+				
+			else:
+				presentSensors = []
+				for i in range(8):
+					if not self.__checkMAX111xx(portID, slaveID, i):
+						continue
+					
+					presentSensors += [ (0x0001, i, j) for j in range(4) ]
+				self.__temperatureSensorList[(portID, slaveID)] = presentSensors
+			
+		return self.__temperatureSensorList[(portID, slaveID)]
+	
+	def getTemperatureSensorReading(self, portID, slaveID, chipID, channelID):
+		localList = self.getTemperatureSensorsList(portID, slaveID)
+		
+		tmp = [ t for (t, a, b) in localList if a == chipID and b == channelID ]
+		sensorType = tmp[0]
+		
+		if sensorType == 0x0000:
+			tmp104Readings = self.__getTMP104Readings(portID, slaveID, len(localList))
+			return tmp104Readings[chipID]
+		else:
+			return self.__readMAX111xx(portID, slaveID, chipID, channelID)
+		
+	
+	def __checkMAX111xx(self, portID, slaveID, chipID):
+		m_config1 = 0x00008064  # single end ref; no avg; scan 16; normal power; echo on
+		m_config2 = 0x00008800  # single end channels (0/1 -> 14/15, pdiff_com)
+		m_config3 = 0x00009000  # unipolar convertion for channels (0/1 -> 14/15)
+		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
+
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
+		if reply[1] == 0xFF and reply[2] == 0xFF: 
+			return False
+		
+		if not (reply[1] == 0x88 and reply[2] == 0x0): return False
+
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
+		if not(reply[1] == 0x90 and reply[2] == 0x0): return False
+		
+		return True
+	
+	def __readMAX111xx(self, portID, slaveID, chipID, channelID):
+		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
+		m_repeat = 0x00000000
+		
+		command = m_control + (channelID << 7)
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (command >> 8) & 0xFF, command & 0xFF]))
+		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
+		v = reply[1] * 256 + reply[2]
+		u = v & 0b111111111111
+		ch = (v >> 12)
+		assert ch == channelID
+		return u
+	
 	## Initializes the temperature sensors in the FEB/As
 	# Return the number of active sensors found in FEB/As
-	def getNumberOfTMP104(self, portID, slaveID):
+	def __getNumberOfTMP104(self, portID, slaveID):
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
-
-		print "DIN : ", [ hex(c) for c in din ]
-		print "DOUT: ", [ hex(c) for c in dout ]
 
 		if len(dout) < 5:
 			# Reply is too short, chain is probably open
@@ -930,7 +994,7 @@ class Connection:
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
 	# @param nSensors Number of sensors to read
-	def getTMP104Readings(self, portID, slaveID, nSensors):
+	def __getTMP104Readings(self, portID, slaveID, nSensors):
 			din = [ 2 + nSensors, 0x55, 0b11110001 ]
 			din = bytearray(din)
 			dout = self.sendCommand(portID, slaveID, 0x04, din)
