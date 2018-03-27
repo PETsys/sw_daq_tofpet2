@@ -7,6 +7,9 @@ def nrange(start, end):
 	r.reverse()
 	return r
 
+
+GlobalConfigAfterReset = bitarray('1100011110010111111101011010110111001011011110001101000100110011101110110110011001011111001110111110111011111000111111111110010111101111111001111111011000010011000100001101000000010110')
+
 ## Contains parameters and methods related to the global operation of one ASIC. 
 class AsicGlobalConfig(bitarray):
 	## Constructor. 

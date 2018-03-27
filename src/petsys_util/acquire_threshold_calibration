@@ -21,7 +21,7 @@ daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_PREBD)
 asicsConfig = daqd.getAsicsConfig()
 
-COUNTER_SETTING = 0x4
+
 COUNT_MAX = 1.0 * (2**22)
 T = COUNT_MAX * (1 / daqd.getSystemFrequency())
 
@@ -37,9 +37,17 @@ activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(6
 
 # Adjust baseline
 
-for ac in asicsConfig.values():
+for (portID, slaveID, chipID), ac in asicsConfig.items():
 	if not ac: continue
 	gc = ac.globalConfig
+	
+	if daqd.getAsicSubtype(portID, slaveID, chipID) == "2B":
+		COUNTER_SETTING = 0x4
+	else:
+		COUNTER_SETTING = 0b110
+
+	print portID, slaveID, chipID, COUNTER_SETTING
+	
 	gc.setValue("counter_period", COUNTER_SETTING)
 	for cc in ac.channelConfig:
 		cc.setValue("trigger_mode_1", 0)

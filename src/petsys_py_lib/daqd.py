@@ -4,7 +4,8 @@
 # Handles interaction with the system via daqd
 
 import shm_raw
-import tofpet2
+import tofpet2b
+import tofpet2c
 import socket
 from random import randrange
 import struct
@@ -105,7 +106,10 @@ class Connection:
 		return r		
 
 	def getActiveAsics(self):
-		return self.__activeAsics
+		return self.__activeAsics.keys()
+
+	def getAsicSubtype(self, portID, slaveID, chipID):
+		return self.__activeAsics[(portID, slaveID, chipID)]
 
 	## Disables test pulse 
 	def setTestPulseNone(self):
@@ -168,7 +172,7 @@ class Connection:
 
 		n = ioList.index(which) * 8
 		mode = mode & 0xFF
-		mask = m = (0xFF << n) ^ 0
+		m = (0xFF << n) ^ 0xFFFFFFFFFFFFFFFF
 		for portID, slaveID in self.getActiveFEBDs():
 			current = self.readFEBDConfig(portID, slaveID, 0, 24)
 			current = (current & m) | (mode << n)
@@ -248,30 +252,41 @@ class Connection:
 
 		# Check which ASICs react to the configuration
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
+		asicType = {}
 		asicConfigByFEBD = {} # Store the default config we're uploading into each FEB/D
 		
 		for portID, slaveID in self.getActiveFEBDs():
-			# Upload default configuration, adjusted for FEB/D firmware RX build
-			gcfg = tofpet2.AsicGlobalConfig()
-			tdc_clk_div, ddr, tx_nlinks = self.__getAsicLinkConfiguration(portID, slaveID)
-			gcfg.setValue("tdc_clk_div", tdc_clk_div)
-			gcfg.setValue("tx_ddr", ddr)
-			gcfg.setValue("tx_nlinks", tx_nlinks)
-			#  .. and with the TX logic to calibration
-			gcfg.setValue("tx_mode", 0b01)
-			asicConfigByFEBD[(portID, slaveID)] = gcfg
-			
-			ccfg= tofpet2.AsicChannelConfig()
-
 			for chipID in range(MAX_CHIPS):
 				try:
+					status, readback = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
+					if readback == tofpet2b.GlobalConfigAfterReset:
+						asicType[(portID, slaveID, chipID)] = "2B"
+						tofpet2 = tofpet2b
+					elif readback == tofpet2c.GlobalConfigAfterReset:
+						asicType[(portID, slaveID, chipID)] = "2C"
+						tofpet2 = tofpet2c
+					else: 
+						raise ErrorAsicUnknownConfigurationAfterReset(portID, slaveID, chipID, value)
+					
+					gcfg = tofpet2.AsicGlobalConfig()
+					ccfg = tofpet2.AsicChannelConfig()
+						
+					# Upload default configuration, adjusted for FEB/D firmware RX build
+					tdc_clk_div, ddr, tx_nlinks = self.__getAsicLinkConfiguration(portID, slaveID)
+					gcfg.setValue("tdc_clk_div", tdc_clk_div)
+					gcfg.setValue("tx_ddr", ddr)
+					gcfg.setValue("tx_nlinks", tx_nlinks)
+					#  .. and with the TX logic to calibration
+					gcfg.setValue("tx_mode", 0b01)
+					asicConfigByFEBD[(portID, slaveID)] = gcfg
+
 					self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=gcfg)
 					for n in range(64):
 						self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=n, value=ccfg)
 
 					gID = chipID + MAX_CHIPS * slaveID + (MAX_CHIPS * MAX_SLAVES) * portID
 					asicConfigOK[gID] = True
-				except tofpet2.ConfigurationError as e:
+				except tofpet2b.ConfigurationError as e:
 					pass
 
 
@@ -300,7 +315,7 @@ class Connection:
 
 				status, readback = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
 				if readback != asicConfigByFEBD[(portID, slaveID)]:
-					raise tofpet2.ConfigurationErrorBadRead(portID, slaveID, i, asicConfigByFEBD[(portID, slaveID)], readback)
+					raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, i, asicConfigByFEBD[(portID, slaveID)], readback)
 			
 		
 		# Enable ASIC receiver logic for all ASIC
@@ -344,7 +359,7 @@ class Connection:
 				deserializerStatus[k+n] = lDeserializerStatus[n]
 				decoderStatus[k+n] = lDecoderStatus[n]
 
-		self.__activeAsics = []
+		self.__activeAsics = {}
 		inconsistentStateAsics = []
 		for gID in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS):
 			statusTripplet = (asicConfigOK[gID], deserializerStatus[gID], decoderStatus[gID])
@@ -354,7 +369,7 @@ class Connection:
 
 			if statusTripplet == (True, True, True):
 				# All OK, ASIC is present and OK
-				self.__activeAsics.append((portID, slaveID, chipID))
+				self.__activeAsics[(portID, slaveID, chipID)] = asicType[(portID, slaveID, chipID)]
 			elif statusTripplet == (False, False, False):
 				# All failed, ASIC is not present
 				pass
@@ -381,7 +396,7 @@ class Connection:
 			
 			if maxTries > 1: 
 				print "Retrying..."
-				self.initializeSystem(maxTries - 1)
+				return self.initializeSystem(maxTries - 1)
 			else:
 				raise ErrorAsicPresenceInconsistent(inconsistentStateAsics)
 
@@ -407,6 +422,8 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs():
 			for n in range(64):
 				self.__setAD5533Channel(portID, slaveID, n, 0)
+				
+		return None
 		
 
 	def __setAcquisitionMode(self, mode):
@@ -520,7 +537,7 @@ class Connection:
 		while True:
 			try:
 				return self.___doAsicCommand(portID, slaveID, chipID, command, value=value, channel=channel)
-			except tofpet2.ConfigurationError as e:
+			except tofpet2b.ConfigurationError as e:
 				nTry = nTry + 1
 				if nTry >= 5:
 					raise e
@@ -561,23 +578,23 @@ class Connection:
 		cmd = bytearray(cmd)
 
 		reply = self.sendCommand(portID, slaveID, 0x00, cmd)
-		if len(reply) < 2: raise tofpet2.ConfigurationErrorBadReply(2, len(reply))
+		if len(reply) < 2: raise tofpet2b.ConfigurationErrorBadReply(2, len(reply))
 		status = reply[1]
 			
 		if status == 0xE3:
-			raise tofpet2.ConfigurationErrorBadAck(portID, slaveID, chipID, 0)
+			raise tofpet2b.ConfigurationErrorBadAck(portID, slaveID, chipID, 0)
 		elif status == 0xE4:
-			raise tofpet2.ConfigurationErrorBadCRC(portID, slaveID, chipID )
+			raise tofpet2b.ConfigurationErrorBadCRC(portID, slaveID, chipID )
 		elif status == 0xE5:
-			raise tofpet2.ConfigurationErrorBadAck(portID, slaveID, chipID, 1)
+			raise tofpet2b.ConfigurationErrorBadAck(portID, slaveID, chipID, 1)
 		elif status != 0x00:
-			raise tofpet2.ConfigurationErrorGeneric(portID, slaveID, chipID , status)
+			raise tofpet2b.ConfigurationErrorGeneric(portID, slaveID, chipID , status)
 
 		if isRead:
 			expectedBytes = math.ceil(dataLength/8)
 			if len(reply) < (2+expectedBytes): 
 				print len(reply), (2+expectedBytes)
-				raise tofpet2.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
+				raise tofpet2b.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
 			reply = str(reply[2:])
 			data = bitarray()
 			data.frombytes(reply)
@@ -588,7 +605,7 @@ class Connection:
 			readCommand = 'rd' + command[2:]
 			readStatus, readValue = self.__doAsicCommand(portID, slaveID, chipID, readCommand, channel=channel)
 			if readValue != value:
-				raise tofpet2.ConfigurationErrorBadRead(portID, slaveID, chipID, value, readValue)
+				raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, chipID, value, readValue)
 
 			return (status, None)
 
@@ -603,6 +620,11 @@ class Connection:
 			self.__asicConfigCache_TAC_Refresh = set()
 			
 			for portID, slaveID, chipID in self.getActiveAsics():
+				if self.getAsicSubtype(portID, slaveID, chipID) == "2B":
+					tofpet2 = tofpet2b
+				else:
+					tofpet2 = tofpet2c
+					
 				ac = tofpet2.AsicConfig()
 				status, value = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
 				ac.globalConfig = tofpet2.AsicGlobalConfig(value)
@@ -1089,6 +1111,13 @@ class ErrorAsicPresenceChanged(Exception):
 		self.__data = (portID, slaveID, asicID)
 	def __str__(self):
 		return "ASIC at port %2d, slave %2d, asic %2d changed state" % (self.__data)
+
+## Exception: reading of ASIC on reset configuration yielded an unexpected valud
+class ErrorAsicUnknownConfigurationAfterReset(Exception):
+	def __init__(self, portID, slaveID, chipID, value):
+		self.__data = (portID, slaveID, chipID, value)
+	def __str__(self):
+		return "ASIC at port %2d, slave %2d, asic %02d: unknown configuration after reset %s" % self.data
 	
 class TMP104CommunicationError(Exception):
 	def __init__(self, portID, slaveID, din, dout):
