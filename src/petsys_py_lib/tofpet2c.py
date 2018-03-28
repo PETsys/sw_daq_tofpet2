@@ -109,6 +109,10 @@ class AsicGlobalConfig(bitarray):
 		self.setValue("v_cal_diff_bias_ig", 0)
 		self.setValue("v_cal_ref_ig", 31);
 
+		# Disable the counter and set it to a reasonably long period
+		self.setValue("counter_en", 0b0)
+		self.setValue("counter_period", 0b110)
+
 		return None
 
 	def __deepcopy__(self, memo):
