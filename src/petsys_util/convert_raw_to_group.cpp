@@ -193,7 +193,7 @@ public:
 					fwrite(&eo, sizeof(eo), 1, dataFile);
 				}
 				else {
-					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\n",
+					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
 						p.nHits, m,
 						((long long)(h.time * Tps)) + tMin,
 						h.energy * Eunit,

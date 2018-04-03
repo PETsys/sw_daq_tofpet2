@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import argparse
+import math
+from math import sqrt, fabs
+from time import sleep, time
+
+
+
+#systemConfig = config.ConfigFromFile("config_example.ini", loadMask=0)
+systemConfig = config.Config()
+daqd = daqd.Connection()
+daqd.initializeSystem()
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+
+#daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=True)
+asicsConfig = daqd.getAsicsConfig()
+prevT = [-999]
+
+nSteps = 10
+
+for it in range(0,nSteps,1):        
+        T = []
+        isStable = True
+        for portID, slaveID in daqd.getActiveFEBDs():
+                sensorList = daqd.getTemperatureSensorsList(portID, slaveID)
+                #print "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, len(sensorList))
+                print "\nTemperature measurements:"
+                for sensorType, chipID, channelID in sensorList:
+                        #print sensorType, chipID, channelID
+                        u =  daqd.getTemperatureSensorReading(portID, slaveID, chipID, channelID)
+                        
+                        if sensorType == 0x0000:
+                                if(chipID%2==0):
+                                        print "\tSensor %2d: %2d ºC" % (chipID, u) 
+                                        T.append(u)
+                        else:
+                                v = u*2.5/4.096
+                                if channelID in [0, 3]:
+                                        # LMT86
+                                        temp = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+                                        if channelID == 0 or channelID == 3:
+                                                T.append(temp)
+                                                print "\tSensor %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (chipID, channelID, temp, u, v)
+                                else:
+                                        # LMT70
+                                        temp = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+                                        
+                               
+                                
+        
+        for t1, t2 in zip(T,prevT):
+                if fabs(t1-t2) > 0.2:
+                        sleep(60)
+                        isStable = False
+                        prevT = T 
+                        break
+        if isStable == True:
+                print "\nASIC temperatures stable over the last minute. System ready to acquire."
+                exit()
+
+        
+
+
+                                
