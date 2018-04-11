@@ -12,7 +12,7 @@ parser.add_argument("--config", type=str, required=True, help="Configuration fil
 parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help="Data filename (prefix)")
 args = parser.parse_args()
 
-systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_AD5535_CALIBRATION | config.LOAD_SIPM_BIAS)
+systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
 daqd = daqd.Connection()
 daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)

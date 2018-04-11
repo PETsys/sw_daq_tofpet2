@@ -44,7 +44,7 @@ UDPFrameServer::UDPFrameServer(int debugLevel)
 	r = setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv));
 	assert(r == 0);
 	
-	char buffer[32];
+	char buffer[16+1+5];
 	memset(buffer, 0xFF, sizeof(buffer));
 	send(udpSocket, buffer, sizeof(buffer), 0);
 	r = recv(udpSocket, buffer, sizeof(buffer), 0);
@@ -158,7 +158,7 @@ void *UDPFrameServer::doWork()
 int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
 	boost::posix_time::ptime start = boost::posix_time::microsec_clock::local_time();	
-	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);	
+	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);	// WARNING This needs to be updated to 128 bit
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
 
 	send(udpSocket, buffer, commandLength, 0);
@@ -205,7 +205,7 @@ int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			fprintf(stderr, "WARNING: Reply only had %d bytes\n", reply->size);
 		}
 		else {
-			uint16_t recvSN = (unsigned(reply->buffer[0]) << 8) + reply->buffer[1];
+			uint16_t recvSN = (unsigned(reply->buffer[0]) << 8) + reply->buffer[1]; // WARNING This needs to be updated to 128 bit
 			if(sentSN == recvSN) {
 				memcpy(buffer, reply->buffer, reply->size);
 				replyLength = reply->size;

@@ -45,7 +45,7 @@ class Connection:
 
 		self.__asicConfigCache = None
 		self.__asicConfigCache_TAC_Refresh = None
-		self.__ad5553ConfigCache = {}
+		self.__hvdac_config_cache = {}
 
 		self.__helperPipe = None
 
@@ -87,18 +87,26 @@ class Connection:
 
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
+		return self.__getActiveFEBDs().keys()
+	
+	def __getActiveFEBDs(self):
 		if self.__activeFEBDs == []:
-			self.__activeFEBDs = self.__getActiveFEBDs()
+			self.__activeFEBDs = self.__getActiveFEBDs_ll()
+			
 		return self.__activeFEBDs
 
-	def __getActiveFEBDs(self):
-		r = []
+	def __getActiveFEBDs_ll(self):
+		r = {}
 		for portID in self.getActivePorts():
-			r.append((portID, 0))
 			slaveID = 0
-			while self.readFEBDConfig(portID, slaveID, 0, 12) != 0x0:
+
+			bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
+			r[(portID, slaveID)] = (bias_type, )
+		
+			while self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
 				slaveID += 1
-				r.append((portID, slaveID))
+				bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
+				r[(portID, slaveID)] = (bias_type, )
 			
 		return r		
 
@@ -115,7 +123,7 @@ class Connection:
 	def setTestPulseNone(self):
 		self.__setSorterMode(True)
 		for portID, slaveID in self.getActiveFEBDs():
-			self.writeFEBDConfig(portID, slaveID, 0, 19, 0x0)
+			self.write_config_register(portID, slaveID, 64, 0x20B, 0x0)
 		return None
 
         ## Sets the properties of the internal FPGA pulse generator
@@ -148,7 +156,7 @@ class Connection:
 		if invert: value |= 1 << 61
 
 		for portID, slaveID in self.getActiveFEBDs():
-			self.writeFEBDConfig(portID, slaveID, 0, 19, value)
+			self.write_config_register(portID, slaveID, 64, 0x20B, value)
 		return None
 
 	def __setSorterMode(self, mode):
@@ -162,7 +170,7 @@ class Connection:
 
 	def disableAuxIO(self):
 		for portID, slaveID in self.getActiveFEBDs():
-			self.writeFEBDConfig(portID, slaveID, 0, 24, 0x0)
+			self.write_config_register(portID, slaveID, 64, 0x0214, 0x0)
 
 	def setAuxIO(self, which, mode):
 		which = which.upper()
@@ -174,48 +182,11 @@ class Connection:
 		mode = mode & 0xFF
 		mask = m = (0xFF << n) ^ 0
 		for portID, slaveID in self.getActiveFEBDs():
-			current = self.readFEBDConfig(portID, slaveID, 0, 24)
+			current = self.read_config_register(portID, slaveID, 64, 0x0214)
 			current = (current & m) | (mode << n)
-			self.writeFEBDConfig(portID, slaveID, 0, 24, current)
+			self.write_config_register(portID, slaveID, 64, 0x0214, current)
 
 
-	## Reads a configuration register from a FEB/D
-	# @param portID  DAQ port ID where the FEB/D is connected
-	# @param slaveID Slave ID on the FEB/D chain
-	# @param addr1 Register block (0..127)
-	# @param addr2 Register address (0..255)
-	def readFEBDConfig(self, portID, slaveID, addr1, addr2):
-		header = [ 0x00 | (addr1 & 0x7F), (addr2 >> 8) & 0xFF, addr2 & 0xFF ]
-		data = [ 0x00 for n in range(8)]
-		command = bytearray(header + data)
-
-		reply = self.sendCommand(portID, slaveID, 0x05, command);
-		
-		d = reply[2:]
-		value = 0
-                size = min(len(d),8)
-		for n in range(size):#####  it was 8		
-                        value = value + (d[n] << (8*n))
-		return value
-
-	## Writes a FEB/D configuration register
-	# @param portID  DAQ port ID where the FEB/D is connected
-	# @param slaveID Slave ID on the FEB/D chain
-	# @param addr1 Register block (0..127)
-	# @param addr2 Register address (0..255)
-	# @param value The value to written
-	def writeFEBDConfig(self, portID, slaveID, addr1, addr2, value):
-		header = [ 0x80 | (addr1 & 0x7F), (addr2 >> 8) & 0xFF, addr2 & 0xFF ]
-		data = [ value >> (8*n) & 0xFF for n in range(8) ]
-		command = bytearray(header + data)
-
-		reply = self.sendCommand(portID, slaveID, 0x05, command);
-		
-		d = reply[2:]
-		value = 0
-		for n in range(8):#####  it was 8		
-			value = value + (d[n] << (8*n))
-		return value
 
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
@@ -232,28 +203,33 @@ class Connection:
 		self.disableEventGate()
 		self.disableCoincidenceTrigger()
 		self.disableAuxIO()
+		self.__setAllBiasToZero()
 
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
-			coreClockNotOK = self.readFEBDConfig(portID, slaveID, 0, 11)
-			if coreClockNotOK != 0x0:
+			pllLocked = self.read_config_register(portID, slaveID, 1, 0x200)
+			if pllLocked != 0b1:
 				raise ClockNotOK(portID, slaveID)
 
-			asicType = self.readFEBDConfig(portID, slaveID, 0, 0)
-			if asicType != 0x00010002:
+			asicType = self.read_config_register(portID, slaveID, 16, 0x0102)
+			if asicType != 0x0002:
 				raise ErrorInvalidAsicType(portID, slaveID, asicType)
+			
+			
+		# Power on ASICs
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0213, 0b11) 
+		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b011);
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b001);
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b000);
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b1)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b0)
 		self.__asicConfigCache = None
 		self.__asicConfigCache_TAC_Refresh = None
 
 		# Check which ASICs react to the configuration
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
 		asicConfigByFEBD = {} # Store the default config we're uploading into each FEB/D
-		
+
 		for portID, slaveID in self.getActiveFEBDs():
 			# Upload default configuration, adjusted for FEB/D firmware RX build
 			gcfg = tofpet2.AsicGlobalConfig()
@@ -278,23 +254,22 @@ class Connection:
 				except tofpet2.ConfigurationError as e:
 					pass
 
-
 		# (Locally) Sync ASICs
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b100);
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 18, 0b000);
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
 		# Generate master sync (if available) and start acquisition
 		# First, cycle master sync enable on/off to calibrate sync reception
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b000);
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 		sleep(0.010)
 		# Then enable master sync reception...
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
 		# ... and generate the sync
 		self.__setAcquisitionMode(1)
 		sleep (0.120)	# Sync is at least 100 ms
 		# Finally, disable it
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
 		# Check that the ASIC configuration has not changed after sync
 		for portID, slaveID in self.getActiveFEBDs():
@@ -306,17 +281,16 @@ class Connection:
 				if readback != asicConfigByFEBD[(portID, slaveID)]:
 					raise tofpet2.ConfigurationErrorBadRead(portID, slaveID, i, asicConfigByFEBD[(portID, slaveID)], readback)
 			
-		
 		# Enable ASIC receiver logic for all ASIC
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 23, 0xFFFFFFFFFFFFFFFF)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, 0xFFFFFFFFFFFFFFFF)
 
 		# Set ASIC receiver logic to calibration mode
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 4, 0b0)
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 4, 0b1)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b0)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b1)
 		# Allow some time for the IDELAY adjustment
 		sleep(10 * 2**14 / self.__systemFrequency + 0.010)
 		# Set ASIC receiver logic to normal mode
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 4, 0b0)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b0)
 
 		# Reconfigure ASICs TX to normal mode
 		for portID, slaveID in self.getActiveFEBDs():
@@ -337,8 +311,8 @@ class Connection:
 		decoderStatus = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
 
 		for portID, slaveID in self.getActiveFEBDs():
-			lDeserializerStatus = self.readFEBDConfig(portID, slaveID, 0, 2)
-			lDecoderStatus = self.readFEBDConfig(portID, slaveID, 0, 3)
+			lDeserializerStatus = self.read_config_register(portID, slaveID, 64, 0x0302)
+			lDecoderStatus = self.read_config_register(portID, slaveID, 64, 0x0310)
 
 			lDeserializerStatus = [ lDeserializerStatus & (1<<n) != 0 for n in range(MAX_CHIPS) ]
 			lDecoderStatus = [ lDecoderStatus & (1<<n) != 0 for n in range(MAX_CHIPS) ]
@@ -402,16 +376,13 @@ class Connection:
 				enable_vector |= (1 << lChipID)
 
 			# Enable ASIC receiver logic only for ASICs detected by software
-			self.writeFEBDConfig(portID, slaveID, 0, 23, enable_vector)
+			self.write_config_register(portID, slaveID, 64, 0x0318, enable_vector)
 
 			if lst != []:
 				lst = (", ").join([str(lChipID) for lChipID in lst])
 				print " FEB/D port %2d slave %2d: %s" % (portID, slaveID, lst)
 
-		for portID, slaveID in self.getActiveFEBDs():
-			for n in range(64):
-				self.__setAD5533Channel(portID, slaveID, n, 0)
-		
+	
 
 	def __setAcquisitionMode(self, mode):
 		template1 = "@HH"
@@ -423,8 +394,7 @@ class Connection:
 		assert len(data) == 2
 
 	def __getAsicLinkConfiguration(self, portID, slaveID):
-		data = self.readFEBDConfig(portID, slaveID, 0, 1)
-		nLinks = data & 0xF
+		nLinks = 1 + self.read_config_register(portID, slaveID, 2, 0x0100)
 		if nLinks == 1:
 			tx_nlinks = 0b00
 		elif nLinks == 2:
@@ -434,7 +404,7 @@ class Connection:
 		else:
 			raise ErrorInvalidLinks(portID, slaveID, nLinks)
 
-		speed = (data >> 4) & 0xF
+		speed = self.read_config_register(portID, slaveID, 2, 0x0101)
 		if speed == 0x0:
 			# SDR
 			tdc_clk_div = 0b0
@@ -457,13 +427,216 @@ class Connection:
 		return (tdc_clk_div, ddr, tx_nlinks)
 
 
+	def read_mem_ctrl(self, portID, slaveID, ctrl_id, word_width, base_address, n_words):
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))
+		
+		command = bytearray([ 0x00 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ])
+		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
+
+		assert len(reply) == 2 + (n_words * n_bytes_per_word)
+		
+		reply = reply[1:]
+		reply = reply[:-1]
+		
+		r = [ 0 for j in range(n_words) ]
+		for j in range(n_words):
+			v = 0
+			for i in range(n_bytes_per_word):
+				v += (reply[j * n_bytes_per_word + i] << (8*i))
+			r[j] = v
+		return r
+	
+	
+	def write_mem_ctrl(self, portID, slaveID, ctrl_id, word_width, base_address, data):
+		n_words = len(data)
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))		
+		data_bytes = [ (data[j] >> (8*i)) & 0xFF for i in range(n_bytes_per_word) for j in range(n_words) ]
+		
+		command = bytearray([ 0x01 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ] + data_bytes)
+		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
+		
+		assert len(reply) == 1
+		assert reply[0] == 0x00
+		
+		return None
+	
+	
+	def read_config_register(self, portID, slaveID, word_width, base_address):
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))
+		reply = self.read_mem_ctrl(portID, slaveID, 0x00, 8, base_address, n_bytes_per_word)
+		r = 0
+		for i in range(n_bytes_per_word):
+			r += reply[i] << (8*i)
+		return r
+	
+	def write_config_register(self, portID, slaveID, word_width, base_address, value):
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))
+		data_bytes = [ (value >> (8*i)) & 0xFF for i in range(n_bytes_per_word) ]
+		return self.write_mem_ctrl(portID, slaveID, 0x00, 8, base_address, data_bytes)
+	
+	def spi_master_execute(self, portID, slaveID, cfgFunctionID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data):
+		if len(mosi_data) == 0:
+			mosi_data = [ 0x00 ]
+		
+		command = [ chipID, 
+			cycle_length & 0xFF, (cycle_length >> 8) & 0xFF,
+			sclk_en_on & 0xFF, (sclk_en_on >> 8) & 0xFF,
+			sclk_en_off & 0xFF, (sclk_en_off >> 8) & 0xFF,
+			cs_on & 0xFF, (cs_on >> 8) & 0xFF,
+			cs_off & 0xFF, (cs_off >> 8) & 0xFF,
+			mosi_on & 0xFF, (mosi_on >> 8) & 0xFF,
+			mosi_off & 0xFF, (mosi_off >> 8) & 0xFF,
+			miso_on & 0xFF, (miso_on >> 8) & 0xFF,
+			miso_off & 0xFF, (miso_off >> 8) & 0xFF 
+			] + mosi_data
+		
+		return self.sendCommand(portID, slaveID, cfgFunctionID, bytearray(command))
+			
+	def __write_hv_ad5535(self, portID, slaveID, channelID, value):
+		chipID = channelID / 32
+		channelID = channelID % 32
+		#chipID = 1 - whichDAC # Wrong decoding in ad5535.vhd
+		
+		channelID &= 0b11111
+		value &= 0b11111111111111
+		command = channelID << 14 | value
+		return self.__write_ad5535_ll(portID, slaveID, 3, chipID, command)
+		
+	def __write_ad5535_ll(self, portID, slaveID, cfgFunctionID, chipID, data):
+		# SPI master needs data in byte sizes
+		# with SPI first bit being most significant bit of first byte
+		data = data << 5
+		command = [ (data >> 16) & 0xFF, (data >> 8) & 0xFF, (data >> 0) & 0xFF ]
+		
+		w = 19
+		padding = [0x00 for n in range(2) ]
+		p = 8 * len(padding)
+
+		# Pad the cycle with zeros
+		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
+			p+w+p, 		# cycle
+			p,p+w,	# sclk en
+			p-1,p,		# cs
+			0, p+w+p, 	# mosi
+			p,p+w, 		# miso
+			padding + command + padding)
+		
+	
+	def __write_hv_ltc2668(self, portID, slaveID, channelID, value):
+		command = [ 0b00110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
+		return self.__ltc2668_ll(portID, slaveID, 3, 1, command)
+		
+	def __ltc2668_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
+		w = 8 * len(command)
+		padding = [0x00 for n in range(2) ]
+		p = 8 * len(padding)
+
+		# Pad the cycle with zeros
+		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
+			p+w+p, 		# cycle
+			p,p+w, 		# sclk en
+			p-1,p+w+1,	# cs
+			0, p+w+p, 	# mosi
+			p,p+w, 		# miso
+			padding + command + padding)
+		
+	def read_hv_ad7194(self, portID, slaveID, channelID):
+		# Reset
+		self.__ad7194_ll(0, 0, 3, 2, [0xFF for n in range(8) ], 0)
+
+		# Set mode register
+		r = self.__ad7194_ll(0, 0, 3, 2, [0b00001000, 0b00011011, 0b00100100, 0b01100000], 0)
+
+		# Set configuration register
+		r =  self.__ad7194_ll(0, 0, 3, 2, [0b00010000, 0b00000100, 0b00000000 + (channelID << 4), 0b01011000], 0)
+		
+		# Wait for conversion to be ready
+		while True:
+			r = self.__ad7194_ll(0, 0, 3, 2, [0b01000000], 1)
+			if r[1] & 0x80 == 0x00: break
+			sleep(0.1)
+			
+		r = self.__ad7194_ll(0, 0, 3, 2, [0x58], 4)
+		v = (r[1] << 16) + (r[2] << 8) + r[3]
+		
+		return v
+	
+			
+	def __ad7194_ll(self,  portID, slaveID, cfgFunctionID, chipID, command, read_count):
+		command = [0x00] + command
+		w = 8 * len(command)
+		r = 8 * read_count
+		p = 2
+		w_padding = [ 0xFF for n in range(p) ]
+		r_padding = [ 0xFF for n in range(p + read_count) ]
+		p = 8 * p
+
+		# Pad the cycle with zeros
+		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
+			p+w+r+p, 		# cycle
+			p,p+w+r+1, 		# sclk en
+			p-1,p+w+r+1,		# cs
+			0, p+w+r+p, 		# mosi
+			p+w,p+w+r, 		# miso
+			w_padding + command + r_padding)
+		
+	def __m95256_ll(self, portID, slaveID, cfgFunctionID, chipID, command, read_count):
+		w = 8 * len(command)
+		r = 8 * read_count
+		p = 2
+		w_padding = [ 0xFF for n in range(p) ]
+		r_padding = [ 0xFF for n in range(p + read_count) ]
+		p = 8 * p
+
+		# Pad the cycle with zeros
+		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
+			p+w+r+p, 		# cycle
+			p,p+w+r+1, 		# sclk en
+			p-0,p+w+r+0,		# cs
+			0, p+w+r+p, 		# mosi
+			p+w,p+w+r, 		# miso
+			w_padding + command + r_padding)
+		
+	def read_hv_m95256(self, portID, slaveID, address, n_bytes):
+		r = self.__m95256_ll(0, 0, 3, 0, [0b00000011, (address >> 8) & 0xFF, address & 0xFF], n_bytes)
+		r = r[1:-1]
+		r = ('').join([chr(x) for x in r ])
+		return r
+	
+	def write_hv_m95256(self, portID, slaveID, address, data):
+		data = [ ord(x) for x in data ]
+		while True:
+			# Check if Write In Progress is set and if so, sleep and try again
+			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
+			if r[1] & 0x01 == 0:
+				break
+			sleep(0.010)
+			
+		# cycle WEL
+		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000100], 1)
+		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000110], 1)
+		
+		self.__m95256_ll(0, 0, 3, 0, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
+		while True:
+			# Check if Write In Progress is set and if so, sleep and try again
+			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
+			if r[1] & 0x01 == 0:
+				break
+			sleep(0.010)
+		
+		# Disable WEL (it should be automatic but...)
+		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000100], 1)
+			
+		
+	
+
 	## Sends a command to the FEB/D
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
-        # @param commandType Information for the FPGA firmware regarding the type of command being transmitted
+        # @param cfgFunctionID Information for the FPGA firmware regarding the type of command being transmitted
 	# @param payload The actual command to be transmitted
         # @param maxTries The maximum number of attempts to send the command without obtaining a valid reply   	
-	def sendCommand(self, portID, slaveID, commandType, payload, maxTries=10):
+	def sendCommand(self, portID, slaveID, cfgFunctionID, payload, maxTries=10):
 		nTries = 0;
 		reply = None
 		doOnce = True
@@ -476,7 +649,7 @@ class Connection:
 			sn = self.__lastSN
 			self.__lastSN = (sn + 1) & 0x7FFF
 
-			rawFrame = bytearray([ portID & 0xFF, slaveID & 0xFF, (sn >> 8) & 0xFF, (sn >> 0) & 0xFF, commandType]) + payload
+			rawFrame = bytearray([ portID & 0xFF, slaveID & 0xFF] + [ (sn >> (8*n)) & 0xFF for n in range(16) ] + [ cfgFunctionID]) + payload
 			rawFrame = str(rawFrame)
 
 			#print [ hex(ord(x)) for x in rawFrame ]
@@ -492,10 +665,10 @@ class Connection:
 			data = self.__socket.recv(n)
 			nn, = struct.unpack(template2, data)
 
-			if nn < 4:
+			if nn < 18:
 				continue
 			data = self.__socket.recv(nn)
-			data = data[3:]
+			data = data[17:]
 			reply = bytearray(data)
 			
 
@@ -564,9 +737,10 @@ class Connection:
 		cmd = [ chipID, nBitsToWrite, bitsToRead] + byteX
 		cmd = bytearray(cmd)
 
-		reply = self.sendCommand(portID, slaveID, 0x00, cmd)
-		if len(reply) < 2: raise tofpet2.ConfigurationErrorBadReply(2, len(reply))
-		status = reply[1]
+		reply = self.sendCommand(portID, slaveID, 0x01, cmd)
+		if len(reply) < 1: raise tofpet2.ConfigurationErrorBadReply(1, len(reply))
+
+		status = reply[0]
 			
 		if status == 0xE3:
 			raise tofpet2.ConfigurationErrorBadAck(portID, slaveID, chipID, 0)
@@ -579,10 +753,10 @@ class Connection:
 
 		if isRead:
 			expectedBytes = math.ceil(dataLength/8)
-			if len(reply) < (2+expectedBytes): 
-				print len(reply), (2+expectedBytes)
+			if len(reply) < (1+expectedBytes): 
+				print len(reply), (1+expectedBytes)
 				raise tofpet2.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
-			reply = str(reply[2:])
+			reply = str(reply[1:])
 			data = bitarray()
 			data.frombytes(reply)
 			value = data[0:dataLength]
@@ -670,40 +844,56 @@ class Connection:
 			
 				
 		return None
-
-	## Sets a channel of the AD5535 DAC
-	def __setAD5533Channel(self, portID, slaveID, channelID, value, forceAccess=False):
+	
+	def getBiasType(self, portID, slaveID):
+		r = self.__getActiveFEBDs()
+		(bias_type, ) = r[(portID, slaveID)]
+		return bias_type
+	
+	def __setAllBiasToZero(self):
+		for (portID, slaveID), (bias_type, ) in self.__getActiveFEBDs().items():
+			if bias_type == 1:
+				nChannels = 64
+				value = 0
+			else:
+				nChannels = 16
+				value = 0
+			
+			for n in range(nChannels):
+				self.__write_hv_channel(portID, slaveID, n, value, forceAccess=True)
+				
+	def __write_hv_channel(self, portID, slaveID, channelID, value, forceAccess=False):
 		cacheKey = (portID, slaveID, channelID)
 		if not forceAccess:
 			try:
-				lastValue = self.__ad5553ConfigCache[cacheKey]
+				lastValue = self.__hvdac_config_cache[cacheKey]
 				if value == lastValue:
 					return 0
 			except KeyError:
 				pass
 		
-		whichDAC = channelID / 32
-		channel = channelID % 32
-		whichDAC = 1 - whichDAC # Wrong decoding in ad5535.vhd
-		dacBits = bitarray_utils.intToBin(whichDAC, 1) + bitarray_utils.intToBin(channel, 5) + bitarray_utils.intToBin(value, 14) + bitarray('0000')
-		dacBytes = bytearray(dacBits.tobytes())
-		self.sendCommand(portID, slaveID, 0x01, dacBytes)
-		self.__ad5553ConfigCache[cacheKey] = value
+		bias_type = self.getBiasType(portID, slaveID)
+		if bias_type == 1:
+			self.__write_hv_ad5535(portID, slaveID, channelID, value)
+		else:
+			self.__write_hv_ltc2668(portID, slaveID, channelID, value)
+		self.__hvdac_config_cache[cacheKey] = value
 		return 0
+
 
 	## Returns the last value written in the bias voltage channel registers as a dictionary of
 	## - key: a tupple of (portID, slaveID, channelID)
 	## - value: an integer
 	## WARNING: As the hardware does not support readback, this always returns the software cache
-	def getAD5535Config(self):
-		return deepcopy(self.__ad5553ConfigCache)
+	def get_hvdac_config(self):
+		return deepcopy(self.__hvdac_config_cache)
 
 	## Sets the bias voltage channels
-	# @param is a dictionary, as returned by getAD5535Config
+	# @param is a dictionary, as returned by get_hvdac_config
 	# @param forceAccess Ignores the software cache and forces hardware access.
-	def setAD5535Config(self, config, forceAccess=False):
+	def set_hvdac_config(self, config, forceAccess=False):
 		for (portID, slaveID, channelID), value in config.items():
-			self.__setAD5533Channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
+			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
 	def openRawAcquisition(self, fileNamePrefix, qdcMode=False):
@@ -893,8 +1083,7 @@ class Connection:
 			raise ErrorNoFEB()
 
 		portID = min(activePorts)
-		gray = self.readFEBDConfig(portID, 0, 0, 7)
-		timeTag = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(gray, 46)))
+		timeTag = self.read_config_register(portID, 0, 46, 0x0203)
 		frameID = timeTag / 1024
 		return frameID
 	
@@ -970,22 +1159,16 @@ class Connection:
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
 	def getFEBDCount1(self, portID, slaveID):
-		mtx = self.readFEBDConfig(portID, slaveID, 1, 0)
-		mrx = self.readFEBDConfig(portID, slaveID, 1, 1)
-		mrxBad = self.readFEBDConfig(portID, slaveID, 1, 2)
+		mtx = self.read_config_register(portID, slaveID, 46, 0x0401)
+		mrx = self.read_config_register(portID, slaveID, 46, 0x0409)
+		mrxBad = self.read_config_register(portID, slaveID, 46, 0x0411)
 
-		slaveOn = self.readFEBDConfig(portID, slaveID, 0, 12) != 0x0
+		slaveOn = self.read_config_register(portID, slaveID, 1, 0x0400)
 
-		stx = self.readFEBDConfig(portID, slaveID, 1, 3)
-		srx = self.readFEBDConfig(portID, slaveID, 1, 4)
-		srxBad = self.readFEBDConfig(portID, slaveID, 1, 5)
-		
-		mtx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mtx, 48)))
-		mrx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mrx, 48)))
-		mrxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(mrxBad, 48)))
-		stx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(stx, 48)))
-		srx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(srx, 48)))
-		srxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(srxBad, 48)))
+		stx = self.read_config_register(portID, slaveID, 46, 0x0419)
+		srx = self.read_config_register(portID, slaveID, 46, 0x0421)
+		srxBad = self.read_config_register(portID, slaveID, 46, 0x0429)
+
 		return (mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad)
 	
 

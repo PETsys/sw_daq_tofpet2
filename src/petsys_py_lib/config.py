@@ -6,8 +6,8 @@ from sys import stderr
 from string import upper
 import tofpet2
 
-LOAD_AD5535_CALIBRATION	= 0x00000001
-LOAD_SIPM_BIAS 		= 0x00000002
+LOAD_BIAS_CALIBRATION	= 0x00000001
+LOAD_BIAS_SETTINGS 	= 0x00000002
 LOAD_DISC_CALIBRATION	= 0x00000004
 LOAD_DISC_SETTINGS	= 0x00000008
 LOAD_ALL		= 0xFFFFFFFF
@@ -30,19 +30,19 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	configParser = ConfigParser.RawConfigParser()
 	configParser.read(configFileName)
 	
-	if (loadMask & LOAD_AD5535_CALIBRATION) != 0:
-		fn = configParser.get("main", "ad5535_calibration_table")
+	if (loadMask & LOAD_BIAS_CALIBRATION) != 0:
+		fn = configParser.get("main", "bias_calibration_table")
 		fn = replace_variables(fn, cdir)
-		t = readAD5535CalibrationTable(fn)
+		t = readBiasCalibrationTable_tripplet_list(fn)
 		config._Config__biasChannelCalibrationTable = t
-		config._Config__loadMask |= LOAD_AD5535_CALIBRATION
+		config._Config__loadMask |= LOAD_BIAS_CALIBRATION
 
-	if (loadMask & LOAD_SIPM_BIAS) != 0:
-		fn = configParser.get("main", "sipm_bias_table")
+	if (loadMask & LOAD_BIAS_SETTINGS) != 0:
+		fn = configParser.get("main", "bias_settings_table")
 		fn = replace_variables(fn, cdir)
 		t = readSiPMBiasTable(fn)
 		config._Config__biasChannelSettingsTable = t
-		config._Config__loadMask |= LOAD_SIPM_BIAS
+		config._Config__loadMask |= LOAD_BIAS_SETTINGS
 
 	if (loadMask & LOAD_DISC_CALIBRATION) != 0:
 		fn = configParser.get("main", "disc_calibration_table")
@@ -104,15 +104,15 @@ class Config:
 		#
 		# Apply bias voltage settings
 		# 
-		ad5535HwConfig = daqd.getAD5535Config()
+		hvdacHwConfig = daqd.get_hvdac_config()
 		# Set all bias channels ~1V (off, but avoid from from amplifier to SiPM)
-		for key in ad5535HwConfig.keys():
-			# Set AD5535 to ~1 V, to avoid flow back from amplifier through SiPM
-				ad5535HwConfig[key] = int(round(1.0 * 2**14 / (50 * 2.048)))
+		for key in hvdacHwConfig.keys():
+			# Set HVDAC to ~1 V, to avoid flow back from amplifier through SiPM
+				hvdacHwConfig[key] = int(round(1.0 * 2**14 / (50 * 2.048)))
 
 		if bias_enable == APPLY_BIAS_PREBD or bias_enable == APPLY_BIAS_ON:
-			assert (self.__loadMask & LOAD_AD5535_CALIBRATION) != 0
-			assert (self.__loadMask & LOAD_SIPM_BIAS) != 0
+			assert (self.__loadMask & LOAD_BIAS_CALIBRATION) != 0
+			assert (self.__loadMask & LOAD_BIAS_SETTINGS) != 0
 			for key in self.__biasChannelSettingsTable.keys():
 				offset, prebd, bd, over = self.getBiasChannelDefaultSettings(key)
 				if bias_enable == APPLY_BIAS_PREBD:
@@ -121,9 +121,9 @@ class Config:
 					Vset = offset + bd + over
 				
 				dacSet = self.mapBiasChannelVoltageToDAC(key, Vset)
-				ad5535HwConfig[key] = dacSet
+				hvdacHwConfig[key] = dacSet
 				
-		daqd.setAD5535Config(ad5535HwConfig)
+		daqd.set_hvdac_config(hvdacHwConfig)
 
 		
 		asicsConfig = daqd.getAsicsConfig()
@@ -168,9 +168,9 @@ class Config:
 
 		# Disable builtin hardware trigger (if it exists)
 		for portID, slaveID in daqd.getActiveFEBDs():
-			daqd.writeFEBDConfig(portID, slaveID, 0, 16, 0x0F000000)
-			daqd.writeFEBDConfig(portID, slaveID, 0, 15, 0)
-			daqd.writeFEBDConfig(portID, slaveID, 0, 17, 0)
+			daqd.write_config_register(portID, slaveID, 64, 0xD002, 0x0F000000)
+			daqd.write_config_register(portID, slaveID, 64, 0x0501, 0)
+			daqd.write_config_register(portID, slaveID, 64, 0xD000, 0)
 
 		if hw_trigger_enable:
 			if self.__hw_trigger["type"] == None:
@@ -184,10 +184,10 @@ class Config:
 				value |= self.__hw_trigger["pre_window"]
 				value |= self.__hw_trigger["post_window"] << 4
 				value |= self.__hw_trigger["coincidence_window"] << 20
-				daqd.writeFEBDConfig(portID, slaveID, 0, 16,value)
+				daqd.write_config_register(portID, slaveID, 64, 0xD002, value)
 
 				value = self.__hw_trigger["threshold"]
-				daqd.writeFEBDConfig(portID, slaveID, 0, 15, value)
+				daqd.write_config_register(portID, slaveID, 64, 0x0501, value)
 
 				value = 0
 				hw_trigger_regions = self.__hw_trigger["regions"]
@@ -199,10 +199,13 @@ class Config:
 							# Enable coincidences between r1 and r2
 							value |= (1 << (r1*nRegions + r2))
 							value |= (1 << (r2*nRegions + r1))
-				daqd.writeFEBDConfig(portID, slaveID, 0, 17, value)
+				daqd.write_config_register(portID, slaveID, 64, 0xD000, value)
 			
 
 		return None
+	
+	def getCalibratedBiasChannels(self):
+		return self.__biasChannelCalibrationTable.keys()
 	
 	def getBiasChannelDefaultSettings(self, key):
 		return self.__biasChannelSettingsTable[key]
@@ -210,10 +213,10 @@ class Config:
 	def mapBiasChannelVoltageToDAC(self, key, voltage):
 		# Linear interpolation on closest neighbours
 		y = voltage
-		xy = self.__biasChannelCalibrationTable[key]
-		for i in range(1, len(xy)):
-			x1, y1 = xy[i-1]
-			x2, y2 = xy[i]
+		xy_ = self.__biasChannelCalibrationTable[key]
+		for i in range(1, len(xy_)):
+			x1, y1, _ = xy_[i-1]
+			x2, y2, _ = xy_[i]
 			if y2 >= y: break
 
 		# y = m*x+b
@@ -222,6 +225,9 @@ class Config:
 		x = (y-b)/m
 		return int(round(x))
 		
+	def getCalibratedDiscChannels(self):
+		return self.__asicChannelBaselineSettingsTable.keys()
+	
 	def getAsicChannelDefaultBaselineSettings(self, key):
 		return self.__asicChannelBaselineSettingsTable[key]
 		
@@ -281,7 +287,25 @@ def normalizeAndSplit(l):
 	l = l.split('\t')
 	return l
 
-def readAD5535CalibrationTable(fn):
+def readBiasCalibrationTable_tripplet_list(fn):
+	f = open(fn)
+	c = {}
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
+		key = (portID, slaveID, channelID)
+		if not c.has_key(key):
+			c[key] = []
+		dac_set = int(l[3])
+		v_meas = float(l[4])
+		adc_meas = int(l[5])
+		
+		c[key].append((dac_set, v_meas, adc_meas))
+	return c
+	f.close()
+
+def readBiasCalibrationTable_table(fn):
 	f = open(fn)
 	c = {}
 	x = []
@@ -295,8 +319,9 @@ def readAD5535CalibrationTable(fn):
 			portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
 			y = [ float(v) for v in l[3:] ]
 			assert len(x) == len(y)
-			xy = [ (x[i], y[i]) for i in range(len(x)) ]
-			c[(portID, slaveID, channelID)] = xy
+			xyz = [ (x[i], y[i], 0) for i in range(len(x)) ]
+			c[(portID, slaveID, channelID)] = xyz
+	f.close()
 	return c
 
 def readSiPMBiasTable(fn):
@@ -308,6 +333,7 @@ def readSiPMBiasTable(fn):
 
 		portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
 		c[(portID, slaveID, channelID)] = [ float(v) for v in l[3:7] ]
+	f.close()
 	return c
 
 def readDiscCalibrationsTable(fn):
@@ -320,6 +346,7 @@ def readDiscCalibrationsTable(fn):
 		portID, slaveID, chipID, channelID = [ int(v) for v in l[0:4] ]
 		c_b[(portID, slaveID, chipID, channelID)] = [ int(v) for v in l[4:6] ]
 		c_t[(portID, slaveID, chipID, channelID)] = [ float(v) for v in l[6:9] ]
+	f.close()
 	return c_b, c_t
 
 def readDiscSettingsTable(fn):
@@ -330,6 +357,7 @@ def readDiscSettingsTable(fn):
 		if l == ['']: continue
 		portID, slaveID, chipID, channelID = [ int(v) for v in l[0:4] ]
 		c[(portID, slaveID, chipID, channelID)] = [ float(v) for v in l[4:7] ]
+	f.close()
 	return c
 
 def readTriggerMap(fn):
@@ -349,4 +377,5 @@ def readTriggerMap(fn):
 
 		if c == 'C':
 			triggerMap.add((r1, r2))
+	f.close()
 	return triggerMap

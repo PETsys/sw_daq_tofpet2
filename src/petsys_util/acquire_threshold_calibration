@@ -15,7 +15,7 @@ parser.add_argument("--nreads-noise", dest="noise_reads", type=int, required=Fal
 parser.add_argument("--nreads-dark", dest="dark_reads", type=int, required=False, default=4)
 args = parser.parse_args()
 
-systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_AD5535_CALIBRATION | config.LOAD_SIPM_BIAS)
+systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
 daqd = daqd.Connection()
 daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_PREBD)
@@ -66,7 +66,10 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 
 		count_high = {}
 		for portID, slaveID, chipID, channelID in activeChannels:
-			count_high[(portID, slaveID, chipID, channelID)] = daqd.readFEBDConfig(portID, slaveID, 3, 64*chipID + channelID) / COUNT_MAX
+			v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
+			v = v[0]
+			v = v / COUNT_MAX
+			count_high[(portID, slaveID, chipID, channelID)] = v
 
 
 		adjustmentMade = False
@@ -132,7 +135,9 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 			next_read_start_time = time() + 8*T + 1E-3
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out fraction of discriminator active time
-				v = daqd.readFEBDConfig(portID, slaveID, 3, 64*chipID + channelID) / COUNT_MAX
+				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
+				v = v[0]
+				v = v / COUNT_MAX
 				outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
 
 		stdout.write(".")
@@ -177,7 +182,9 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 			next_read_start_time = time() + 8*T + 1E-3
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out event frequency
-				v = daqd.readFEBDConfig(portID, slaveID, 3, 64*chipID + channelID) / T
+				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
+				v = v[0]
+				v = v / T
 				outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
 				
 		stdout.write(".")

@@ -16,13 +16,11 @@ parser.add_argument("-o", type=str, required=True, help="Output file")
 
 
 args = parser.parse_args()
-daqd = daqd.Connection()
-daqd.initializeSystem()
-
+config = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION)
 outputFile = open(args.o, "w")
 
 outputFile.write("# portID\tslaveID\tchannelID\tPre-breakdown\tBreakdown\tOvervoltage\n")
-for (portID, slaveID, channelID) in daqd.getActiveBiasChannels():
+for (portID, slaveID, channelID) in config.getCalibratedBiasChannels():
 	outputFile.write("%d\t%d\t%d\t%4.2f\t%4.2f\t%4.2f\t%4.2f\n" % (portID, slaveID, channelID, args.offset, args.prebd, args.bd, args.over))
 
 outputFile.close()

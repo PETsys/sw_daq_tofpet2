@@ -1,0 +1,32 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import argparse
+import struct
+import sys
+
+
+def main():
+	parser = argparse.ArgumentParser(description='Make a simple SiPM bias voltage table')
+	parser.add_argument("-o", type=str, required=True, help="Output file")
+	parser.add_argument("--port", type=int, required=True, action="append", help="Port ID")
+	parser.add_argument("--slave", type=int, required=True, action="append", help="Slave ID")
+	parser.add_argument("--filename", type=str, required=True, action="append", help="File name")
+	args = parser.parse_args()
+
+	outputFile = open(args.o, "w")
+
+	for i in range(len(args.filename)):
+		print 'Reading "%s" for (%d, %d)' % (args.filename[i], args.port[i], args.slave[i])
+		table = config.readBiasCalibrationTable_table(args.filename[i])
+		
+		for (_port, _slave, channelID), data in table.items():
+			for dac_set, v_meas, adc_meas in data:
+				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (args.port[i], args.slave[i], channelID, dac_set, v_meas, 0))
+		
+		
+		
+if __name__ == '__main__':
+	main()

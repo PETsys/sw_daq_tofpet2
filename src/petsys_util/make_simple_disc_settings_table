@@ -14,13 +14,13 @@ parser.add_argument("-o", type=str, required=True, help="Output file")
 
 
 args = parser.parse_args()
-daqd = daqd.Connection()
-daqd.initializeSystem()
+config = config.ConfigFromFile(args.config, loadMask=config.LOAD_DISC_CALIBRATION)
+
 
 outputFile = open(args.o, "w")
 
 outputFile.write("# portID\tslaveID\tchipID\tchannelID\tvth_t1\tvth_t2\tvth_e\n")
-for portID, slaveID, chipID, channelID in daqd.getActiveAsicsChannels():
+for portID, slaveID, chipID, channelID in config.getCalibratedDiscChannels():
 	outputFile.write("%d\t%d\t%d\t%d\t%d\t%d\t%d\n" % (portID, slaveID, chipID, channelID, args.vth_t1, args.vth_t2, args.vth_e))
 
 outputFile.close()
