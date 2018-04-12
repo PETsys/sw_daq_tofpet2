@@ -48,6 +48,7 @@ for (portID, slaveID, chipID), ac in asicsConfig.items():
 
 	print portID, slaveID, chipID, COUNTER_SETTING
 	
+	gc.setValue("counter_en", 0b1)
 	gc.setValue("counter_period", COUNTER_SETTING)
 	for cc in ac.channelConfig:
 		cc.setValue("trigger_mode_1", 0)
