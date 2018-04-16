@@ -53,6 +53,7 @@ simultaneousChannels = 64
 # 126/16 -- GbE interface: 126 events/frame with FEB/D, 16 ASICs per FEB/D
 # 1024/80 -- ASIC TX: 1024 clock/frame (x1 SDR), 80 bits per event
 simultaneousChannels = min([simultaneousChannels, 126/16, 1024/80])
+simultaneousChannels = 1
 
 channelStep = int(math.ceil(64.0/simultaneousChannels))
 for firstChannel in range(0, channelStep):
