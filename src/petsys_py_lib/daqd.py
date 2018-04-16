@@ -1094,29 +1094,26 @@ class Connection:
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
 
-		print "DIN : ", [ hex(c) for c in din ]
-		print "DOUT: ", [ hex(c) for c in dout ]
-
-		if len(dout) < 5:
+		if len(dout) < 4:
 			# Reply is too short, chain is probably open
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 		
-		if (dout[2:3] != din[1:2]) or ((dout[4] & 0xF0) != din[3]):
+		if (dout[1:2] != din[1:2]) or ((dout[3] & 0xF0) != din[3]):
 			# Reply does not match what is expected; a sensor is probably broken
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-		nSensors = dout[4] & 0x0F
+		nSensors = dout[3] & 0x0F
 	
 		din = [ 3, 0x55, 0b11110010, 0b01100011]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
-		if len(dout) < 5:
+		if len(dout) < 4:
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 
 		din = [ 2 + nSensors, 0x55, 0b11110011 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
-		if len(dout) < (4 + nSensors):
+		if len(dout) < (3 + nSensors):
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 
 		return nSensors
@@ -1129,10 +1126,10 @@ class Connection:
 			din = [ 2 + nSensors, 0x55, 0b11110001 ]
 			din = bytearray(din)
 			dout = self.sendCommand(portID, slaveID, 0x04, din)
-			if len(dout) < (4 + nSensors):
+			if len(dout) < (3 + nSensors):
 				raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-			temperatures = dout[4:]
+			temperatures = dout[3:]
 			for i, t in enumerate(temperatures):
 				if t > 127: t = t - 256
 				temperatures[i] = t
