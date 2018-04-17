@@ -156,7 +156,6 @@ outFile = open(args.outFilePrefix + "_dark.tsv", "w")
 for ac in asicsConfig.values():
 	if not ac: continue
 	gc = ac.globalConfig
-	gc.setValue("counter_period", COUNTER_SETTING)
 	for cc in ac.channelConfig:
 		cc.setValue("trigger_mode_1", 0)
 		cc.setValue("counter_mode", 0xC)
