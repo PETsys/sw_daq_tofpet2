@@ -155,8 +155,28 @@ class Connection:
 		pass
 
 	def disableEventGate(self):
-		pass
+		self.__daqdGateMode(0)
+		for portID, slaveID in self.getActiveFEBDs():
+			self.writeFEBDConfig(portID, slaveID, 0, 13, 0x0)
+			
+	## Enabled external gate function
+	# @param delay Delay of the external gate signal, in clock periods
+	def enableEventGate(self, delay):
+		self.__daqdGateMode(1)
+		for portID, slaveID in self.getActiveFEBDs():
+			self.writeFEBDConfig(portID, slaveID, 0, 13, 0x400 | delay);
+			
+	def __daqdGateMode(self, mode):
+		template1 = "@HHI"
+		n = struct.calcsize(template1)
+		data = struct.pack(template1, 0x12, n, mode);
+		self.__socket.send(data)
 
+		template = "@I"
+		n = struct.calcsize(template)
+		data = self.__socket.recv(n);
+		return None			
+			
 	def disableCoincidenceTrigger(self):
 		pass
 
