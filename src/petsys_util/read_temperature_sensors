@@ -2,14 +2,25 @@
 # -*- coding: utf-8 -*-
 from petsys import daqd
 from time import sleep
+from math import sqrt
 
 daqd = daqd.Connection()
 for portID, slaveID in daqd.getActiveFEBDs():
-	try:
-		nSensors = daqd.getNumberOfTMP104(portID, slaveID)
-		s = "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, nSensors)
-		t = daqd.getTMP104Readings(portID, slaveID, nSensors)
-		s += (", ").join([str(x) + "ºC" for x in t])
-		print s
-	except Exception as e:
-		print "FEB/D at port %d slave %d had an error: %s" % (portID, slaveID, e)
+	sensorList = daqd.getTemperatureSensorsList(portID, slaveID)
+	print "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, len(sensorList))
+	for sensorType, chipID, channelID in sensorList:
+		u =  daqd.getTemperatureSensorReading(portID, slaveID, chipID, channelID)
+		
+		if sensorType == 0x0000:
+			print "\tSensor %2d: %2d ºC" % (chipID, u) 
+		else:
+			v = u*2.5/4.096
+			if channelID in [0, 3]:
+				# LMT86
+				T = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+			else:
+				# LMT70
+				T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+				
+			print "\tSensor %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (chipID, channelID, T, u, v)
+			

@@ -7,6 +7,9 @@ def nrange(start, end):
 	r.reverse()
 	return r
 
+
+GlobalConfigAfterReset = bitarray('1100011110010111111101011010110111001011011110001101000100110011101110110110011001011111001110111110111011111000111111111110010111101111111001111111011000010011111100001101000000010110')
+
 ## Contains parameters and methods related to the global operation of one ASIC. 
 class AsicGlobalConfig(bitarray):
 	## Constructor. 
@@ -45,7 +48,7 @@ class AsicGlobalConfig(bitarray):
 			"tdc_comp_bias" 	: [ n for n in range(88, 93) ],
 			"tdc_i_lsb"		: [ n for n in range(93, 98) ],
 			"disc_lsb_t1"		: [ n for n in range(98, 104) ],
-			"fe_ib2"		: [134] + [ n for n in range(104, 109) ], # cgate selection is "msb" for ib2
+			"fe_ib2"		: [134] + [176] + [ n for n in range(104, 109) ],
 			"vdifffoldcas"		: [ n for n in range(109, 115) ],
 			"disc_vcas"		: [ n for n in range(115, 119) ],
 			"disc_lsb_e"		: [ n for n in range(119, 125) ],
@@ -60,7 +63,9 @@ class AsicGlobalConfig(bitarray):
 			"tdc_tac_vcas_n"	: [ n for n in range(163, 167) ],
 			"adebug_out_mode"	: [ n for n in range(167, 169) ],
 			"tdc_global_dac"	: [ n for n in range(169, 175) ],
-			# 3 bits unused
+			"adebug_buffer"		: [ 175 ],
+			# ib2_msb 176
+			#  1bits unused 177
 			
 			"disc_sf_bias"		: [ n for n in range(178, 184) ]
 		}
@@ -75,8 +80,8 @@ class AsicGlobalConfig(bitarray):
 
 		#self[0:169] = bitarray('1000000000010110111001011101110001100000000010110101110110110011001011100000000001110111011111000111111111110010111101111111001111111011000010010110100001110010000110000') ; # TOFPET 2a
 
-		self[0:184] = bitarray('1100011110010111111101011010110111001011011110001101000100110011101110110110011001011111001110111110111011111000111111111110010111101111111001111111011000010011000100001101000000010110'); # TOFPET 2b
-
+		self[0:184] = bitarray('1100011110010111111101011010110111001011011110001101000100110011101110110110011001011111001110111110111011111000111111111110010111101111111001111111011000010011000100001101000000010110'); # TOFPET 2c
+		
 		# WARNING This value is negated in the default(reset) config
 		self.setValue("tdc_comp_bias", 0b00100)
 
@@ -85,11 +90,14 @@ class AsicGlobalConfig(bitarray):
 		self.setValue("tdc_global_dac", 63-44) # default: 63-11
 		# main global dac adjustment due to mismatch
 		self.setValue("main_global_dac", 31 - 20) # default: 31 - 17
+		self.setValue("main_global_dac", 0b10111) ## WARNING
 		
 		# WARNING: Pushing these values to maximum seems to lead to better SPTR
 		# but also push power consumption. Needs more study
-		self.setValue("fe_ib2", 0)
+		self.setValue("fe_ib2", 0b0100000)
+		self.setValue("fe_ib2", 0b0000000) ## WARNING
 		self.setValue("disc_sf_bias", 0)
+		
 		
 		# WARNING These seem to be a reasonable compromise on having widest range for these discriminators
 		# but was obtained with a small sampe
@@ -100,6 +108,10 @@ class AsicGlobalConfig(bitarray):
 		self.setValue("v_cal_tp_top", 1)
 		self.setValue("v_cal_diff_bias_ig", 0)
 		self.setValue("v_cal_ref_ig", 31);
+
+		# Disable the counter and set it to a reasonably long period
+		self.setValue("counter_en", 0b0)
+		self.setValue("counter_period", 0b110)
 
 		return None
 
@@ -228,9 +240,9 @@ class AsicChannelConfig(bitarray):
 		self.setValue("trigger_mode_2_q", 0b01)	# T2
 		self.setValue("trigger_mode_2_b", 0b101)# T1 or T2 or E
 		
-		# Default integration windows: fixed 300 ns
-		self.setValue("min_intg_time", 15)
-		self.setValue("max_intg_time", 15)
+		# Default integration windows: fixed ~300 ns
+		self.setValue("min_intg_time", 34)
+		self.setValue("max_intg_time", 34)
 
 		# Avoid powers of 2
 		self.setValue("tac_max_age", 30)

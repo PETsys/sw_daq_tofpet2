@@ -43,7 +43,8 @@ add_library(shm_raw_py MODULE "src/raw_data/shm_raw.cpp" "src/raw_data/shm_raw_p
 set_target_properties(shm_raw_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/petsys OUTPUT_NAME shm_raw PREFIX "")
 
 configure_file("src/petsys_py_lib/__init__.py" "petsys/__init__.py" COPYONLY)
-configure_file("src/petsys_py_lib/tofpet2.py" "petsys/tofpet2.py" COPYONLY)
+configure_file("src/petsys_py_lib/tofpet2b.py" "petsys/tofpet2b.py" COPYONLY)
+configure_file("src/petsys_py_lib/tofpet2c.py" "petsys/tofpet2c.py" COPYONLY)
 configure_file("src/petsys_py_lib/daqd.py" "petsys/daqd.py" COPYONLY)
 configure_file("src/petsys_py_lib/bitarray_utils.py" "petsys/bitarray_utils.py" COPYONLY)
 configure_file("src/petsys_py_lib/config.py" "petsys/config.py" COPYONLY)
@@ -56,7 +57,7 @@ configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibratio
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
 configure_file("src/petsys_util/make_bias_calibration_table_from_prom" "make_bias_calibration_table_from_prom" COPYONLY)
 configure_file("src/petsys_util/make_bias_calibration_table_from_files" "make_bias_calibration_table_from_files" COPYONLY)
-configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bias_settings_table" COPYONLY)
+configure_file("src/petsys_util/startup" "startup" COPYONLY)
 configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_disc_settings_table" COPYONLY)
 configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)
 configure_file("src/petsys_util/read_communication_counters" "read_communication_counters" COPYONLY)

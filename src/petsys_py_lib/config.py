@@ -4,7 +4,7 @@ import os.path
 import re
 from sys import stderr
 from string import upper
-import tofpet2
+import tofpet2b, tofpet2c
 
 LOAD_BIAS_CALIBRATION	= 0x00000001
 LOAD_BIAS_SETTINGS 	= 0x00000002
@@ -254,8 +254,8 @@ def parseAsicParameters(configParser):
 		return {}
 	
 	t = {}
-	gk = tofpet2.AsicGlobalConfig().getKeys()
-	ck = tofpet2.AsicChannelConfig().getKeys()
+	gk = set(tofpet2b.AsicGlobalConfig().getKeys() + tofpet2c.AsicGlobalConfig().getKeys())
+	ck = set(tofpet2b.AsicChannelConfig().getKeys() + tofpet2c.AsicChannelConfig().getKeys())
 	for key, value in configParser.items("asic_parameters"):
 		if key[0:7] == "global.":
 			k = key[7:]
