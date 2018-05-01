@@ -1135,9 +1135,9 @@ class Connection:
 	
 	def getTemperatureSensorsList(self, portID, slaveID):
 		if not self.__temperatureSensorList.has_key((portID, slaveID)):
-			boardType = self.read_config_register(portID, slaveID, 16, 0x0002)
-			if boardType == 0x0000:
-				nSensors = self.__getNumberOfTMP104(portID, slaveID)
+			femType = self.read_config_register(portID, slaveID, 16, 0x0002)
+			if femType == 0x0000:
+				nSensors = self.getNumberOfTMP104(portID, slaveID)
 				self.__temperatureSensorList[(portID, slaveID)] = [ (0x0000, i, 0) for i in range(nSensors) ]
 				
 			else:
@@ -1158,7 +1158,7 @@ class Connection:
 		sensorType = tmp[0]
 		
 		if sensorType == 0x0000:
-			tmp104Readings = self.__getTMP104Readings(portID, slaveID, len(localList))
+			tmp104Readings = self.getTMP104Readings(portID, slaveID, len(localList))
 			return tmp104Readings[chipID]
 		else:
 			return self.__readMAX111xx(portID, slaveID, chipID, channelID)
@@ -1198,7 +1198,7 @@ class Connection:
 	
 	## Initializes the temperature sensors in the FEB/As
 	# Return the number of active sensors found in FEB/As
-	def __getNumberOfTMP104(self, portID, slaveID):
+	def getNumberOfTMP104(self, portID, slaveID):
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
@@ -1231,7 +1231,7 @@ class Connection:
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
 	# @param nSensors Number of sensors to read
-	def __getTMP104Readings(self, portID, slaveID, nSensors):
+	def getTMP104Readings(self, portID, slaveID, nSensors):
 			din = [ 2 + nSensors, 0x55, 0b11110001 ]
 			din = bytearray(din)
 			dout = self.sendCommand(portID, slaveID, 0x04, din)
