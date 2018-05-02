@@ -1248,9 +1248,6 @@ class Connection:
 		n = struct.calcsize(template)
 		data = self.__socket.recv(n);
 		length, tx, rx, rxBad = struct.unpack(template, data)		
-		tx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(tx, 48)))
-		rx = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(rx, 48)))
-		rxBad = bitarray_utils.binToInt(bitarray_utils.grayToBin(bitarray_utils.intToBin(rxBad, 48)))
 		return (tx, rx, rxBad)
 
 	## Returns a 3 element tupple with the number of transmitted, received, and error packets for a given FEB/D
