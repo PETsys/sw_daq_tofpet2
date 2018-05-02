@@ -1254,15 +1254,15 @@ class Connection:
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
 	def getFEBDCount1(self, portID, slaveID):
-		mtx = self.read_config_register(portID, slaveID, 46, 0x0401)
-		mrx = self.read_config_register(portID, slaveID, 46, 0x0409)
-		mrxBad = self.read_config_register(portID, slaveID, 46, 0x0411)
+		mtx = self.read_config_register(portID, slaveID, 64, 0x0401)
+		mrx = self.read_config_register(portID, slaveID, 64, 0x0409)
+		mrxBad = self.read_config_register(portID, slaveID, 64, 0x0411)
 
 		slaveOn = self.read_config_register(portID, slaveID, 1, 0x0400)
 
-		stx = self.read_config_register(portID, slaveID, 46, 0x0419)
-		srx = self.read_config_register(portID, slaveID, 46, 0x0421)
-		srxBad = self.read_config_register(portID, slaveID, 46, 0x0429)
+		stx = self.read_config_register(portID, slaveID, 64, 0x0419)
+		srx = self.read_config_register(portID, slaveID, 64, 0x0421)
+		srxBad = self.read_config_register(portID, slaveID, 64, 0x0429)
 
 		return (mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad)
 	
