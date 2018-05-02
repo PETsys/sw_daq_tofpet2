@@ -72,6 +72,7 @@ private:
 	int getWords_(uint64_t *buffer, int count);
 	int WriteAndCheck(int reg, uint32_t *data, int count);
 	int ReadAndCheck(int reg, uint32_t *data, int count);
+	int ReadWithoutCheck(int reg, uint32_t *data, int count);
 
 	uint32_t txWrPointer;
 	uint32_t rxRdPointer;
