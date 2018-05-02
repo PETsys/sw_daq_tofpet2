@@ -269,7 +269,7 @@ class Connection:
 						asicType[(portID, slaveID, chipID)] = "2C"
 						tofpet2 = tofpet2c
 					else: 
-						raise ErrorAsicUnknownConfigurationAfterReset(portID, slaveID, chipID, value)
+						raise ErrorAsicUnknownConfigurationAfterReset(portID, slaveID, chipID, readback)
 					
 					gcfg = tofpet2.AsicGlobalConfig()
 					ccfg = tofpet2.AsicChannelConfig()
@@ -1132,64 +1132,56 @@ class Connection:
 		frameID = timeTag / 1024
 		return frameID
 	
-	
-	def getTemperatureSensorsList(self, portID, slaveID):
-		if not self.__temperatureSensorList.has_key((portID, slaveID)):
-			femType = self.read_config_register(portID, slaveID, 16, 0x0002)
-			if femType == 0x0000:
-				nSensors = self.getNumberOfTMP104(portID, slaveID)
-				self.__temperatureSensorList[(portID, slaveID)] = [ (0x0000, i, 0) for i in range(nSensors) ]
-				
-			else:
-				presentSensors = []
-				for i in range(8):
-					if not self.__checkMAX111xx(portID, slaveID, i):
-						continue
-					
-					presentSensors += [ (0x0001, i, j) for j in range(4) ]
-				self.__temperatureSensorList[(portID, slaveID)] = presentSensors
-			
-		return self.__temperatureSensorList[(portID, slaveID)]
-	
-	def getTemperatureSensorReading(self, portID, slaveID, chipID, channelID):
-		localList = self.getTemperatureSensorsList(portID, slaveID)
-		
-		tmp = [ t for (t, a, b) in localList if a == chipID and b == channelID ]
-		sensorType = tmp[0]
-		
-		if sensorType == 0x0000:
-			tmp104Readings = self.getTMP104Readings(portID, slaveID, len(localList))
-			return tmp104Readings[chipID]
-		else:
-			return self.__readMAX111xx(portID, slaveID, chipID, channelID)
-		
-	
-	def __checkMAX111xx(self, portID, slaveID, chipID):
+
+	def __max111xx_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
+		w = 8 * len(command)
+		padding = [0xFF for n in range(2) ]
+		p = 8 * len(padding)
+
+		# Pad the cycle with zeros
+		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
+			p+w+p, 		# cycle
+			p,p+w, 		# sclk en
+			0,p+w+p,	# cs
+			0, p+w+p, 	# mosi
+			p,p+w, 		# miso
+			padding + command + padding)
+
+	def fe_temp_check_max1111xx(self, portID, slaveID, chipID):
 		m_config1 = 0x00008064  # single end ref; no avg; scan 16; normal power; echo on
 		m_config2 = 0x00008800  # single end channels (0/1 -> 14/15, pdiff_com)
 		m_config3 = 0x00009000  # unipolar convertion for channels (0/1 -> 14/15)
 		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
 
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config1 >> 8) & 0xFF, m_config1 & 0xFF])
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config2 >> 8) & 0xFF, m_config2 & 0xFF])
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config3 >> 8) & 0xFF, m_config3 & 0xFF])
+		
 		if reply[1] == 0xFF and reply[2] == 0xFF: 
 			return False
 		
-		if not (reply[1] == 0x88 and reply[2] == 0x0): return False
+		if not (reply[1] == 0x88 and reply[2] == 0x0): 
+			return False
 
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
-		if not(reply[1] == 0x90 and reply[2] == 0x0): return False
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_control >> 8) & 0xFF, m_control & 0xFF])
+		if not(reply[1] == 0x90 and reply[2] == 0x0): 
+			return False
 		
 		return True
 	
-	def __readMAX111xx(self, portID, slaveID, chipID, channelID):
+	def fe_tempp_read_max111xx(self, portID, slaveID, chipID, channelID):
 		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
 		m_repeat = 0x00000000
 		
 		command = m_control + (channelID << 7)
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (command >> 8) & 0xFF, command & 0xFF]))
-		reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (command >> 8) & 0xFF, command & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(command >> 8) & 0xFF, command & 0xFF])
+		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_repeat >> 8) & 0xFF, m_repeat & 0xFF])
 		v = reply[1] * 256 + reply[2]
 		u = v & 0b111111111111
 		ch = (v >> 12)
@@ -1198,7 +1190,7 @@ class Connection:
 	
 	## Initializes the temperature sensors in the FEB/As
 	# Return the number of active sensors found in FEB/As
-	def getNumberOfTMP104(self, portID, slaveID):
+	def fe_temp_enumerate_tmp104(self, portID, slaveID):
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
 		din = bytearray(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
@@ -1231,7 +1223,7 @@ class Connection:
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
 	# @param nSensors Number of sensors to read
-	def getTMP104Readings(self, portID, slaveID, nSensors):
+	def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
 			din = [ 2 + nSensors, 0x55, 0b11110001 ]
 			din = bytearray(din)
 			dout = self.sendCommand(portID, slaveID, 0x04, din)
