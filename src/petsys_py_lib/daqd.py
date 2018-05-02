@@ -51,6 +51,7 @@ class Connection:
 		self.__helperPipe = None
 		
 		self.__temperatureSensorList = {}
+		self.__triggerModule = None
 
 	def __getSharedMemoryInfo(self):
 		template = "@HH"
@@ -97,12 +98,18 @@ class Connection:
 	def __getActiveFEBDs(self):
 		r = []
 		for portID in self.getActivePorts():
-			r.append((portID, 0))
 			slaveID = 0
+			if self.readFEBDConfig(portID, slaveID, 0, 0) == 0x1000000000000002:
+				self.__triggerModule = (portID, slaveID)
+			else:
+				r.append((portID, slaveID))
 			while self.readFEBDConfig(portID, slaveID, 0, 12) != 0x0:
 				slaveID += 1
-				r.append((portID, slaveID))
-			
+				if self.readFEBDConfig(portID, slaveID, 0, 0) == 0x1000000000000002:
+					self.__triggerModule = (portID, slaveID)
+				else:
+					r.append((portID, slaveID))
+		
 		return r		
 
 	def getActiveAsics(self):
@@ -322,10 +329,21 @@ class Connection:
 		# Then enable master sync reception...
 		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
 		# ... and generate the sync
+		if self.__triggerModule is not None:
+			# We have a distributed trigger
+			portID, slaveID = self.__triggerModule
+			print "Generating sync in CLK&TRIGGER"
+			self.writeFEBDConfig(portID, slaveID, 0, 10, 0b000)
+			self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001)
+
+			self.writeFEBDConfig(portID, slaveID, 0, 18, 0b100)
+			self.writeFEBDConfig(portID, slaveID, 0, 18, 0b000)
+		
+		# Enable acquisition
+		# This will include a 220 ms sleep period for daqd and the DAQ card to clear buffers	
 		self.__setAcquisitionMode(1)
-		sleep (0.120)	# Sync is at least 100 ms
-		# Finally, disable it
-		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b001);
+		# Finally, disable sync reception
+		for portID, slaveID in self.getActiveFEBDs(): self.writeFEBDConfig(portID, slaveID, 0, 10, 0b000)
 
 		# Check that the ASIC configuration has not changed after sync
 		for portID, slaveID in self.getActiveFEBDs():
@@ -352,7 +370,10 @@ class Connection:
 		# Reconfigure ASICs TX to normal mode
 		for portID, slaveID in self.getActiveFEBDs():
 			# Same configuration as before...
-			gcfg = asicConfigByFEBD[(portID, slaveID)]
+			try:
+				gcfg = asicConfigByFEBD[(portID, slaveID)]
+			except KeyError:
+				continue
 			# .. but with the TX logic to normal
 			gcfg.setValue("tx_mode", 0b10)
 			for chipID in range(MAX_CHIPS):
@@ -740,8 +761,13 @@ class Connection:
 	# @param is a dictionary, as returned by getAD5535Config
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def setAD5535Config(self, config, forceAccess=False):
-		for (portID, slaveID, channelID), value in config.items():
-			self.__setAD5533Channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
+		for (portID, slaveID) in self.getActiveFEBDs():
+			for channelID in range(64):
+				value = config[(portID, slaveID, channelID)]
+				self.__setAD5533Channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
+		
+		#for (portID, slaveID, channelID), value in config.items():
+			#self.__setAD5533Channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
 	def openRawAcquisition(self, fileNamePrefix, qdcMode=False):
