@@ -57,6 +57,7 @@ configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibratio
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
 configure_file("src/petsys_util/make_bias_calibration_table_from_prom" "make_bias_calibration_table_from_prom" COPYONLY)
 configure_file("src/petsys_util/make_bias_calibration_table_from_files" "make_bias_calibration_table_from_files" COPYONLY)
+configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bias_settings_table" COPYONLY)
 configure_file("src/petsys_util/startup" "startup" COPYONLY)
 configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_disc_settings_table" COPYONLY)
 configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)

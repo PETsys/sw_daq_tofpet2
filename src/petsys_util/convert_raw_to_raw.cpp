@@ -34,7 +34,7 @@ private:
 	long long 	brStepEnd;
 
 	long long	brFrameID;
-	unsigned short	brChannelID;
+	unsigned int	brChannelID;
 	unsigned short	brTacID;
 	unsigned short	brTCoarse;
 	unsigned short	brECoarse;

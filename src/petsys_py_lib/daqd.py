@@ -41,7 +41,7 @@ class Connection:
 		self.__shm = shm_raw.SHM_RAW(self.__shmName)
 
 		self.__activePorts = []
-		self.__activeFEBDs = []
+		self.__activeFEBDs = {}
 		self.__activeAsics = []
 
 		self.__asicConfigCache = None
@@ -51,6 +51,7 @@ class Connection:
 		self.__helperPipe = None
 		
 		self.__temperatureSensorList = {}
+		self.__triggerUnit = None
 
 	def __getSharedMemoryInfo(self):
 		template = "@HH"
@@ -88,30 +89,52 @@ class Connection:
 		reply = [ n for n in range(12*16) if (mask & (1<<n)) != 0 ]
 		return reply
 
+	def getActiveUnits(self):
+		unit_list = set(self.getActiveFEBDs())
+		trigger_unit = self.getTriggerUnit()
+		if trigger_unit is not None:
+			unit_list.add(trigger_unit)
+		return unit_list
+
+	def getTriggerUnit(self):
+		if self.__triggerUnit is None:
+			self.__activeFEBDs, self.__triggerUnit = self.__scanUnits_ll()
+		
+		return self.__triggerUnit
+		
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
 		return self.__getActiveFEBDs().keys()
 	
 	def __getActiveFEBDs(self):
-		if self.__activeFEBDs == []:
-			self.__activeFEBDs = self.__getActiveFEBDs_ll()
+		if self.__activeFEBDs == {}:
+			self.__activeFEBDs, self.__triggerUnit = self.__scanUnits_ll()
 			
 		return self.__activeFEBDs
 
-	def __getActiveFEBDs_ll(self):
+	def __scanUnits_ll(self):
 		r = {}
+		u = None
 		for portID in self.getActivePorts():
 			slaveID = 0
 
-			bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
-			r[(portID, slaveID)] = (bias_type, )
-		
-			while self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
-				slaveID += 1
+			if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
 				bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
 				r[(portID, slaveID)] = (bias_type, )
 			
-		return r		
+			if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
+				u = (portID, slaveID)
+		
+			while self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
+				slaveID += 1
+				if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
+					bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
+					r[(portID, slaveID)] = (bias_type, )
+				
+				if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
+					u = (portID, slaveID)
+		
+		return r, u
 
 	def getActiveAsics(self):
 		return self.__activeAsics.keys()
@@ -248,6 +271,7 @@ class Connection:
 		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b1)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b0)
 		self.__asicConfigCache = None
@@ -292,10 +316,8 @@ class Connection:
 				except tofpet2b.ConfigurationError as e:
 					pass
 
-		# (Locally) Sync ASICs
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
-
 		# Generate master sync (if available) and start acquisition
 		# First, cycle master sync enable on/off to calibrate sync reception
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
@@ -304,9 +326,20 @@ class Connection:
 		# Then enable master sync reception...
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
 		# ... and generate the sync
+		if self.__triggerUnit is not None:
+			# We have either
+			# (a) a single FEB/D with GbE
+			# (b) a distributed trigger
+			# Generate sync in the unit responsible for CLK and TGR
+			print "TGR unit: %2d, %2d" % (portID, slaveID)
+			portID, slaveID = self.__triggerUnit
+			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
+			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+		
+		# Enable acquisition
+		# This will include a 220 ms sleep period for daqd and the DAQ card to clear buffers	
 		self.__setAcquisitionMode(1)
-		sleep (0.120)	# Sync is at least 100 ms
-		# Finally, disable it
+		# Finally, disable sync reception
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
 		# Check that the ASIC configuration has not changed after sync
@@ -333,7 +366,10 @@ class Connection:
 		# Reconfigure ASICs TX to normal mode
 		for portID, slaveID in self.getActiveFEBDs():
 			# Same configuration as before...
-			gcfg = asicConfigByFEBD[(portID, slaveID)]
+			try:
+				gcfg = asicConfigByFEBD[(portID, slaveID)]
+			except KeyError:
+				continue
 			# .. but with the TX logic to normal
 			gcfg.setValue("tx_mode", 0b10)
 			for chipID in range(MAX_CHIPS):
@@ -937,7 +973,8 @@ class Connection:
 	# @param is a dictionary, as returned by get_hvdac_config
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
-		for (portID, slaveID, channelID), value in config.items():
+		for portID, slaveID, channelID in self.getActiveBiasChannels():
+			value = config[(portID, slaveID, channelID)]
 			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 

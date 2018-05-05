@@ -44,7 +44,7 @@ private:
 	unsigned short	brJ;
 	long long	brTime;
 	long long	brTimeDelta;
-	unsigned short	brChannelID;
+	unsigned int	brChannelID;
 	float		brToT;
 	float		brEnergy;
 	unsigned short	brTacID;

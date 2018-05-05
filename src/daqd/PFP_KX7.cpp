@@ -347,6 +347,9 @@ bool PFP_KX7::cardOK()
 
 int PFP_KX7::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	if(commandLength > 64) {
+		fprintf(stderr, "ERROR: PFP_KX7::sendCommand(...) commandLength too large: %d\n", commandLength);
+	}
 	setLastCommandTimeIdleCount();
 	int status;
 

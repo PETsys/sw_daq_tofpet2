@@ -43,7 +43,7 @@ private:
 	unsigned short	br1N, 		br2N;
 	unsigned short	br1J,		br2J;
 	long long	br1Time,	br2Time;
-	unsigned short	br1ChannelID,	br2ChannelID;
+	unsigned int	br1ChannelID,	br2ChannelID;
 	float		br1ToT,		br2ToT;
 	float		br1Energy, 	br2Energy;
 	unsigned short	br1TacID,	br2TacID;

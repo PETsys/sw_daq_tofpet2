@@ -40,7 +40,7 @@ private:
 	long long 	brStepEnd;
 
 	long long	brTime;
-	unsigned short	brChannelID;
+	unsigned int	brChannelID;
 	float		brToT;
 	float		brEnergy;
 	unsigned short	brTacID;
