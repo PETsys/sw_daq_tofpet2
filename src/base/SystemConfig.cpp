@@ -242,11 +242,11 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 		if(strlen(line) == 0) continue;
 		
 		unsigned portID, slaveID, chipID, channelID, tacID;
-		float p0, p1, p2, p3, p4;
+		float p0, p1, p2, p3, p4, p5, p6, p7, p8, p9;
 		
-		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t\t%f\t%f\t%f\t%f\t%f\n",
+		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\t%f\n",
 			&portID, &slaveID, &chipID, &channelID, &tacID,
-			&p0, &p1, &p2, &p3, &p4) != 10) continue;
+			  &p0, &p1, &p2, &p3, &p4, &p5, &p6, &p7, &p8, &p9) != 15) continue;
 		
 		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
 		
@@ -260,6 +260,11 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 		qacConfig.p2 = p2;
 		qacConfig.p3 = p3;
 		qacConfig.p4 = p4;
+		qacConfig.p5 = p5;
+		qacConfig.p6 = p6;
+		qacConfig.p7 = p7;
+		qacConfig.p8 = p8;
+		qacConfig.p9 = p9;
 	}
 	fclose(f);
 }

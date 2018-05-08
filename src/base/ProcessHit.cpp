@@ -61,7 +61,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		else {
 			out.timeEnd = in.timeEnd;
 			out.energy = in.efine;
-			
+		
 			if(useQDC) {
 				float ti = (out.timeEnd - out.time);
 				
@@ -71,25 +71,33 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				float p0 = cq.p0 - in.efine;
 				float t_eq = ti;
 				for(int iter = 0; iter < 5; iter++) {
-				
 					float f = (cq.p0 - in.efine) +
 						cq.p1 * t_eq + 
 						cq.p2 * t_eq * t_eq + 
 						cq.p3 * t_eq * t_eq * t_eq + 
-						cq.p4 * t_eq * t_eq * t_eq * t_eq;
-					
+						cq.p4 * t_eq * t_eq * t_eq * t_eq +
+						cq.p5 * t_eq * t_eq * t_eq * t_eq * t_eq + 
+						cq.p6 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq + 
+						cq.p7 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq + 
+						cq.p8 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq +
+				        	cq.p9 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq;
+
 					float f_ = cq.p1 +
 						cq.p2 * t_eq * 2 + 
-						cq.p3 * t_eq * t_eq * 3+ 
-						cq.p4 * t_eq * t_eq * t_eq * 4;
-						
+						cq.p3 * t_eq * t_eq * 3 + 
+						cq.p4 * t_eq * t_eq * t_eq * 4 +
+					        cq.p5 * t_eq * t_eq * t_eq * t_eq * 5 + 
+						cq.p6 * t_eq * t_eq * t_eq * t_eq * t_eq * 6 + 
+						cq.p7 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 7 + 
+						cq.p8 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 8 +
+					        cq.p9 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 9;
 					t_eq = t_eq - f / f_;
 				}
 				
 				// Express energy as t_eq - actual integration time
 				// WARNING Adding 1.0 clock to shift spectrum into positive range
 				// .. needs better understanding.
-				out.energy = t_eq - ti + 1.0;
+				out.energy = t_eq - ti ;
 				if(cq.p1 == 0) eventFlags |= 0x4;
 			}
 		}

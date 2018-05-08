@@ -54,7 +54,12 @@ struct CalibrationEntry {
 	float p2;
 	float p3;
 	float p4;
-	float xMin;
+        float p5;
+	float p6;
+	float p7;
+	float p8;
+        float p9;
+        float xMin;
 	float xMax;
 	bool valid;
 };
@@ -354,19 +359,19 @@ void calibrateAsic(
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
 		
-		float yMin = pFine->GetMinimum(0.0);
+		float yMin = pFine->GetMinimum(2);
 		float yMax = pFine->GetMaximum(1024.0);
 		float yRange = (yMax - yMin);
 
 		// Calibration range: 20% to 80%
-		float yLow = yMin + 0.2 * yRange;
-		float yHigh = yMax - 0.2 * yRange;
+		//float yLow = yMin + 0.2 * yRange;
+		//float yHigh = yMax - 0.2 * yRange;
 
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yLow));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(yHigh));
+		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMin+0.5));
+		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMax-0.5));
 
-		pFine->Fit("pol3", "QW", "", xMin, xMax);
-		TF1 *polN = pFine->GetFunction("pol3");
+		pFine->Fit("pol9", "QW", "", xMin, xMax);
+		TF1 *polN = pFine->GetFunction("pol9");
 		if(polN == NULL) {
 			fprintf(stderr, "WARNING: Could not make a fit. Skipping TAC (%02u %02d %02d %02d %u)\n",
 				portID, slaveID, chipID, channelID, tacID);
@@ -378,7 +383,13 @@ void calibrateAsic(
 		entry.p1 = polN->GetParameter(1);
 		entry.p2 = polN->GetParameter(2);
 		entry.p3 = polN->GetParameter(3);
-		entry.p4 = 0; //polN->GetParameter(4);
+		entry.p4 = polN->GetParameter(4);
+		entry.p5 = polN->GetParameter(5);
+		entry.p6 = polN->GetParameter(6);
+		entry.p7 = polN->GetParameter(7);
+		entry.p8 = polN->GetParameter(8);
+		entry.p9 = polN->GetParameter(9);
+
 		entry.xMin = xMin;
 		entry.xMax = xMax;
 		entry.valid = true;
@@ -391,7 +402,7 @@ void calibrateAsic(
 	TH1S **hControlE_list = new TH1S *[nQAC];
 	
 	int ControlHistogramNBins = 512;
-	float ControlHistogramRange = 0.5;
+	float ControlHistogramRange = 5;
 	for(unsigned long gid = gidStart; gid < gidEnd; gid++) {
 		pControlT_list[gid-gidStart] = NULL;
 		hControlE_list[gid-gidStart] = NULL;
@@ -428,12 +439,16 @@ void calibrateAsic(
 			
 			if(event.ti < entry.xMin || event.ti > entry.xMax) continue;
 			
-			float qExpected =entry.p0
+			float qExpected = entry.p0
 					+ entry.p1 * event.ti
 					+ entry.p2 * event.ti * event.ti
 					+ entry.p3 * event.ti * event.ti * event.ti
-					+ entry.p4 * event.ti * event.ti * event.ti * event.ti;
-			
+					+ entry.p4 * event.ti * event.ti * event.ti * event.ti
+				        + entry.p5 * event.ti * event.ti * event.ti * event.ti * event.ti
+					+ entry.p6 * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti
+					+ entry.p7 * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti
+					+ entry.p8 * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti +
+			                + entry.p8 * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti * event.ti;
 			float qError = event.qfine - qExpected;
 			
 			
@@ -576,7 +591,7 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
                 exit(1);
 	}
 
-	fprintf(f, "# portID\tslaveID\tchipID\tchannelID\ttacID\tp0\tp1\tp2\tp3\tp4\n");
+	fprintf(f, "# portID\tslaveID\tchipID\tchannelID\ttacID\tp0\tp1\tp2\tp3\tp4\tp5\tp6\tp7\tp8\n");
 
 	for(unsigned long gid = 0; gid < MAX_N_QAC; gid++) {
 		CalibrationEntry &entry = calibrationTable[gid];
@@ -587,9 +602,9 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 		unsigned slaveID = (gid >> 14) % 32;
 		unsigned portID = (gid >> 19) % 32;
 	
-		fprintf(f, "%d\t%d\t%d\t%d\t%d\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\n",
+		fprintf(f, "%d\t%d\t%d\t%d\t%d\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\n",
 			portID, slaveID, chipID, channelID, tacID,
-			entry.p0, entry.p1, entry.p2, entry.p3, entry.p4
+			entry.p0, entry.p1, entry.p2, entry.p3, entry.p4, entry.p5, entry.p6, entry.p7, entry.p8, entry.p9
 		);
 	}
 	fclose(f);

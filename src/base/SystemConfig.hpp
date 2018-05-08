@@ -27,6 +27,12 @@ namespace PETSYS {
 			float p2;
 			float p3;
 			float p4;
+		        float p5;
+			float p6;
+			float p7;
+			float p8;
+		  	float p9;
+
 		};
 		struct ChannelConfig {
 			float x, y, z;
