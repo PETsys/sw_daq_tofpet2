@@ -193,14 +193,14 @@ class Connection:
 
 	def disableEventGate(self):
 		self.__daqdGateMode(0)
-		for portID, slaveID in self.getActiveFEBDs():
+		for portID, slaveID in self.getActiveUnits():
 			self.write_config_register(portID, slaveID, 1, 0x0202, 0b0);
 			
 	## Enabled external gate function
 	# @param delay Delay of the external gate signal, in clock periods
 	def enableEventGate(self, delay):
 		self.__daqdGateMode(1)
-		for portID, slaveID in self.getActiveFEBDs():
+		for portID, slaveID in self.getActiveUnits():
 			self.write_config_register(portID, slaveID, 1, 0x0202, 0b1);
 			self.write_config_register(portID, slaveID, 10, 0x0294, delay);
 			
