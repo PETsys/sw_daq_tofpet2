@@ -5,6 +5,8 @@ import re
 from sys import stderr
 from string import upper
 import tofpet2b, tofpet2c
+import bitarray
+import math
 
 LOAD_BIAS_CALIBRATION	= 0x00000001
 LOAD_BIAS_SETTINGS 	= 0x00000002
@@ -166,40 +168,39 @@ class Config:
 		daqd.setAsicsConfig(asicsConfig)
 
 
-		# Disable builtin hardware trigger (if it exists)
-		for portID, slaveID in daqd.getActiveFEBDs():
-			daqd.write_config_register(portID, slaveID, 64, 0xD002, 0x0F000000)
-			daqd.write_config_register(portID, slaveID, 64, 0x0501, 0)
-			daqd.write_config_register(portID, slaveID, 64, 0xD000, 0)
-
+		daqd.disableCoincidenceTrigger()
 		if hw_trigger_enable:
-			if self.__hw_trigger["type"] == None:
-				raise "Cannot enable HW trigger: hw_trigger section was not present in configuration file"
-
-			if self.__hw_trigger["type"] == "builtin":
-				portID, slaveID = (0, 0) # There should be only one FEB/D connected via Ethernet when we use the builtin trigger
-				nRegions = 2**daqd.readFEBDConfig(portID, slaveID, 0, 21)
-
-				value = 0
-				value |= self.__hw_trigger["pre_window"]
-				value |= self.__hw_trigger["post_window"] << 4
-				value |= self.__hw_trigger["coincidence_window"] << 20
-				daqd.write_config_register(portID, slaveID, 64, 0xD002, value)
-
-				value = self.__hw_trigger["threshold"]
-				daqd.write_config_register(portID, slaveID, 64, 0x0501, value)
-
-				value = 0
+			if daqd.getTriggerUnit() is not None:
+				
+				# Trigger setup
+				portID, slaveID = daqd.getTriggerUnit()
+				daqd.write_config_register(portID, slaveID, 1, 0x0602, 0b1)
+				daqd.write_config_register(portID, slaveID, 3, 0x0606, self.__hw_trigger["coincidence_window"])
+				daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
+				daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
+				daqd.write_config_register(portID, slaveID, 10, 0x060C, 0) # Single fraction
+				
 				hw_trigger_regions = self.__hw_trigger["regions"]
+				nRegions = daqd.read_config_register(portID, slaveID, 16, 0x0600)
+				bytes_per_region = int(math.ceil(nRegions / 8.0))
+				bits_per_region = 8 * bytes_per_region
 				for r1 in range(nRegions):
-					# Set set bit to 1
-					value |= (1 << (r1*nRegions + r1))
+					region_mask = bitarray.bitarray([ 0 for n in range(bits_per_region) ], endian="little")
 					for r2 in range(nRegions):
 						if (r1,r2) in hw_trigger_regions or (r2,r1) in hw_trigger_regions:
-							# Enable coincidences between r1 and r2
-							value |= (1 << (r1*nRegions + r2))
-							value |= (1 << (r2*nRegions + r1))
-				daqd.write_config_register(portID, slaveID, 64, 0xD000, value)
+							region_mask[r2] = 1
+							
+							
+					region_data = [ ord(u) for u in region_mask.tobytes() ]
+					daqd.write_mem_ctrl(portID, slaveID, 6, 8, r1 * bytes_per_region, region_data)
+				
+				# FEB/D setup
+				for portID, slaveID in daqd.getActiveFEBDs():
+					daqd.write_config_register(portID, slaveID, 10, 0x0604,  self.__hw_trigger["threshold"])
+			
+			# WARNING missing DAQ trigger setup
+
+		
 			
 
 		return None

@@ -216,7 +216,9 @@ class Connection:
 		return None			
 			
 	def disableCoincidenceTrigger(self):
-		pass
+		if self.getTriggerUnit() is not None:
+			portID, slaveID = self.getTriggerUnit()
+			self.write_config_register(portID, slaveID, 1, 0x0602, 0b0)
 
 	def disableAuxIO(self):
 		for portID, slaveID in self.getActiveFEBDs():
