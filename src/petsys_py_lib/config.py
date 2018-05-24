@@ -213,12 +213,16 @@ class Config:
 				raise "Cannot enable HW trigger: hw_trigger section was not present in configuration file"
 
 			if self.__hw_trigger["type"] == "builtin":
-				portID, slaveID = (0, 0) # There should be only one FEB/D connected via Ethernet when we use the builtin trigger
+				if daqd.getTriggerUnit() is None:
+					portID, slaveID = (0, 0) # There should be only one FEB/D connected via Ethernet when we use the builtin trigger
+				else:
+					portID, slaveID = daqd.getTriggerUnit()
+
 				nRegions = 2**daqd.readFEBDConfig(portID, slaveID, 0, 21)
 
 				value = 0
 				value |= self.__hw_trigger["pre_window"]
-				value |= self.__hw_trigger["post_window"] << 4
+				value |= self.__hw_trigger["post_window"] << 8
 				value |= self.__hw_trigger["coincidence_window"] << 20
 				daqd.writeFEBDConfig(portID, slaveID, 0, 16,value)
 
@@ -228,14 +232,14 @@ class Config:
 				value = 0
 				hw_trigger_regions = self.__hw_trigger["regions"]
 				for r1 in range(nRegions):
+					value = 0
 					# Set set bit to 1
-					value |= (1 << (r1*nRegions + r1))
+					value |= (1 << r1)
 					for r2 in range(nRegions):
 						if (r1,r2) in hw_trigger_regions or (r2,r1) in hw_trigger_regions:
 							# Enable coincidences between r1 and r2
-							value |= (1 << (r1*nRegions + r2))
-							value |= (1 << (r2*nRegions + r1))
-				daqd.writeFEBDConfig(portID, slaveID, 0, 17, value)
+							value |= (1 << r2)
+					daqd.writeFEBDConfig(portID, slaveID, 4, r1, value)
 			
 
 		return None
