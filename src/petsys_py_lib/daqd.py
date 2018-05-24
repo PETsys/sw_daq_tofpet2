@@ -89,6 +89,10 @@ class Connection:
 		reply = [ n for n in range(12*16) if (mask & (1<<n)) != 0 ]
 		return reply
 
+	## Returns a (portID, slaveID) for the trigger unit
+	def getTriggerUnit(self):
+		return self.__triggerModule
+
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
 		if self.__activeFEBDs == []:
@@ -165,7 +169,11 @@ class Connection:
 		pass
 
 	def disableCoincidenceTrigger(self):
-		pass
+		value = 0xFFFFFFFFFFFFFFF
+		if self.getTriggerUnit() is not None:
+			portID, slaveID = self.getTriggerUnit()
+			self.writeFEBDConfig(portID, slaveID, 0, 16,value)
+
 
 	def disableAuxIO(self):
 		for portID, slaveID in self.getActiveFEBDs():
