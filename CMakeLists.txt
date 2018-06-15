@@ -63,6 +63,7 @@ configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_di
 configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)
 configure_file("src/petsys_util/read_communication_counters" "read_communication_counters" COPYONLY)
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
+configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 
 configure_file("src/petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" "petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" COPYONLY)
@@ -108,3 +109,6 @@ target_link_libraries("print_raw" common)
 
 add_executable("merge_raw" "src/petsys_util/merge_raw.cpp" )
 target_link_libraries("merge_raw" common)
+
+add_executable("analyze_asic_quick_scan" "src/petsys_util/analyze_asic_quick_scan.cpp" )
+target_link_libraries("analyze_asic_quick_scan" common)
