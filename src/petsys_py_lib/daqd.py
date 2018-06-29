@@ -146,7 +146,15 @@ class Connection:
 		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
 	
 	def getActiveBiasChannels(self):
-		return [ (p, s, c) for c in range(64) for (p, s) in self.getActiveFEBDs() ]
+		r = []
+		for p, s in self.getActiveFEBDs():
+			bias_type = self.getBiasType(p, s)
+			if bias_type == 1:
+				bias_channels = 64
+			else:
+				bias_channels = 16
+			r += [ (p, s, c) for c in range(bias_channels) ]
+		return r
 
 	## Disables test pulse 
 	def setTestPulseNone(self):
@@ -934,17 +942,10 @@ class Connection:
 		return bias_type
 	
 	def __setAllBiasToZero(self):
-		for (portID, slaveID), (bias_type, ) in self.__getActiveFEBDs().items():
-			if bias_type == 1:
-				nChannels = 64
-				value = 0
-			else:
-				nChannels = 16
-				value = 0
-			
-			for n in range(nChannels):
-				self.__write_hv_channel(portID, slaveID, n, value, forceAccess=True)
-				
+		for portID, slaveID, channelID in self.getActiveBiasChannels():
+			# 0 works for all types of bias mezzanines
+			self.__write_hv_channel(portID, slaveID, channelID, 0, forceAccess=True)
+
 	def __write_hv_channel(self, portID, slaveID, channelID, value, forceAccess=False):
 		cacheKey = (portID, slaveID, channelID)
 		if not forceAccess:
@@ -976,7 +977,7 @@ class Connection:
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
 		for portID, slaveID, channelID in self.getActiveBiasChannels():
-			value = config[(portID, slaveID, channelID)]
+                        value = config[(portID, slaveID, channelID)]
 			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
