@@ -20,22 +20,21 @@ for portID, slaveID in daqd.getActiveFEBDs():
 		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) has a bias mezzanine without PROM\n" % (portID, slaveID))
 		exit(1)
 		
-		
-	data = daqd.read_hv_m95256(0, 0, 0x0000, 8)
+	data = daqd.read_hv_m95256(portID, slaveID, 0x0000, 8)
 	if data != "PETSYS  ":
 		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) PROM does  not contain a calibration table\n" % (portID, slaveID))
 	
-	data = daqd.read_hv_m95256(0, 0, 0x0008, 8)
+	data = daqd.read_hv_m95256(portID, slaveID, 0x0008, 8)
 	promLayoutVersion, = struct.unpack("<Q", data)
 	
 	if promLayoutVersion == 0x01:
 		measuredVoltageFullScale = 100.0
 		
 		
-		data = daqd.read_hv_m95256(0, 0, 0x0010, 8)
+		data = daqd.read_hv_m95256(portID, slaveID, 0x0010, 8)
 		n_channels, = struct.unpack("<Q", data)
 
-		data = daqd.read_hv_m95256(0, 0, 0x0018, 8)
+		data = daqd.read_hv_m95256(portID, slaveID, 0x0018, 8)
 		n_x_values, = struct.unpack("<Q", data)
 		
 		address = 0x0020
@@ -43,7 +42,7 @@ for portID, slaveID in daqd.getActiveFEBDs():
 		v_meas = {}
 		adc_meas = {}
 		for i in range(n_x_values):
-			data = daqd.read_hv_m95256(0, 0, 0x020 + 2*i, 2)
+			data = daqd.read_hv_m95256(portID, slaveID, 0x020 + 2*i, 2)
 			address += 2
 			v, =  struct.unpack("<H", data)
 			x_values[i] = v
@@ -51,7 +50,7 @@ for portID, slaveID in daqd.getActiveFEBDs():
 		for j in range(n_channels):
 			ch_v_meas = [ 0.0 for i in range(n_x_values) ]
 			for i in range(n_x_values):
-				data = daqd.read_hv_m95256(0, 0, address, 4)
+				data = daqd.read_hv_m95256(portID, slaveID, address, 4)
 				address += 4
 				v, =  struct.unpack("<I", data)
 				v = v * measuredVoltageFullScale / (2**32)
@@ -61,7 +60,7 @@ for portID, slaveID in daqd.getActiveFEBDs():
 		for j in range(n_channels):
 			ch_adc_meas = [ 0 for i in range(n_x_values) ]
 			for i in range(n_x_values):
-				data = daqd.read_hv_m95256(0, 0, address, 4)
+				data = daqd.read_hv_m95256(portID, slaveID, address, 4)
 				address += 4
 				v, =  struct.unpack("<I", data)
 				ch_adc_meas[i] = v
