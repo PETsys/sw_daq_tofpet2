@@ -157,6 +157,10 @@ void *UDPFrameServer::doWork()
 
 int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	if(commandLength > 16) {
+		fprintf(stderr, "WARNING: commandLength %d > 16!\n", commandLength);
+	}
+	
 	boost::posix_time::ptime start = boost::posix_time::microsec_clock::local_time();	
 	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);	// WARNING This needs to be updated to 128 bit
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
@@ -231,6 +235,10 @@ int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 		);
 	}
 	
+	// Check that reply is not too long for DAQ
+	if(replyLength > 16) {
+		fprintf(stderr, "WARNING: replyLength %d > 16!\n", replyLength);
+	}
 	return replyLength;
 }
 
