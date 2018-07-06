@@ -684,10 +684,15 @@ class Connection:
 			w_padding + command + r_padding)
 		
 	def read_hv_m95256(self, portID, slaveID, address, n_bytes):
-		r = self.__m95256_ll(0, 0, 3, 0, [0b00000011, (address >> 8) & 0xFF, address & 0xFF], n_bytes)
-		r = r[1:-1]
-		r = ('').join([chr(x) for x in r ])
-		return r
+		# Break down reads into 4 byte chunks due to DAQ
+		rr = ''
+		for a in range(address, address + n_bytes, 4):
+			count = min([4, address + n_bytes - a])
+			r = self.__m95256_ll(0, 0, 3, 0, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
+			r = r[1:-1]
+			r = ('').join([chr(x) for x in r ])
+			rr += r
+		return rr
 	
 	def write_hv_m95256(self, portID, slaveID, address, data):
 		data = [ ord(x) for x in data ]
