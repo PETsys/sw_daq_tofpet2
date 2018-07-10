@@ -66,10 +66,9 @@ configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
 configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 
-configure_file("src/petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" "petsys_tables/pab_tofpet2tb_fake_channel_map.tsv" COPYONLY)
-configure_file("src/petsys_tables/pab_trigger_map.tsv" "petsys_tables/pab_trigger_map.tsv" COPYONLY)
-configure_file("src/petsys_tables/febd_gbe_trigger_map.tsv" "petsys_tables/febd_gbe_trigger_map.tsv" COPYONLY)
-configure_file("src/petsys_tables/febd_tofpet2tb_fake_channel_map.tsv" "petsys_tables/febd_tofpet2tb_fake_channel_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/febd_tofpet2_fake_channel_map.tsv" "petsys_tables/febd_tofpet2_fake_channel_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/febd_trigger_map.tsv" "petsys_tables/febd_trigger_map.tsv" COPYONLY)
+
 
 
 include_directories( ${ROOT_INCDIR} )
