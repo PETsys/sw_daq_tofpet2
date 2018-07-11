@@ -3,6 +3,8 @@
 #include <getopt.h>
 #include <assert.h>
 
+#include <boost/lexical_cast.hpp>
+
 #include <TFile.h>
 #include <TNtuple.h>
 
@@ -18,6 +20,9 @@ private:
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
+
+	int eventFractionToWrite;
+	long long eventCounter;
 	
 	TTree *hData;
 	TTree *hIndex;
@@ -39,8 +44,11 @@ private:
 
 
 public:
-	DataFileWriter(char *fName, FILE_TYPE fileType) {
+	DataFileWriter(char *fName, FILE_TYPE fileType, int eventFractionToWrite) {
 		this->fileType = fileType;
+		this->eventFractionToWrite = eventFractionToWrite;
+		this->eventCounter = 0;
+
 		stepBegin = 0;
 		
 		if (fileType == FILE_ROOT){
@@ -99,6 +107,10 @@ public:
 	void addEvents(float step1, float step2,EventBuffer<RawHit> *buffer) {
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
+			long long tmpCounter = eventCounter;
+			eventCounter += 1;
+			if((tmpCounter % 1024) >= eventFractionToWrite) continue;
+
 			RawHit &hit = buffer->get(i);
 			if (fileType == FILE_ROOT){
 				brStep1 = step1;
@@ -156,6 +168,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
 	fprintf(stderr,  "  -o \t\t\t Output file name - containins raw event data in ROOT format.\n");
 	fprintf(stderr, "Optional flags:\n");
+	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 
@@ -170,10 +183,13 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
         char *inputFilePrefix = NULL;
 	char *outputFileName = NULL;
+	long long eventFractionToWrite = 1024;
     
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
-                { "config", required_argument, 0, 0 }
+                { "config", required_argument, 0, 0 },
+		{ "writeFraction", required_argument }
+		
         };
 
         while(true) {
@@ -193,6 +209,7 @@ int main(int argc, char *argv[])
 			switch(optionIndex) {
 			case 0:		displayHelp(argv[0]); exit(0); break;
                         case 1:		configFileName = optarg; break;
+			case 2:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -221,7 +238,7 @@ int main(int argc, char *argv[])
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, FILE_ROOT);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, FILE_ROOT, eventFractionToWrite);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;

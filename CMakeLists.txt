@@ -55,19 +55,27 @@ configure_file("src/petsys_util/acquire_threshold_calibration" "acquire_threshol
 configure_file("src/petsys_util/process_threshold_calibration" "process_threshold_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
-configure_file("src/petsys_util/make_simple_sipm_bias_table" "make_simple_sipm_bias_table" COPYONLY)
-configure_file("src/petsys_util/make_simple_disc_table" "make_simple_disc_table" COPYONLY)
+configure_file("src/petsys_util/make_bias_calibration_table_from_prom" "make_bias_calibration_table_from_prom" COPYONLY)
+configure_file("src/petsys_util/make_bias_calibration_table_from_files" "make_bias_calibration_table_from_files" COPYONLY)
+configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bias_settings_table" COPYONLY)
 configure_file("src/petsys_util/startup" "startup" COPYONLY)
+configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_disc_settings_table" COPYONLY)
 configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)
 configure_file("src/petsys_util/read_communication_counters" "read_communication_counters" COPYONLY)
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
+configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
+
+configure_file("src/petsys_tables/febd_tofpet2_fake_channel_map.tsv" "petsys_tables/febd_tofpet2_fake_channel_map.tsv" COPYONLY)
+configure_file("src/petsys_tables/febd_trigger_map.tsv" "petsys_tables/febd_trigger_map.tsv" COPYONLY)
+
+
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ROOT_CXX_FLAGS}")
 
-set ( COMMON_SOURCES 
+add_library ( common STATIC
 	"src/base/ThreadPool.cpp"
 	"src/base/SystemConfig.cpp"
 	"src/raw_data/RawReader.cpp"
@@ -77,10 +85,29 @@ set ( COMMON_SOURCES
 	"src/base/SimpleGrouper.cpp"
 	"src/base/CoincidenceGrouper.cpp"
 )
-add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" ${COMMON_SOURCES} )
-add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_raw" "src/petsys_util/convert_raw_to_raw.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_group" "src/petsys_util/convert_raw_to_group.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" ${COMMON_SOURCES} )
-add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" ${COMMON_SOURCES} )
-add_executable("print_raw" "src/petsys_util/print_raw.cpp" ${COMMON_SOURCES} )
+add_executable("process_tdc_calibration" "src/petsys_util/process_tdc_calibration.cpp" )
+target_link_libraries("process_tdc_calibration" common)
+
+add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" )
+target_link_libraries("process_qdc_calibration" common)
+
+add_executable("convert_raw_to_raw" "src/petsys_util/convert_raw_to_raw.cpp" )
+target_link_libraries("convert_raw_to_raw" common)
+
+add_executable("convert_raw_to_group" "src/petsys_util/convert_raw_to_group.cpp" )
+target_link_libraries("convert_raw_to_group" common)
+
+add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" )
+target_link_libraries("convert_raw_to_coincidence" common)
+
+add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" )
+target_link_libraries("convert_raw_to_singles" common)
+
+add_executable("print_raw" "src/petsys_util/print_raw.cpp" )
+target_link_libraries("print_raw" common)
+
+add_executable("merge_raw" "src/petsys_util/merge_raw.cpp" )
+target_link_libraries("merge_raw" common)
+
+add_executable("analyze_asic_quick_scan" "src/petsys_util/analyze_asic_quick_scan.cpp" )
+target_link_libraries("analyze_asic_quick_scan" common)

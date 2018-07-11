@@ -347,6 +347,9 @@ bool PFP_KX7::cardOK()
 
 int PFP_KX7::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	if(commandLength > 64) {
+		fprintf(stderr, "ERROR: PFP_KX7::sendCommand(...) commandLength too large: %d\n", commandLength);
+	}
 	setLastCommandTimeIdleCount();
 	int status;
 
@@ -474,6 +477,19 @@ int PFP_KX7::WriteAndCheck(int reg, uint32_t *data, int count) {
 	return (int) Status;
 };
 
+int PFP_KX7::ReadWithoutCheck(int reg, uint32_t *data, int count) {
+	assert(reg >= 0);
+	assert((reg/4 + count) >= 0);
+	assert((reg/4 + count) <= 1024);
+
+	reg = BaseAddrReg + reg;
+
+	DWORD Status;
+	Status = PFP_Read(Card, reg, count * 4, data, WDC_MODE_32, WDC_ADDR_RW_DEFAULT);
+	return (int) Status;
+};
+
+
 int PFP_KX7::ReadAndCheck(int reg, uint32_t *data, int count) {
 	assert(reg >= 0);
 	assert((reg/4 + count) >= 0);
@@ -515,7 +531,7 @@ uint64_t PFP_KX7::getPortCounts(int channel, int whichCount)
 	setLastCommandTimeIdleCount();
 	pthread_mutex_lock(&hwLock);
 	uint64_t reply;
-	ReadAndCheck((statusReg + 1 + 6*channel + 2*whichCount)* 4, (uint32_t *)&reply, 2);
+	ReadWithoutCheck((statusReg + 1 + 6*channel + 2*whichCount)* 4, (uint32_t *)&reply, 2);
 	setLastCommandTimeIdleCount();
 	pthread_mutex_unlock(&hwLock);
 	return reply;

@@ -35,9 +35,6 @@
 
 using namespace PETSYS;
 
-// Use 128K file buffers
-#define BUFFER_SIZE	131072
-
 struct CalibrationEvent {
 	unsigned long gid;
 	double ti;
@@ -60,10 +57,10 @@ struct CalibrationEntry {
 };
 
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *tmpFilePrefix, int verbosity);
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix);
+void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity);
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax);
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
-void deleteTemporaryFiles(const char *tmpFilePrefix);
+void deleteTemporaryFiles(const char *outputFilePrefix);
 
 void displayUsage() {
 }
@@ -74,7 +71,6 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
 	char *inputFilePrefix = NULL;
 	char *outputFilePrefix = NULL;
-	char *tmpFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
 	int verbosity = 0;
@@ -84,8 +80,7 @@ int main(int argc, char *argv[])
                 { "config", required_argument, 0, 0 },
                 { "no-sorting", no_argument, 0, 0 },
                 { "keep-temporary", no_argument, 0, 0 },
-		{ "verbosity", required_argument, 0, 0 },
-		{ "tmp", required_argument }
+		{ "verbosity", required_argument, 0, 0 }
         };
 
 	while(true) {
@@ -108,7 +103,6 @@ int main(int argc, char *argv[])
 			case 2:		doSorting = false; break;
 			case 3:		keepTemporary = true; break;
 			case 4:		verbosity = boost::lexical_cast<int>(optarg); break;
-			case 5:		tmpFilePrefix = optarg; break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -117,7 +111,6 @@ int main(int argc, char *argv[])
 		}
 
 	}
-	if(tmpFilePrefix == NULL) tmpFilePrefix = outputFilePrefix;
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, SystemConfig::LOAD_TDC_CALIBRATION);
 	
@@ -140,13 +133,13 @@ int main(int argc, char *argv[])
 	for(int gid = 0; gid < MAX_N_QAC; gid++) calibrationTable[gid].valid = false;
 
 	if(doSorting) {
-		sortData(config, inputFilePrefix, tmpFilePrefix, verbosity);
+		sortData(config, inputFilePrefix, outputFilePrefix, verbosity);
 	}
-	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax, tmpFilePrefix);
+ 	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
-		deleteTemporaryFiles(tmpFilePrefix);
+		deleteTemporaryFiles(outputFilePrefix);
 	}
 
 	return 0;
@@ -154,16 +147,16 @@ int main(int argc, char *argv[])
 
 class EventWriter {
 private:
-	char *tmpFilePrefix;
+	char *outputFilePrefix;
 	unsigned long maxgAsicID;
 	char **tmpDataFileNames;
 	FILE **tmpDataFiles;
 	FILE *tmpListFile;
 	
 public:
-	EventWriter(char *tmpFilePrefix)
+	EventWriter(char *outputFilePrefix)
 	{
-		this->tmpFilePrefix = tmpFilePrefix;
+		this->outputFilePrefix = outputFilePrefix;
 		maxgAsicID = 0;	
 		tmpDataFileNames = new char *[MAX_N_ASIC];
 		tmpDataFiles = new FILE *[MAX_N_ASIC];
@@ -175,7 +168,7 @@ public:
 		
 		// Create the temporary list file
 		char fName[1024];
-		sprintf(fName, "%s_list.tmp", tmpFilePrefix);
+		sprintf(fName, "%s_list.tmp", outputFilePrefix);
 		tmpListFile = fopen(fName, "w");
 		if(tmpListFile == NULL) {
 			fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
@@ -204,14 +197,12 @@ public:
 				unsigned slaveID = (gChannelID >> 12) % 32;
 				unsigned portID = (gChannelID >> 17) % 32;
 				char *fn = new char[1024];
-				sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", tmpFilePrefix, portID, slaveID, chipID);
+				sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", outputFilePrefix, portID, slaveID, chipID);
 				f = fopen(fn, "w");
 				if(f == NULL) {
-					fprintf(stderr, "Could not open '%s' for writing: %s\n", fn, strerror(errno));
+					fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 					exit(1);
 				}
-				setbuffer(f, new char[BUFFER_SIZE], BUFFER_SIZE);
-				posix_fadvise(fileno(f), 0, 0, POSIX_FADV_SEQUENTIAL);
 				tmpDataFiles[gAsicID] = f;
 				tmpDataFileNames[gAsicID] = fn;
 			}
@@ -254,12 +245,12 @@ public:
 	};
 };
 
-void sortData(SystemConfig *config, char *inputFilePrefix, char *tmpFilePrefix, int verbosity)
+void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity)
 {
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	assert(reader->isQDC());
-	EventWriter *eventWriter = new EventWriter(tmpFilePrefix);
+	EventWriter *eventWriter = new EventWriter(outputFilePrefix);
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		reader->processStep(stepIndex, (verbosity > 0),
 				new ProcessHit(config, true,
@@ -313,13 +304,12 @@ void calibrateAsic(
 	struct timespec t0;
 	clock_gettime(CLOCK_REALTIME, &t0);
 
-	unsigned READ_BUFFER_SIZE = BUFFER_SIZE / sizeof(CalibrationEvent);
+	unsigned READ_BUFFER_SIZE = 32*1024*1024 / sizeof(CalibrationEvent);
 	CalibrationEvent *eventBuffer = new CalibrationEvent[READ_BUFFER_SIZE];
 	int r;
 	bool asicPresent = false;
 	lseek(dataFile, 0, SEEK_SET);
 	while((r = read(dataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
-		readahead(dataFile, lseek(dataFile, 0, SEEK_CUR), BUFFER_SIZE);
 		int nEvents = r / sizeof(CalibrationEvent);
 		for(int i = 0; i < nEvents; i++) {
 			CalibrationEvent &event = eventBuffer[i];
@@ -353,18 +343,19 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
+// 		float yMin = FLT_MAX;
+// 		float yMax = FLT_MIN;
+// 		for(int i = 1; i < nBins+1; i++) {
+// 			if(pFine->GetBinEntries(i) < 10) continue;
+// 			float v = pFine->GetBinContent(i);
+// 			if(v < yMin) yMin = v;
+// 			if(v > yMax) yMax = v;
+// 		}
+// 		
+		// Try to calibrate only between 100 and 400 ADC
+		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(100));
+		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(400));
 		
-		float yMin = pFine->GetMinimum(0.0);
-		float yMax = pFine->GetMaximum(1024.0);
-		float yRange = (yMax - yMin);
-
-		// Calibration range: 20% to 80%
-		float yLow = yMin + 0.2 * yRange;
-		float yHigh = yMax - 0.2 * yRange;
-
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yLow));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(yHigh));
-
 		pFine->Fit("pol3", "QW", "", xMin, xMax);
 		TF1 *polN = pFine->GetFunction("pol3");
 		if(polN == NULL) {
@@ -416,7 +407,6 @@ void calibrateAsic(
 	
 	lseek(dataFile, 0, SEEK_SET);
 	while((r = read(dataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
-		readahead(dataFile, lseek(dataFile, 0, SEEK_CUR), BUFFER_SIZE);
 		int nEvents = r / sizeof(CalibrationEvent);
 		for (int i = 0; i < nEvents; i++) {
 			CalibrationEvent &event = eventBuffer[i];
@@ -456,7 +446,6 @@ void calibrateAsic(
 	}
 
 	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
-	TH1F *hXMin = new TH1F("hXMin", "", 64*4, 0, 64);
 	for(unsigned long channelID = 0; channelID < 64; channelID++) {
 		for(unsigned long tacID = 0; tacID < 4; tacID++) {
 			unsigned long gid = gidStart | (channelID << 2) | tacID;
@@ -466,8 +455,6 @@ void calibrateAsic(
 			TH1S *hControlE = hControlE_list[gid-gidStart];
 			double counts = hControlE->GetEntries();
 			hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
-			
-			hXMin->SetBinContent(1 + 4*channelID + tacID, entry.xMin);
 		}
 	}
 
@@ -475,15 +462,8 @@ void calibrateAsic(
 	c->Divide(2, 2);
 	c->cd(1);
 	hCounts->GetXaxis()->SetTitle("Channel");
-	hCounts->GetYaxis()->SetTitle("Counts");
 	hCounts->GetYaxis()->SetRangeUser(0, maxCounts * 1.10);
 	hCounts->Draw("HIST");
-
-	c->cd(2);
-	hXMin->GetXaxis()->SetTitle("Channel");
-	hXMin->GetYaxis()->SetTitle("Min integration time [Clock]");
-	hXMin->GetYaxis()->SetRangeUser(0, 200);
-	hXMin->Draw("HIST");
 
 	sprintf(fName, "%s.pdf", summaryFilePrefix);
 	c->SaveAs(fName);
@@ -498,10 +478,10 @@ void calibrateAsic(
 	delete tmp0;	
 }
 
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix)
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax)
 {
 	char fName[1024];
-	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
+	sprintf(fName, "%s_list.tmp", outputFilePrefix);
 	FILE *tmpListFile = fopen(fName, "r");
 	if(tmpListFile == NULL) {
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
@@ -513,7 +493,7 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 	sysinfo(&si);
 	int maxWorkersByMem = si.totalram * si.mem_unit / (1LL * 1024*1024*1024);
 	int maxWorkers = (nCPU < maxWorkersByMem) ? nCPU : maxWorkersByMem;
-
+	
 	unsigned long gAsicID;
 	char tmpDataFileName[1024];
 	int nWorkers = 0;
@@ -533,9 +513,7 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
 			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
-			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
 			calibrateAsic(gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix, nBins, xMin, xMax);
-			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_DONTNEED);
 			exit(0);
 		} else {
 			nWorkers += 1;
@@ -595,10 +573,10 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	fclose(f);
 }
 
-void deleteTemporaryFiles(const char *tmpFilePrefix)
+void deleteTemporaryFiles(const char *outputFilePrefix) 
 {
         char fName[1024];
-        sprintf(fName, "%s_list.tmp", tmpFilePrefix);
+        sprintf(fName, "%s_list.tmp", outputFilePrefix);
         FILE *tmpListFile = fopen(fName, "r");
         if(tmpListFile == NULL) {
                 fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
