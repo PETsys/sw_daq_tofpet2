@@ -23,6 +23,7 @@ for portID, slaveID in daqd.getActiveFEBDs():
 	data = daqd.read_hv_m95256(portID, slaveID, 0x0000, 8)
 	if data != "PETSYS  ":
 		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) PROM does  not contain a calibration table\n" % (portID, slaveID))
+		exit(1)
 	
 	data = daqd.read_hv_m95256(portID, slaveID, 0x0008, 8)
 	promLayoutVersion, = struct.unpack("<Q", data)
