@@ -277,7 +277,7 @@ class Connection:
 			
 			
 		# Power on ASICs
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0213, 0b11) 
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0213, 0b11) 
 		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
