@@ -1016,6 +1016,13 @@ class Connection:
 		wrPointer, rdPointer = (0, 0)
 		while wrPointer == rdPointer:
 			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+
+		t0 = time()
+		# For 50 ms, dump all data
+		while (time() - t0) < 0.050:
+			# Set the read pointer to write pointer, in order to consume all available frames in buffer
+			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer();
+			self.__setDataFrameReadPointer(wrPointer);
 		
 		bs = self.__shm.getSizeInFrames()
 		index = rdPointer % bs
