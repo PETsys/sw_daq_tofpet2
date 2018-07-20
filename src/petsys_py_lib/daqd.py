@@ -1003,9 +1003,6 @@ class Connection:
         # @param step2 Tag to a given variable specific to this acquisition
         # @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
-		self.__synchronizeDataToConfig()
-
-		#print "Python:: acquiring %f %f"  % (step1, step2)
 		(pin, pout) = (self.__helperPipe.stdin, self.__helperPipe.stdout)
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
