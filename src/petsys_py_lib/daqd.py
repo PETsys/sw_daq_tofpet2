@@ -99,12 +99,12 @@ class Connection:
 	def getTriggerUnit(self):
 		if self.__triggerUnit is None:
 			self.__activeFEBDs, self.__triggerUnit = self.__scanUnits_ll()
-		
+
 		return self.__triggerUnit
 		
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
-		return self.__getActiveFEBDs().keys()
+		return sorted(self.__getActiveFEBDs().keys())
 	
 	def __getActiveFEBDs(self):
 		if self.__activeFEBDs == {}:
@@ -133,11 +133,11 @@ class Connection:
 				
 				if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
 					u = (portID, slaveID)
-		
+
 		return r, u
 
 	def getActiveAsics(self):
-		return self.__activeAsics.keys()
+		return sorted(self.__activeAsics.keys())
 
 	def getAsicSubtype(self, portID, slaveID, chipID):
 		return self.__activeAsics[(portID, slaveID, chipID)]
@@ -256,7 +256,7 @@ class Connection:
 		self.__setAcquisitionMode(0)
 
 		activePorts = self.getActivePorts()
-		print "INFO: active FEB/D on ports: ", (", ").join([str(x) for x in self.getActivePorts()])
+		print "INFO: active units on ports: ", (", ").join([str(x) for x in self.getActivePorts()])
 
 		# Disable everything
 		self.setTestPulseNone()
@@ -336,11 +336,12 @@ class Connection:
 		# Then enable master sync reception...
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
 		# ... and generate the sync
-		if self.__triggerUnit is not None:
+		if self.getTriggerUnit() is not None:
 			# We have either
 			# (a) a single FEB/D with GbE
 			# (b) a distributed trigger
 			# Generate sync in the unit responsible for CLK and TGR
+			portID, slaveID = self.getTriggerUnit()
 			print "TGR unit: %2d, %2d" % (portID, slaveID)
 			portID, slaveID = self.__triggerUnit
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
@@ -449,7 +450,7 @@ class Connection:
 
 		self.__setSorterMode(True)
 
-		print "INFO: Active ASICs found:"
+		print "INFO:"
 		for portID, slaveID in self.getActiveFEBDs():
 			lst = []
 
@@ -463,8 +464,10 @@ class Connection:
 			self.write_config_register(portID, slaveID, 64, 0x0318, enable_vector)
 
 			if lst != []:
+				n = len(lst)
+				lst.sort()
 				lst = (", ").join([str(lChipID) for lChipID in lst])
-				print " FEB/D port %2d slave %2d: %s" % (portID, slaveID, lst)
+				print " FEB/D port %2d slave %2d has %2d active ASICs: %s" % (portID, slaveID, n, lst)
 
 		
 		return None
