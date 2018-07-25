@@ -65,12 +65,6 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	# Load hw_trigger configuration IF hw_trigger section exists
 	hw_trigger_config = { "type" : None }
 	if configParser.has_section("hw_trigger"):
-	
-		hw_trigger_config["type"] = configParser.get("hw_trigger", "type")
-		if hw_trigger_config["type"] not in [ "builtin" ]:
-			stderr.write("Error: type must be 'builtin'\n")
-			exit(1)
-
 		hw_trigger_config["threshold"] = configParser.getint("hw_trigger", "threshold")
 		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
 		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
@@ -189,8 +183,7 @@ class Config:
 					for r2 in range(nRegions):
 						if (r1,r2) in hw_trigger_regions or (r2,r1) in hw_trigger_regions:
 							region_mask[r2] = 1
-							
-							
+
 					region_data = [ ord(u) for u in region_mask.tobytes() ]
 					daqd.write_mem_ctrl(portID, slaveID, 6, 8, r1 * bytes_per_region, region_data)
 				

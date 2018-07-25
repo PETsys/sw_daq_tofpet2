@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import argparse
+import struct
+import sys
+
+
+def main():
+	parser = argparse.ArgumentParser(description='Make a simple channel and trigger map')
+	parser.add_argument("-o", type=str, required=True, help="Output file")
+	parser.add_argument("--port", type=int, required=True, action="append", help="Port ID")
+	parser.add_argument("--slave", type=int, required=True, action="append", help="Slave ID")
+	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=True, action="append", help="File name")
+	args = parser.parse_args()
+
+	channelOutputFile = open(args.o + "channel_map.tsv", "w")
+	triggerOutputFile = open(args.o + "trigger_map.tsv", "w")
+
+	region_list = []
+	for i in range(len(args.port)):
+		portID = int(args.port[i])
+		slaveID = int(args.slave[i])
+		trigger_port = int(args.trigger_port[i])
+		
+		for quadrant in range(4):
+			trigger_region = 4 * trigger_port + quadrant
+			region_list.append(trigger_region)
+			for asicID in range(4*quadrant, 4*quadrant + 4):
+				for channelID in range(64):
+					channelOutputFile.write("%(portID)s\t%(slaveID)d\t%(asicID)d\t%(channelID)d\t%(trigger_region)d\t0\t0\t0.0\t0.0\t0.0\n" % locals())
+					
+			triggerOutputFile.write("%(trigger_region)d\t%(trigger_region)d\tM\n" % locals())
+					
+	for i in range(0, len(region_list)):
+		for j in range(i+1, len(region_list)):
+			trigger_region1 = region_list[i]
+			trigger_region2 = region_list[j]
+			if trigger_region1 == trigger_region2: 
+				continue
+			
+			triggerOutputFile.write("%(trigger_region1)d\t%(trigger_region2)d\tC\n" % locals())
+	
+	channelOutputFile.close()
+	triggerOutputFile.close()
+		
+if __name__ == '__main__':
+	main()
