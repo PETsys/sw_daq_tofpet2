@@ -320,8 +320,16 @@ int main(int argc, char *argv[])
 	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
 		for(int i = expectedAsicID * 256; i < (expectedAsicID+1)*256; i++) {
 			result_t &tac_result = tac_result_list[i];
-			fprintf(tacReportFile, "TAC %8d %s %4d %4d %4d %5.1f % 5.3f %5.1f % 5.3f %5.1f % 5.3f %5.3f % 5.3f\n",
-                                i,
+			
+			unsigned n = i;
+			unsigned tacID = n % 4; n /= 4;
+			unsigned channelID = n % 64; n /= 64;
+			unsigned asicID = n % 64; n /= 64;
+			unsigned slaveID = n % 32; n /= 32;
+			unsigned portID = n % 32; n /= 32;
+			
+			fprintf(tacReportFile, "%2u %2u %2u %2u %u %s %4d %4d %4d %5.1f % 5.3f %5.1f % 5.3f %5.1f % 5.3f %5.3f % 5.3f\n",
+                                portID, slaveID, asicID, channelID, tacID,
                                 tac_result.pass ? "PASS" : "FAIL",
                                 tac_result.tdca_count, tac_result.qdca_count, tac_result.fetp_count,
                                 tac_result.tdca_t_slope, tac_result.tdca_t_rms,
@@ -332,7 +340,11 @@ int main(int argc, char *argv[])
 		}
 
 		bool asicOK = asic_list[expectedAsicID];
-		printf("ASIC %d is %s\n", expectedAsicID, asicOK ? "PASS" : "FAIL");
+		unsigned n = expectedAsicID;
+		unsigned asicID = n % 64; n /= 64;
+		unsigned slaveID = n % 32; n /= 32;
+		unsigned portID = n % 32; n /= 32;
+		printf("ASIC (%2u %2u %u) is %s\n", portID, slaveID, asicID, asicOK ? "PASS" : "FAIL");
 		allOK &= asicOK;
 	}
 		
