@@ -497,15 +497,37 @@ void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefi
 		exit(1);
 	}
 	
-	int nCPU = sysconf(_SC_NPROCESSORS_ONLN);
-	struct sysinfo si;
-	sysinfo(&si);
-	int maxWorkersByMem = si.totalram * si.mem_unit / (1LL * 1024*1024*1024);
-	int maxWorkers = (nCPU < maxWorkersByMem) ? nCPU : maxWorkersByMem;
 	
 	unsigned long gAsicID;
 	char tmpDataFileName[1024];
+	
+	off_t max_tmp_file_size = 0;
+	struct stat tmp_file_stat;
+	rewind(tmpListFile);
+	while(fscanf(tmpListFile, "%lu %[^\n]\n", &gAsicID, tmpDataFileName) == 2) {
+		int r = stat(tmpDataFileName,  &tmp_file_stat);
+		if (r == 0) {
+			if(tmp_file_stat.st_size > max_tmp_file_size) max_tmp_file_size = tmp_file_stat.st_size;
+		}
+	}
+
+	int nCPU = sysconf(_SC_NPROCESSORS_ONLN);
+	
+	/*
+	 * Restrict number of worker processed based on temporary file size and available RAM.
+	 * The calibration process needs to read the temporary file size multiple times
+	 * which is very slow if the system does not have enough RAM to cache the files
+	 */
+	struct sysinfo si;
+	sysinfo(&si);
+	int maxWorkersByMem = si.totalram * si.mem_unit / (1LL * 1024*1024*1024 + max_tmp_file_size);
+	int maxWorkers = (nCPU < maxWorkersByMem) ? nCPU : maxWorkersByMem;
+	
+	// Ensure we have at least one worker or the software does not run properly
+	maxWorkers = maxWorkers > 1 ? maxWorkers : 1;
+	
 	int nWorkers = 0;
+	rewind(tmpListFile);
 	while(fscanf(tmpListFile, "%lu %[^\n]\n", &gAsicID, tmpDataFileName) == 2) {
 		int tmpDataFile = open(tmpDataFileName, O_RDONLY);
 		if(tmpDataFile == -1) {
