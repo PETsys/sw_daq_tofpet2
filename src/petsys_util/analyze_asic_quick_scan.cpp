@@ -11,6 +11,9 @@
 #include <TH3S.h>
 #include <TProfile.h>
 #include <math.h>
+#include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 using namespace PETSYS;
 
@@ -241,41 +244,67 @@ int main(int argc, char *argv[])
 		fetpDataStore->closeStep(step1, step2);
 	}
 	delete reader;
+
+	sprintf(fName, "%s_expected.txt", inputFilePrefix);
+	FILE * expectedListFile = fopen(fName, "r");
+	int expectedAsicID;
 	
-	result_t * tac_result_list= new result_t [MAX_TAC_ID];
-	
-	for(int i = 0; i < MAX_TAC_ID; i++) {
-		result_t &tac_result = tac_result_list[i];
-		tac_result = { true , 0, 0, 0, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN};
-		
-		tac_result.tdca_count = (tdcaDataStore->hList_T[i] == NULL) ? 0 : tdcaDataStore->hList_T[i]->GetEntries();
-		tac_result.qdca_count = (qdcaDataStore->hList_T[i] == NULL) ? 0 : qdcaDataStore->hList_T[i]->GetEntries();
-		tac_result.fetp_count = (fetpDataStore->hList_T[i] == NULL) ? 0 : fetpDataStore->hList_T[i]->GetEntries();
-		
-		if (tac_result.tdca_count > 200) {
-			tac_result.pass &= check_tdc(i, tdcaDataStore->hList_T[i], tac_result.tdca_t_slope, tac_result.tdca_t_rms);
-			tac_result.pass &= check_tdc(i, tdcaDataStore->hList_E[i], tac_result.tdca_e_slope, tac_result.tdca_e_rms);
-		}
-		else {
-			tac_result.pass = false;
+	result_t * tac_result_list = (result_t *)mmap(NULL, sizeof(result_t)*MAX_TAC_ID, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
+	int maxWorkers = sysconf(_SC_NPROCESSORS_ONLN);
+	int nWorkers = 0;
+
+	rewind(expectedListFile);
+	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
+		while(nWorkers >= maxWorkers) {
+			wait(NULL);
+			nWorkers -= 1;
 		}
 		
-		
-		if(tac_result.qdca_count > 200) {
-			tac_result.pass &= check_qdc(i, qdcaDataStore->hList_E[i], tac_result.qdca_slope, tac_result.qdca_rms);
-		}
-		else {
-			tac_result.pass = false;
+		if (fork() == 0) {
+			// We are in child
+			for(int i = (expectedAsicID*256); i < (expectedAsicID*256 + 256); i++) {
+				result_t &tac_result = tac_result_list[i];
+				tac_result = { true , 0, 0, 0, NAN, NAN, NAN, NAN, NAN, NAN, NAN, NAN};
+				
+				tac_result.tdca_count = (tdcaDataStore->hList_T[i] == NULL) ? 0 : tdcaDataStore->hList_T[i]->GetEntries();
+				tac_result.qdca_count = (qdcaDataStore->hList_T[i] == NULL) ? 0 : qdcaDataStore->hList_T[i]->GetEntries();
+				tac_result.fetp_count = (fetpDataStore->hList_T[i] == NULL) ? 0 : fetpDataStore->hList_T[i]->GetEntries();
+				
+				if (tac_result.tdca_count > 200) {
+					tac_result.pass &= check_tdc(i, tdcaDataStore->hList_T[i], tac_result.tdca_t_slope, tac_result.tdca_t_rms);
+					tac_result.pass &= check_tdc(i, tdcaDataStore->hList_E[i], tac_result.tdca_e_slope, tac_result.tdca_e_rms);
+				}
+				else {
+					tac_result.pass = false;
+				}
+				
+				
+				if(tac_result.qdca_count > 200) {
+					tac_result.pass &= check_qdc(i, qdcaDataStore->hList_E[i], tac_result.qdca_slope, tac_result.qdca_rms);
+				}
+				else {
+					tac_result.pass = false;
+				}
+
+				if(tac_result.fetp_count > 50) {
+					tac_result.pass &= check_fetp_rms(i, fetpDataStore->hList_T[i], tac_result.fetp_t_rms);
+					tac_result.pass &= check_fetp_rms(i, fetpDataStore->hList_E[i], tac_result.fetp_q_rms);
+				}
+				else {
+					tac_result.pass = false;
+				}				
+			}
+			return 0;
+		} else {
+			nWorkers += 1;
 		}
 
-		if(tac_result.fetp_count > 50) {
-			tac_result.pass &= check_fetp_rms(i, fetpDataStore->hList_T[i], tac_result.fetp_t_rms);
-			tac_result.pass &= check_fetp_rms(i, fetpDataStore->hList_E[i], tac_result.fetp_q_rms);
-		}
-		else {
-			tac_result.pass = false;
-		}
 	}
+	
+	while(nWorkers > 0) {
+		wait(NULL);
+		nWorkers -= 1;
+	}	
 
 	bool * asic_list = new bool [MAX_ASIC_ID];
 	for(int asicID = 0; asicID < MAX_ASIC_ID; asicID++) {
@@ -286,10 +315,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	rewind(expectedListFile);
 	bool allOK = true;
-	sprintf(fName, "%s_expected.txt", inputFilePrefix);
-	FILE * expectedListFile = fopen(fName, "r");
-	int expectedAsicID;
 	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
 		for(int i = expectedAsicID * 256; i < (expectedAsicID+1)*256; i++) {
 			result_t &tac_result = tac_result_list[i];
