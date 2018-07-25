@@ -24,33 +24,40 @@ nSteps = 10
 
 for it in range(0,nSteps,1):        
         T = []
-        isStable = True
+        isStable = True                                                                       
         for portID, slaveID in daqd.getActiveFEBDs():
-                sensorList = daqd.getTemperatureSensorsList(portID, slaveID)
-                #print "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, len(sensorList))
-                print "\nTemperature measurements:"
-                for sensorType, chipID, channelID in sensorList:
-                        #print sensorType, chipID, channelID
-                        u =  daqd.getTemperatureSensorReading(portID, slaveID, chipID, channelID)
-                        
-                        if sensorType == 0x0000:
-                                if(chipID%2==0):
-                                        print "\tSensor %2d: %2d ºC" % (chipID, u) 
-                                        T.append(u)
-                        else:
-                                v = u*2.5/4.096
-                                if channelID in [0, 3]:
-                                        # LMT86
-                                        temp = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
-                                        if channelID == 0 or channelID == 3:
-                                                T.append(temp)
-                                                print "\tSensor %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (chipID, channelID, temp, u, v)
+                femType = daqd.read_config_register(portID, slaveID, 16, 0x0002)
+                print "FEB/D portID %2d slaveID %2d Temperature measurements: " % (portID, slaveID);
+                if femType == 0x0000:
+                        # TOFPET 2 TB with TMP104 sensors
+                        nSensors = daqd.fe_temp_enumerate_tmp104(portID, slaveID)
+                        tmp104Readings = daqd.fe_temp_read_tmp104(portID, slaveID, nSensors)
+                        for i, value in enumerate(tmp104Readings):
+                                if i%2==0:
+                                        print "\tSensor %2d: %2d ºC" % (i, value) 
+                                        T.append(value)
+                elif femType == 0x0001:
+                        # FEM-128 with MAX111xx ADC
+                        for i in range(8):
+                                if not daqd.fe_temp_check_max1111xx(portID, slaveID, i):
+                                        print "\tPort %d: not present" % i
                                 else:
-                                        # LMT70
-                                        temp = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
-                                        
-                               
-                                
+                                        for j in range(4):
+                                                u = daqd.fe_tempp_read_max111xx(portID, slaveID, i, j)
+                                                v = u*2.5/4.096
+                                                if j in [0, 3]:
+                                                        # LMT86
+                                                        temp = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+                                                        if temp > 100:
+                                                                continue
+                                                        if j == 0 or j == 3:
+                                                                 T.append(temp)
+                                                                 print "\tSensor %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (i, j, temp, u, v)
+                                                else:
+                                                        # LMT70
+                                                        temp = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+						
+                                              
         
         for t1, t2 in zip(T,prevT):
                 if fabs(t1-t2) > 0.2:
