@@ -454,7 +454,15 @@ void calibrateAsic(
 		maxCounts = (maxCounts > counts) ? maxCounts : counts;
 	}
 
+	TCanvas *c = new TCanvas();
+	c->Divide(2, 2);
 	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
+	TH1S *hResolution = new TH1S("hResolution", "QDC resolution histograms", 256, 0, 5.0);
+	TGraphErrors *gResolution = new TGraphErrors(64*4);
+	gResolution->SetName("gResolution");
+	int gResolutionNPoints = 0;
+	
+	TCanvas *tmp1 = new TCanvas();
 	for(unsigned long channelID = 0; channelID < 64; channelID++) {
 		for(unsigned long tacID = 0; tacID < 4; tacID++) {
 			unsigned long gid = gidStart | (channelID << 2) | tacID;
@@ -464,16 +472,43 @@ void calibrateAsic(
 			TH1S *hControlE = hControlE_list[gid-gidStart];
 			double counts = hControlE->GetEntries();
 			hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
+			
+			if(hControlE->GetEntries() < 1000) continue;
+			hControlE->Fit("gaus", "Q");
+			TF1 *fit = hControlE->GetFunction("gaus");
+			if(fit == NULL) continue;
+				
+			float sigma = fit->GetParameter(2);
+			float sigmaError = fit->GetParError(2);
+			gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
+			gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
+			hResolution->Fill(sigma);
+			
+			gResolutionNPoints += 1;
 		}
 	}
+	delete tmp1;
 
-	TCanvas *c = new TCanvas();
-	c->Divide(2, 2);
 	c->cd(1);
 	hCounts->GetXaxis()->SetTitle("Channel");
 	hCounts->GetYaxis()->SetRangeUser(0, maxCounts * 1.10);
 	hCounts->Draw("HIST");
-
+	
+	c->cd(2);
+	gResolution->Draw("AP");
+	gResolution->SetTitle("QDC resolution");
+	gResolution->GetXaxis()->SetTitle("Channel");
+	gResolution->GetXaxis()->SetRangeUser(0, 64);
+	gResolution->GetYaxis()->SetTitle("Resolution (ADC RMS)");
+	gResolution->GetYaxis()->SetRangeUser(0, 5.0);
+	gResolution->Draw("AP");
+	gResolution->Write();
+	
+	c->cd(3);
+	hResolution->SetTitle("QDC resolution histogram");
+	hResolution->GetXaxis()->SetTitle("TDC resolution (ADC RMS)");
+	hResolution->Draw("HIST");
+	
 	sprintf(fName, "%s.pdf", summaryFilePrefix);
 	c->SaveAs(fName);
 

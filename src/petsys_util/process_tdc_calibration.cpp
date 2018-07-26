@@ -812,6 +812,8 @@ void calibrateAsic(
 		TH1S *hResolution = new TH1S(hName, "TDC resolution histogram", 256, 0.0, 0.1);
 		
 		TGraphErrors *gResolution = new TGraphErrors(64*4);
+		sprintf(hName, "gResolution_%c", bStr);
+		gResolution->SetName(hName);
 		int gResolutionNPoints = 0;
 		
 		TCanvas *tmp1 = new TCanvas(); // We need this, otherwise the fitting will overwrite into "c"
@@ -854,6 +856,7 @@ void calibrateAsic(
 		gResolution->GetYaxis()->SetTitle("Resolution (clk RMS)");
 		gResolution->GetYaxis()->SetRangeUser(0, 0.1);
 		gResolution->Draw("AP");
+		gResolution->Write();
 		
 		c->cd(3*branchID + 3);
 		hResolution->SetTitle("TDC resolution histogram");
