@@ -20,6 +20,9 @@ using namespace PETSYS;
 const int MAX_ASIC_ID = 32*32*64;
 const int MAX_TAC_ID = MAX_ASIC_ID * 64*4;
 
+
+
+
 	
 class DataStore {
 private:
@@ -306,45 +309,48 @@ int main(int argc, char *argv[])
 		nWorkers -= 1;
 	}	
 
-	bool * asic_list = new bool [MAX_ASIC_ID];
-	for(int asicID = 0; asicID < MAX_ASIC_ID; asicID++) {
-		asic_list[asicID] = true;
-		
-		for(int tacID = 0; tacID < 64*4; tacID++) {
-			asic_list[asicID] &= tac_result_list[asicID*64*4 + tacID].pass;
-		}
-	}
-
 	rewind(expectedListFile);
 	bool allOK = true;
 	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
-		for(int i = expectedAsicID * 256; i < (expectedAsicID+1)*256; i++) {
-			result_t &tac_result = tac_result_list[i];
+		unsigned rem = expectedAsicID;
+		unsigned asicID = rem % 64; rem /= 64;
+		unsigned slaveID = rem % 32; rem /= 32;
+		unsigned portID = rem % 32; rem /= 32;
+		
+		unsigned faultyChannels = 0;
+		for(unsigned channelID = 0; channelID < 64; channelID ++) {
 			
-			unsigned n = i;
-			unsigned tacID = n % 4; n /= 4;
-			unsigned channelID = n % 64; n /= 64;
-			unsigned asicID = n % 64; n /= 64;
-			unsigned slaveID = n % 32; n /= 32;
-			unsigned portID = n % 32; n /= 32;
+			unsigned faultyTacs = 0;
 			
-			fprintf(tacReportFile, "%2u %2u %2u %2u %u %s %4d %4d %4d %5.1f % 5.3f %5.1f % 5.3f %5.1f % 5.3f %5.3f % 5.3f\n",
-                                portID, slaveID, asicID, channelID, tacID,
-                                tac_result.pass ? "PASS" : "FAIL",
-                                tac_result.tdca_count, tac_result.qdca_count, tac_result.fetp_count,
-                                tac_result.tdca_t_slope, tac_result.tdca_t_rms,
-                                tac_result.tdca_e_slope, tac_result.tdca_e_rms,
-                                tac_result.qdca_slope, tac_result.qdca_rms,
-                                tac_result.fetp_t_rms, tac_result.fetp_q_rms
-                        );
+			for(unsigned tacID = 0; tacID < 4; tacID++) {
+		
+				unsigned idx = 0;
+				idx *= 32; idx += portID;
+				idx *= 32; idx += slaveID;
+				idx *= 64; idx += asicID;
+				idx *= 64; idx += channelID;
+				idx *= 4;  idx += tacID;
+				
+				result_t &tac_result = tac_result_list[idx];
+			
+				fprintf(tacReportFile, "%2u %2u %2u %2u %u %s %4d %4d %4d %5.1f % 5.3f %5.1f % 5.3f %5.1f % 5.3f %5.3f % 5.3f\n",
+					portID, slaveID, asicID, channelID, tacID,
+					tac_result.pass ? "PASS" : "FAIL",
+					tac_result.tdca_count, tac_result.qdca_count, tac_result.fetp_count,
+					tac_result.tdca_t_slope, tac_result.tdca_t_rms,
+					tac_result.tdca_e_slope, tac_result.tdca_e_rms,
+					tac_result.qdca_slope, tac_result.qdca_rms,
+					tac_result.fetp_t_rms, tac_result.fetp_q_rms
+				);
+				
+				faultyTacs += tac_result.pass ? 0 : 1;
+			}
+			
+			faultyChannels += (faultyTacs == 0) ? 0 : 1;
 		}
 
-		bool asicOK = asic_list[expectedAsicID];
-		unsigned n = expectedAsicID;
-		unsigned asicID = n % 64; n /= 64;
-		unsigned slaveID = n % 32; n /= 32;
-		unsigned portID = n % 32; n /= 32;
-		printf("ASIC (%2u %2u %u) is %s\n", portID, slaveID, asicID, asicOK ? "PASS" : "FAIL");
+		bool asicOK = (faultyChannels == 0);
+		printf("ASIC (%2u %2u %u) is %s (%2d faulty channels).\n", portID, slaveID, asicID, asicOK ? "PASS" : "FAIL", faultyChannels);
 		allOK &= asicOK;
 	}
 		
@@ -402,7 +408,7 @@ bool check_tdc(int idx, TH3 *h, float &slope_out, float &rms_out)
 		
 		bool badRMS = (rms_b < 0.3) || (rms_b > 2.0);
 		float slope = (avg_a - avg_c)/(t_a - t_c);
-		bool badSlope = (rms_a < 10) && (rms_c < 10) && (slope > -100) || (slope < -200);
+		bool badSlope = (rms_a < 10) && (rms_c < 10) && (slope > -100) || (slope < -220);
 
 		if(idx == -1) {
 			fprintf(stderr, "(%5.1f-%5.1f)/(%5.3f - %5.3f) ", avg_a, avg_c, t_a, t_c);

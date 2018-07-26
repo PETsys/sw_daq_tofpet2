@@ -15,6 +15,10 @@ parser.add_argument("-n", type=int, dest="expected", required=False, default=-1,
 
 args = parser.parse_args()
 
+print "****"
+v135_a = float(input("1V35 current (mA)? "))
+v270_a = float(input("2V7  current (mA)? "))
+
 daqd = daqd.Connection()
 daqd.initializeSystem()
 
@@ -25,6 +29,11 @@ for portID, slaveID, chipID in daqd.getActiveAsics():
 		exit(1)
 
 activeAsicsIDs = [ 32*64* portID + 64* slaveID + chipID for portID, slaveID, chipID in daqd.getActiveAsics() ]
+if len(activeAsicsIDs) == 0:
+	print "FAIL: No active ASICs found"
+	exit(1)
+
+
 if args.expected != -1:
 	if args.expected not in activeAsicsIDs:
 		print "ASIC %d not active" % args.expected
@@ -38,6 +47,12 @@ f = open(args.outFilePrefix + "_expected.txt", "w")
 for asicID in expectedAsicList:
 	f.write("%d\n" % asicID)
 f.close()
+
+v135_b = float(input("1V35 current (mA)? "))
+v270_b = float(input("2V7  current (mA)? "))
+current_file = open(args.outFilePrefix + "_current.txt", "w")
+current_file.write("%5.1f\t%5.1f\t%5.1f\t%5.1f\n" % (v135_a, v270_a, v135_b, v270_b))
+current_file.close()
 
 
 
