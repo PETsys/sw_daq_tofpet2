@@ -16,8 +16,8 @@ def main():
 	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=True, action="append", help="File name")
 	args = parser.parse_args()
 
-	channelOutputFile = open(args.o + "channel_map.tsv", "w")
-	triggerOutputFile = open(args.o + "trigger_map.tsv", "w")
+	channelOutputFile = open(args.o + "_channel.tsv", "w")
+	triggerOutputFile = open(args.o + "_trigger.tsv", "w")
 
 	region_list = []
 	for i in range(len(args.port)):
