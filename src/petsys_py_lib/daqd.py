@@ -290,7 +290,7 @@ class Connection:
 		# Check which ASICs react to the configuration
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
 		asicType = {}
-		asicConfigByFEBD = {} # Store the default config we're uploading into each FEB/D
+		initialGlobalAsicConfig = {} # Store the default config we're uploading into each FEB/D
 
 		for portID, slaveID in self.getActiveFEBDs():
 			for chipID in range(MAX_CHIPS):
@@ -302,6 +302,7 @@ class Connection:
 					elif readback == tofpet2c.GlobalConfigAfterReset:
 						asicType[(portID, slaveID, chipID)] = "2C"
 						tofpet2 = tofpet2c
+						tofpet2 = tofpet2b
 					else: 
 						raise ErrorAsicUnknownConfigurationAfterReset(portID, slaveID, chipID, readback)
 					
@@ -315,7 +316,7 @@ class Connection:
 					gcfg.setValue("tx_nlinks", tx_nlinks)
 					#  .. and with the TX logic to calibration
 					gcfg.setValue("tx_mode", 0b01)
-					asicConfigByFEBD[(portID, slaveID)] = gcfg
+					initialGlobalAsicConfig[(portID, slaveID, chipID)] = gcfg
 
 					self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=gcfg)
 					for n in range(64):
@@ -360,8 +361,8 @@ class Connection:
 				if not asicConfigOK[gID]: continue
 
 				status, readback = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
-				if readback != asicConfigByFEBD[(portID, slaveID)]:
-					raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, i, asicConfigByFEBD[(portID, slaveID)], readback)
+				if readback != initialGlobalAsicConfig[(portID, slaveID, chipID)]:
+					raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, chipID, initialGlobalAsicConfig[(portID, slaveID, chipID)], readback)
 			
 		# Enable ASIC receiver logic for all ASIC
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, 0xFFFFFFFFFFFFFFFF)
@@ -376,16 +377,16 @@ class Connection:
 
 		# Reconfigure ASICs TX to normal mode
 		for portID, slaveID in self.getActiveFEBDs():
-			# Same configuration as before...
-			try:
-				gcfg = asicConfigByFEBD[(portID, slaveID)]
-			except KeyError:
-				continue
-			# .. but with the TX logic to normal
-			gcfg.setValue("tx_mode", 0b10)
+			# Try all possible chips, as we don't have a list of active ASIC yet
 			for chipID in range(MAX_CHIPS):
+				# This chipID didn't respond properly before, skip
 				gID = chipID + MAX_CHIPS * slaveID + (MAX_CHIPS * MAX_SLAVES) * portID
 				if not asicConfigOK[gID]: continue
+
+				# Same configuration as before...
+				gcfg = initialGlobalAsicConfig[(portID, slaveID, chipID)]
+				# .. but with the TX logic to normal
+				gcfg.setValue("tx_mode", 0b10)
 				self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=gcfg)
 
 		# Allow some ms for the deserializer to lock to the 8B/10B pattern
