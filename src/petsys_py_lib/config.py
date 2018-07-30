@@ -12,6 +12,7 @@ LOAD_BIAS_CALIBRATION	= 0x00000001
 LOAD_BIAS_SETTINGS 	= 0x00000002
 LOAD_DISC_CALIBRATION	= 0x00000004
 LOAD_DISC_SETTINGS	= 0x00000008
+LOAD_MAP		= 0x00000010
 LOAD_ALL		= 0xFFFFFFFF
 
 APPLY_BIAS_OFF		= 0x0
@@ -64,7 +65,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 
 	# Load hw_trigger configuration IF hw_trigger section exists
 	hw_trigger_config = { "type" : None }
-	if configParser.has_section("hw_trigger"):
+	if (loadMask & LOAD_MAP) != 0:
 		hw_trigger_config["threshold"] = configParser.getint("hw_trigger", "threshold")
 		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
 		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
