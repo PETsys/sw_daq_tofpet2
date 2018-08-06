@@ -632,21 +632,21 @@ class Connection:
 		
 	def read_hv_ad7194(self, portID, slaveID, channelID):
 		# Reset
-		self.__ad7194_ll(0, 0, 3, 2, [0xFF for n in range(8) ], 0)
+		self.__ad7194_ll(portID, slaveID, 3, 2, [0xFF for n in range(8) ], 0)
 
 		# Set mode register
-		r = self.__ad7194_ll(0, 0, 3, 2, [0b00001000, 0b00011011, 0b00100100, 0b01100000], 0)
+		r = self.__ad7194_ll(portID, slaveID, 3, 2, [0b00001000, 0b00011011, 0b00100100, 0b01100000], 0)
 
 		# Set configuration register
-		r =  self.__ad7194_ll(0, 0, 3, 2, [0b00010000, 0b00000100, 0b00000000 + (channelID << 4), 0b01011000], 0)
+		r =  self.__ad7194_ll(portID, slaveID, 3, 2, [0b00010000, 0b00000100, 0b00000000 + (channelID << 4), 0b01011000], 0)
 		
 		# Wait for conversion to be ready
 		while True:
-			r = self.__ad7194_ll(0, 0, 3, 2, [0b01000000], 1)
+			r = self.__ad7194_ll(portID, slaveID, 3, 2, [0b01000000], 1)
 			if r[1] & 0x80 == 0x00: break
 			sleep(0.1)
 			
-		r = self.__ad7194_ll(0, 0, 3, 2, [0x58], 4)
+		r = self.__ad7194_ll(portID, slaveID, 3, 2, [0x58], 4)
 		v = (r[1] << 16) + (r[2] << 8) + r[3]
 		
 		return v
@@ -692,7 +692,7 @@ class Connection:
 		rr = ''
 		for a in range(address, address + n_bytes, 4):
 			count = min([4, address + n_bytes - a])
-			r = self.__m95256_ll(0, 0, 3, 0, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
+			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
 			r = r[1:-1]
 			r = ('').join([chr(x) for x in r ])
 			rr += r
@@ -711,7 +711,7 @@ class Connection:
 		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000100], 1)
 		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000110], 1)
 		
-		self.__m95256_ll(0, 0, 3, 0, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
+		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
 		while True:
 			# Check if Write In Progress is set and if so, sleep and try again
 			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
