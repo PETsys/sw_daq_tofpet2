@@ -94,7 +94,7 @@ class Connection:
 		trigger_unit = self.getTriggerUnit()
 		if trigger_unit is not None:
 			unit_list.add(trigger_unit)
-		return unit_list
+		return sorted(unit_list)
 
 	def getTriggerUnit(self):
 		if self.__triggerUnit is None:

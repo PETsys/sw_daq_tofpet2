@@ -1,0 +1,30 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import argparse
+import math
+import time
+
+
+def main():
+	parser = argparse.ArgumentParser(description='Set FEM powe ON/OFF')
+	parser.add_argument("--power", type=str, required=True, choices=["off", "on"], help="Set FEM power")
+	args = parser.parse_args()
+
+	connection = daqd.Connection()
+	
+	if args.power == "on":
+		value = 0b11
+	else:
+		value = 0
+		
+		
+	for portID, slaveID in connection.getActiveFEBDs(): 
+		connection.write_config_register(portID, slaveID, 2, 0x0213, value) 
+	
+	
+
+if __name__ == "__main__":
+	main()

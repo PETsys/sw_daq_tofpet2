@@ -7,7 +7,8 @@ from math import sqrt
 daqd = daqd.Connection()
 for portID, slaveID in daqd.getActiveFEBDs():
 	femType = daqd.read_config_register(portID, slaveID, 16, 0x0002)
-	print "FEB/D portID %2d slaveID %2d" % (portID, slaveID);
+	print "FEB/D (%2d, %2d)" % (portID, slaveID);
+	
 	if femType == 0x0000:
 		# TOFPET 2 TB with TMP104 sensors
 		nSensors = daqd.fe_temp_enumerate_tmp104(portID, slaveID)
@@ -17,22 +18,29 @@ for portID, slaveID in daqd.getActiveFEBDs():
 	
 	elif femType == 0x0001:
 		# FEM-128 with MAX111xx ADC
+		nSensors = 0
 		for i in range(8):
 			if not daqd.fe_temp_check_max1111xx(portID, slaveID, i):
-				print "\tPort %d: not present" % i
+				print "Module %d: not present" % i
 			else:
+				nSensors += 1
+				print "Module %d" % i
 				for j in range(4):
 					u = daqd.fe_tempp_read_max111xx(portID, slaveID, i, j)
 					v = u*2.5/4.096
 					if j in [0, 3]:
 						# LMT86
 						T = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+						tmpType = "FEB/A"
 					else:
 						# LMT70
 						T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+						tmpType = "FEB/S"
 						
-					print "\tPort %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (i, j, T, u, v)
-			
+					print "  Channel %d (%s): %7.2f ºC (%5d ADC or %5.1f mV)" % (j, tmpType, T, u, v)
+		
+		if nSensors == 0:
+			print "WARNING: No sensors found in FEB/D (%2d, %2d). Check if FEM are connected and FEM power is enabled." % (portID, slaveID)
 	
 	#sensorList = daqd.getTemperatureSensorsList(portID, slaveID)
 	#print "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, len(sensorList))

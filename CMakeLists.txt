@@ -60,6 +60,8 @@ configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bi
 configure_file("src/petsys_util/make_simple_channel_map" "make_simple_channel_map" COPYONLY)
 configure_file("src/petsys_util/startup" "startup" COPYONLY)
 configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_disc_settings_table" COPYONLY)
+configure_file("src/petsys_util/init_system" "init_system" COPYONLY)
+configure_file("src/petsys_util/set_fem_power" "set_fem_power" COPYONLY)
 configure_file("src/petsys_util/read_temperature_sensors" "read_temperature_sensors" COPYONLY)
 configure_file("src/petsys_util/read_communication_counters" "read_communication_counters" COPYONLY)
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
