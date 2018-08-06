@@ -1,0 +1,119 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+import argparse
+import struct
+import sys
+
+
+def add_calibration_from_rom(connection, portID, slaveID, outputFile):
+	data = connection.read_hv_m95256(portID, slaveID, 0x0000, 8)
+	if data != "PETSYS  ":
+		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) PROM does  not contain a calibration table\n" % (portID, slaveID))
+		exit(1)
+	
+	data = connection.read_hv_m95256(portID, slaveID, 0x0008, 8)
+	promLayoutVersion, = struct.unpack("<Q", data)
+	
+	if promLayoutVersion == 0x01:
+		measuredVoltageFullScale = 100.0
+		
+		
+		data = connection.read_hv_m95256(portID, slaveID, 0x0010, 8)
+		n_channels, = struct.unpack("<Q", data)
+
+		data = connection.read_hv_m95256(portID, slaveID, 0x0018, 8)
+		n_x_values, = struct.unpack("<Q", data)
+		
+		address = 0x0020
+		x_values = [ 0 for i in range(n_x_values) ]
+		v_meas = {}
+		adc_meas = {}
+		for i in range(n_x_values):
+			data = connection.read_hv_m95256(portID, slaveID, 0x020 + 2*i, 2)
+			address += 2
+			v, =  struct.unpack("<H", data)
+			x_values[i] = v
+
+		for j in range(n_channels):
+			ch_v_meas = [ 0.0 for i in range(n_x_values) ]
+			for i in range(n_x_values):
+				data = connection.read_hv_m95256(portID, slaveID, address, 4)
+				address += 4
+				v, =  struct.unpack("<I", data)
+				v = v * measuredVoltageFullScale / (2**32)
+				ch_v_meas[i] = v
+			v_meas[(portID, slaveID, j)] = ch_v_meas
+			
+		for j in range(n_channels):
+			ch_adc_meas = [ 0 for i in range(n_x_values) ]
+			for i in range(n_x_values):
+				data = connection.read_hv_m95256(portID, slaveID, address, 4)
+				address += 4
+				v, =  struct.unpack("<I", data)
+				ch_adc_meas[i] = v
+			adc_meas[(portID, slaveID, j)] = ch_adc_meas
+			
+		
+		for j in range(n_channels):
+			for i in range(n_x_values):
+				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, j, x_values[i], v_meas[(portID, slaveID, j)][i], adc_meas[(portID, slaveID, j)][i]))
+		
+	else:
+		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) has a PROM with an unknown layout 0x%016x\n" % (portID, slaveID, promLayoutVersion))
+		exit(1)
+		
+	return None
+
+
+def main():
+	parser = argparse.ArgumentParser(description='Make a simple SiPM bias voltage table')
+	parser.add_argument("-o", type=str, required=True, help="Output file")
+	parser.add_argument("--port", type=int, required=False, action="append", help="Port ID")
+	parser.add_argument("--slave", type=int, required=False, action="append", help="Slave ID")
+	parser.add_argument("--filename", type=str, required=False, action="append", default=[], help="File name")
+	args = parser.parse_args()
+
+	connection = daqd.Connection()
+	outputFile = open(args.o, "w")
+	
+	febd_calibration_type = {}
+	for portID, slaveID in connection.getActiveFEBDs():
+		febd_calibration_type[(portID, slaveID)] = "NONE"
+		if connection.getBiasType(portID, slaveID) == 1:
+			continue
+
+		print "FEB/D (%2d, %2d) has calibration PROM" % (portID, slaveID)
+		add_calibration_from_rom(connection, portID, slaveID, outputFile)
+		febd_calibration_type[(portID, slaveID)] = "ROM"
+		
+
+
+	for i in range(len(args.filename)):
+		portID = args.port[i]
+		slaveID = args.slave[i]
+		if (portID, slaveID) not in febd_calibration_type.keys():
+			sys.stderr.write("WARNING: Loading calibration table for FEB/D (%2d, %2d) which is not present in the system.\n" % (portID, slaveID))
+			
+		elif febd_calibration_type[(portID, slaveID)] == "ROM":
+			sys.stderr.write("ERROR: Calibration file specified for FEB/D (%2d, %2d) but this FEB/D has a calibration ROM.\n" % (portID, slaveID))
+			exit(1)
+			
+		print 'Reading calibration table "%s" for FEB/D (%d, %d)' % (args.filename[i], portID, slaveID)
+		table = config.readBiasCalibrationTable_table(args.filename[i])
+		
+		for (_port, _slave, channelID), data in table.items():
+			for dac_set, v_meas, adc_meas in data:
+				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, channelID, dac_set, v_meas, 0))
+		
+		febd_calibration_type[(portID, slaveID)] = "FILE"
+	
+	for portID, slaveID in febd_calibration_type.keys():
+		if febd_calibration_type[(portID, slaveID)] == "NONE":
+			sys.stderr.write("ERROR: FEB/D (%2d, %2d) is present but no calibration file has been specified.\n" % (portID, slaveID))
+			exit(1)
+		
+		
+if __name__ == '__main__':
+	main()
