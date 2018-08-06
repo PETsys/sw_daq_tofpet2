@@ -343,7 +343,7 @@ class Connection:
 			# (b) a distributed trigger
 			# Generate sync in the unit responsible for CLK and TGR
 			portID, slaveID = self.getTriggerUnit()
-			print "TGR unit: %2d, %2d" % (portID, slaveID)
+			print "INFO: TGR unit is (%2d, %2d)" % (portID, slaveID)
 			portID, slaveID = self.__triggerUnit
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
@@ -435,7 +435,7 @@ class Connection:
 					lst.append((lChipID, statusTripplet))
 				
 				if lst != []:
-					print " FEB/D port %2d slave %2d" % (portID, slaveID)
+					print " FEB/D (%2d, %2d)" % (portID, slaveID)
 					for chipID, statusTripplet in lst:
 						a, b, c = statusTripplet
 						a = a and "OK" or "FAIL"
@@ -451,7 +451,6 @@ class Connection:
 
 		self.__setSorterMode(True)
 
-		print "INFO:"
 		for portID, slaveID in self.getActiveFEBDs():
 			lst = []
 
@@ -468,7 +467,9 @@ class Connection:
 				n = len(lst)
 				lst.sort()
 				lst = (", ").join([str(lChipID) for lChipID in lst])
-				print " FEB/D port %2d slave %2d has %2d active ASICs: %s" % (portID, slaveID, n, lst)
+				print "INFO: FEB/D (%2d, %2d) has %2d active ASICs: %s" % (portID, slaveID, n, lst)
+			else:
+				print "INFO: FEB/D (%2d, %2d) has 0 active ASICs." % (portID, slaveID)
 
 		
 		return None
