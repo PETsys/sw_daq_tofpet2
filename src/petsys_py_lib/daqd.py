@@ -302,7 +302,6 @@ class Connection:
 					elif readback == tofpet2c.GlobalConfigAfterReset:
 						asicType[(portID, slaveID, chipID)] = "2C"
 						tofpet2 = tofpet2c
-						tofpet2 = tofpet2b
 					else: 
 						raise ErrorAsicUnknownConfigurationAfterReset(portID, slaveID, chipID, readback)
 					
