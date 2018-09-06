@@ -63,7 +63,7 @@ struct CalibrationEntry {
 
 
 void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix, int verbosity);
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax);
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix);
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
 void deleteTemporaryFiles(const char *outputFilePrefix);
 
@@ -76,6 +76,7 @@ int main(int argc, char *argv[])
 	char *configFileName = NULL;
 	char *inputFilePrefix = NULL;
 	char *outputFilePrefix = NULL;
+	char *tmpFilePrefix = NULL;
 	bool doSorting = true;
 	bool keepTemporary = false;
 	int verbosity = 0;
@@ -85,7 +86,8 @@ int main(int argc, char *argv[])
                 { "config", required_argument, 0, 0 },
                 { "no-sorting", no_argument, 0, 0 },
                 { "keep-temporary", no_argument, 0, 0 },
-		{ "verbosity", required_argument, 0, 0 }
+		{ "verbosity", required_argument, 0, 0 },
+                { "tmp-prefix", required_argument, 0, 0 }
         };
 
 	while(true) {
@@ -108,6 +110,7 @@ int main(int argc, char *argv[])
 			case 2:		doSorting = false; break;
 			case 3:		keepTemporary = true; break;
 			case 4:		verbosity = boost::lexical_cast<int>(optarg); break;
+			case 5:		tmpFilePrefix = optarg; break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -116,7 +119,9 @@ int main(int argc, char *argv[])
 		}
 
 	}
-	
+	if(tmpFilePrefix == NULL)
+		tmpFilePrefix = outputFilePrefix;
+		
 	SystemConfig *config = SystemConfig::fromFile(configFileName, SystemConfig::LOAD_TDC_CALIBRATION);
 	
 
@@ -138,13 +143,13 @@ int main(int argc, char *argv[])
 	for(int gid = 0; gid < MAX_N_QAC; gid++) calibrationTable[gid].valid = false;
 
 	if(doSorting) {
-		sortData(config, inputFilePrefix, outputFilePrefix, verbosity);
+		sortData(config, inputFilePrefix, tmpFilePrefix, verbosity);
 	}
- 	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax);
+ 	calibrateAllAsics(calibrationTable, tmpFilePrefix, nBins, xMin, xMax, tmpFilePrefix);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
-		deleteTemporaryFiles(outputFilePrefix);
+		deleteTemporaryFiles(tmpFilePrefix);
 	}
 
 	return 0;
@@ -522,10 +527,10 @@ void calibrateAsic(
 	delete tmp0;	
 }
 
-void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax)
+void calibrateAllAsics(CalibrationEntry *calibrationTable, char *outputFilePrefix, int nBins, float xMin, float xMax, char *tmpFilePrefix)
 {
 	char fName[1024];
-	sprintf(fName, "%s_list.tmp", outputFilePrefix);
+	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
 	FILE *tmpListFile = fopen(fName, "r");
 	if(tmpListFile == NULL) {
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
