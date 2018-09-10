@@ -54,6 +54,14 @@ for (portID, slaveID, chipID), ac in asicsConfig.items():
 		cc.setValue("trigger_mode_1", 0)
 		cc.setValue("counter_mode", 0xF)
 		cc.setValue("trigger_b_latched", 0)
+		
+
+counter_sharing = 1
+asicSubTypes = set([ daqd.getAsicSubtype(portID, slaveID, chipID) for portID, slaveID, chipID in asicsConfig.keys() ])
+if "2B" in asicSubTypes:
+	counter_sharing = 8
+	
+print "counter_sharing  = %(counter_sharing)d" % locals()
 
 print "Adjusting baseline"
 for thresholdIndex, thresholdName, baselineName in thresholdList:
@@ -71,7 +79,8 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue("trigger_mode_2_b", thresholdIndex)
 				cc.setValue(thresholdName, 61)
 		daqd.setAsicsConfig(asicsConfig)
-		sleep(9 * T)
+		sleep(1 * T)
+		sleep(counter_sharing * T)
 
 		count_high = {}
 		for portID, slaveID, chipID, channelID in activeChannels:
@@ -137,11 +146,11 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 
 		daqd.setAsicsConfig(asicsConfig)
 		sleep(1*T)
-		next_read_start_time = time() + 8*T + 1E-3
+		next_read_start_time = time() + counter_sharing*T + 1E-3
 		for n in range(args.dark_reads):
 			s = next_read_start_time - time()
 			if s > 0: sleep(s)
-			next_read_start_time = time() + 8*T + 1E-3
+			next_read_start_time = time() + counter_sharing*T + 1E-3
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out fraction of discriminator active time
 				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
@@ -183,11 +192,11 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 
 		daqd.setAsicsConfig(asicsConfig)
 		sleep(1*T)
-		next_read_start_time = time() + 8*T + 1E-3
+		next_read_start_time = time() + counter_sharing*T + 1E-3
 		for n in range(args.dark_reads):
 			s = next_read_start_time - time()
 			if s > 0: sleep(s)
-			next_read_start_time = time() + 8*T + 1E-3
+			next_read_start_time = time() + counter_sharing*T + 1E-3
 			for portID, slaveID, chipID, channelID in activeChannels:
 				# Write out event frequency
 				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
