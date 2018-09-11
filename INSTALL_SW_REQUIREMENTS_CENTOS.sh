@@ -18,15 +18,8 @@ python-pip \
 kernel kernel-devel \
 python-devel \
 cmake \
-iniparser-devel
+iniparser-devel \
+python2-bitarray.x86_64
 
-pip install --upgrade pip
-pip install bitarray
-pip install crcmod
-pip install importlib
-pip install pyserial
-pip install posix_ipc
-pip install numpy
-pip install argparse
 
 
