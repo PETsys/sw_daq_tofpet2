@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
 	if(doSorting) {
 		sortData(config, inputFilePrefix, tmpFilePrefix, verbosity);
 	}
- 	calibrateAllAsics(calibrationTable, tmpFilePrefix, nBins, xMin, xMax, tmpFilePrefix);
+ 	calibrateAllAsics(calibrationTable, outputFilePrefix, nBins, xMin, xMax, tmpFilePrefix);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
