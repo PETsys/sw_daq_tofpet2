@@ -2,7 +2,7 @@
 #include <OverlappedEventHandler.hpp>
 #include <getopt.h>
 #include <assert.h>
-
+#include <event_decode.hpp>
 #include <boost/lexical_cast.hpp>
 
 #include <TFile.h>
@@ -21,8 +21,10 @@ const int MAX_ASIC_ID = 32*32*64;
 const int MAX_TAC_ID = MAX_ASIC_ID * 64*4;
 
 
-
-
+struct RawCalibrationData{
+	uint64_t eventWord;
+	int freq;
+};
 	
 class DataStore {
 private:
@@ -56,56 +58,38 @@ public:
 	~DataStore() {
 	}
 	
-	void closeStep(float step1, float step2) {
-	};
-	
-	void addEvents(float step1, float step2,EventBuffer<RawHit> *buffer) {
-		int N = buffer->getSize();
+
+	void addEvents(float step1, float step2, RawCalibrationData *buffer, int N) {
 		for (int i = 0; i < N; i++) {
-			RawHit &hit = buffer->get(i);
-			int id = hit.channelID * 4 + hit.tacID;
+					
+			RawEventWord *eWord =  new RawEventWord(buffer[i].eventWord);   
 			
-			if (hList_T[id] == NULL) {
+			unsigned gChannelID = eWord->getChannelID();
+			unsigned tacID = eWord->getTacID();	       		
+			int gid = gChannelID * 4 + tacID;
+			unsigned short tfine = eWord->getTFine();;
+			unsigned short efine = eWord->getEFine();;
+			if (hList_T[gid] == NULL) {
 				char hName[128];
 				char hTitle[128];
-				sprintf(hName, "h_%s_t_%08d_%d", what, hit.channelID, hit.tacID);
-				sprintf(hTitle, "%s T %08d %d", what, hit.channelID, hit.tacID);
-				hList_T[id] = new TH3S(hName, hTitle, nBins1, min1, max1, nBins2, min2, max2, 1024, 0, 1024);
-				sprintf(hName, "h_%s_e_%08d_%d", what, hit.channelID, hit.tacID);
-				sprintf(hTitle, "%s E %08d %d", what, hit.channelID, hit.tacID);
-				hList_E[id] = new TH3S(hName, hTitle, nBins1, min1, max1, nBins2, min2, max2, 1024, 0, 1024);
+				sprintf(hName, "h_%s_t_%08d_%d", what, gChannelID, tacID);
+				sprintf(hTitle, "%s T %08d %d", what, gChannelID, tacID);
+				hList_T[gid] = new TH3S(hName, hTitle, nBins1, min1, max1, nBins2, min2, max2, 1024, 0, 1024);
+				sprintf(hName, "h_%s_e_%08d_%d", what, gChannelID, tacID);
+				sprintf(hTitle, "%s E %08d %d", what, gChannelID, tacID);
+				hList_E[gid] = new TH3S(hName, hTitle, nBins1, min1, max1, nBins2, min2, max2, 1024, 0, 1024);
 			}
-			
-			
-			
-			hList_T[id]->Fill(step1 + hw1, step2 + hw2, hit.tfine);
-			hList_E[id]->Fill(step1 + hw1, step2 + hw2, hit.efine);
+			for(int j = 0; j < buffer[i].freq; j++){
+				hList_T[gid]->Fill(step1 + hw1, step2 + hw2, tfine);
+				hList_E[gid]->Fill(step1 + hw1, step2 + hw2, efine);
+			}
 		}
-		
 	}
+		
+	
 	
 };
 
-class DataStoreHelper : public OverlappedEventHandler<RawHit, RawHit> {
-private: 
-	DataStore *dataStore;
-	float step1;
-	float step2;
-public:
-	DataStoreHelper(DataStore *dataStore, float step1, float step2, EventSink<RawHit> *sink) :
-		OverlappedEventHandler<RawHit, RawHit>(sink, true),
-		dataStore(dataStore), step1(step1), step2(step2)
-	{
-	};
-	
-	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
-		dataStore->addEvents(step1, step2,buffer);
-		return buffer;
-	};
-	
-	void pushT0(double t0) { };
-	void report() { };
-};
 
 void displayHelp(char * program)
 {
@@ -185,85 +169,114 @@ int main(int argc, char *argv[])
 	else {
 		tacReportFile = fopen(outputFileName, "w");
 	}
-	
 
-	char fName[1024];
-	RawReader *reader;
-	
+	char fName[1024];    
+	long startOffset, endOffset;
+	float step1, step2;
+	//sprintf(fName, "%s_expected.txt", inputFilePrefix);
+	//FILE * expectedFile = fopen(fName, "r");
 	
 	/*
 	 * TDCA data
 	 */
-	sprintf(fName, "%s_tdca", inputFilePrefix);
-	reader = RawReader::openFile(fName);
-	DataStore *tdcaDataStore = new DataStore("tdca", 4, 0, 1, 1, 0, 1);
-	
-	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
-		float step1, step2;
-		reader->getStepValue(stepIndex, step1, step2);
-		reader->processStep(stepIndex, false,
-				new DataStoreHelper (tdcaDataStore, step1, step2,
-				new NullSink<RawHit>()
-				));
-		
-		tdcaDataStore->closeStep(step1, step2);
+	sprintf(fName, "%s_tdca.idxf", inputFilePrefix);
+	FILE *indexFile = fopen(fName, "r");
+	if(indexFile == NULL) {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
 	}
-	delete reader;
-	
+	sprintf(fName, "%s_tdca.rawf", inputFilePrefix);
+	FILE *dataFile = fopen(fName, "r");
+	if(dataFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+		exit(1);
+	}	
+
+	DataStore *tdcaDataStore = new DataStore("tdca", 4, 0, 1, 1, 0, 1);
+
+	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
+		fseek(dataFile, startOffset, SEEK_SET);
+		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
+		RawCalibrationData *tmpRawCalDataBuffer = new RawCalibrationData[nCalData];
+		
+		fread(tmpRawCalDataBuffer, sizeof(RawCalibrationData), nCalData, dataFile);
+		
+		tdcaDataStore->addEvents(step1, step2, tmpRawCalDataBuffer, nCalData);			
+	}	
+    
 	/*
 	 * QDCA data
 	 */
-	sprintf(fName, "%s_qdca", inputFilePrefix);
-	reader = RawReader::openFile(fName);
+
+	sprintf(fName, "%s_qdca.idxf", inputFilePrefix);
+	indexFile = fopen(fName, "r");
+	if(indexFile == NULL) {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
+	}
+	sprintf(fName, "%s_qdca.rawf", inputFilePrefix);
+	dataFile = fopen(fName, "r");
+	if(dataFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+		exit(1);
+	}	
+	
 	DataStore *qdcaDataStore = new DataStore("qdca", 4, 0, 1, 3, 60, 120);
 	
-	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
-		float step1, step2;
-		reader->getStepValue(stepIndex, step1, step2);
-		reader->processStep(stepIndex, false,
-				new DataStoreHelper (qdcaDataStore, step1, step2,
-				new NullSink<RawHit>()
-				));
+	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
+		fseek(dataFile, startOffset, SEEK_SET);
+		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
+		RawCalibrationData *tmpRawCalDataBuffer = new RawCalibrationData[nCalData];
 		
-		qdcaDataStore->closeStep(step1, step2);
+		fread(tmpRawCalDataBuffer, sizeof(RawCalibrationData), nCalData, dataFile);
+		
+		qdcaDataStore->addEvents(step1, step2, tmpRawCalDataBuffer, nCalData);			
 	}
-	delete reader;
-	
+
 	/*
 	 * FETP data
 	 */
-	sprintf(fName, "%s_fetp", inputFilePrefix);
-	reader = RawReader::openFile(fName);
-	DataStore *fetpDataStore = new DataStore("fetp", 3, 0, 1, 1, 0, 1);
 	
-	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
-		float step1, step2;
-		reader->getStepValue(stepIndex, step1, step2);
-		reader->processStep(stepIndex, false,
-				new DataStoreHelper (fetpDataStore, step1, step2,
-				new NullSink<RawHit>()
-				));
-		
-		fetpDataStore->closeStep(step1, step2);
+	sprintf(fName, "%s_fetp.idxf", inputFilePrefix);
+	indexFile = fopen(fName, "r");
+	if(indexFile == NULL) {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
 	}
-	delete reader;
+	sprintf(fName, "%s_fetp.rawf", inputFilePrefix);
+	dataFile = fopen(fName, "r");
+	if(dataFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+		exit(1);
+	}
+
+	DataStore *fetpDataStore = new DataStore("fetp", 3, 0, 1, 1, 0, 1);
+	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
+		fseek(dataFile, startOffset, SEEK_SET);
+		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
+		RawCalibrationData *tmpRawCalDataBuffer = new RawCalibrationData[nCalData];
+		
+		fread(tmpRawCalDataBuffer, sizeof(RawCalibrationData), nCalData, dataFile);
+		
+		fetpDataStore->addEvents(step1, step2, tmpRawCalDataBuffer, nCalData);			
+	}
 
 	sprintf(fName, "%s_expected.txt", inputFilePrefix);
-	FILE * expectedListFile = fopen(fName, "r");
+	FILE * expectedFile = fopen(fName, "r");
+
 	int expectedAsicID;
-	
+
 	result_t * tac_result_list = (result_t *)mmap(NULL, sizeof(result_t)*MAX_TAC_ID, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
 	int maxWorkers = sysconf(_SC_NPROCESSORS_ONLN);
 	int nWorkers = 0;
 
-	rewind(expectedListFile);
-	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
+	rewind(expectedFile);
+	while(fscanf(expectedFile, "%d\n", &expectedAsicID) == 1) {
 		while(nWorkers >= maxWorkers) {
 			wait(NULL);
 			nWorkers -= 1;
 		}
-		
-		if (fork() == 0) {
+		if (fork()== 0) {
 			// We are in child
 			for(int i = (expectedAsicID*256); i < (expectedAsicID*256 + 256); i++) {
 				result_t &tac_result = tac_result_list[i];
@@ -309,9 +322,9 @@ int main(int argc, char *argv[])
 		nWorkers -= 1;
 	}	
 
-	rewind(expectedListFile);
+	rewind(expectedFile);
 	bool allOK = true;
-	while(fscanf(expectedListFile, "%d\n", &expectedAsicID) == 1) {
+	while(fscanf(expectedFile, "%d\n", &expectedAsicID) == 1) {
 		unsigned rem = expectedAsicID;
 		unsigned asicID = rem % 64; rem /= 64;
 		unsigned slaveID = rem % 32; rem /= 32;
