@@ -1189,8 +1189,8 @@ class Connection:
 
 
 	def getAcquisitionStartTime(self):
-		currentTime = time()
 		currentTimeTag = self.getCurrentTimeTag()
+		currentTime = time()
 		return currentTime - currentTimeTag / self.__systemFrequency
 
 	def __max111xx_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
