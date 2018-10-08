@@ -31,12 +31,12 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 5);
+	assert(argc == 6);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
 	bool qdcMode = (argv[4][0] == 'Q');
-	
+	double acquisitionStartTime = boost::lexical_cast<double>(argv[5]);
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 
@@ -72,8 +72,8 @@ int main(int argc, char *argv[])
 		header[i] = 0;
 	header[0] |= uint32_t(systemFrequency);
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
+	memcpy(header+1, &acquisitionStartTime, sizeof(double));
 	fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
-	
 
 	bool firstBlock = true;
 	float step1;

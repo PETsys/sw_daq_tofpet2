@@ -991,7 +991,7 @@ class Connection:
 		
 
 	def openRawAcquisition(self, fileNamePrefix, qdcMode=False):
-		cmd = [ "./write_raw", self.__shmName, fileNamePrefix, str(int(self.__systemFrequency)), qdcMode and 'Q' or 'T' ]
+		cmd = [ "./write_raw", self.__shmName, fileNamePrefix, str(int(self.__systemFrequency)), qdcMode and 'Q' or 'T', "%1.12f" % self.getAcquisitionStartTime() ]
 		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 	## Closes the current acquisition file
@@ -1144,7 +1144,7 @@ class Connection:
 	def __synchronizeDataToConfig(self, clearFrames=True):
 		frameLength = 1024 / self.__systemFrequency
 		while True:	
-			targetFrameID = self.__getCurrentFrameID()
+			targetFrameID = self.getCurrentTimeTag() / 1024
 			#print "Waiting for frame %1d" % targetFrameID
 			while True:
 				df = self.__getDecodedDataFrame()
@@ -1161,7 +1161,7 @@ class Connection:
 				self.__setDataFrameReadPointer(wrPointer);
 
 			# Do this until we took less than 100 ms to sync
-			currentFrameID = self.__getCurrentFrameID()
+			currentFrameID = self.getCurrentTimeTag() / 1024
 			if (currentFrameID - targetFrameID) * frameLength < 0.100:
 				break
 
@@ -1174,16 +1174,24 @@ class Connection:
 
 		return
 
-	def __getCurrentFrameID(self):
-		activePorts = self.getActivePorts()
-		if activePorts == []:
-			raise ErrorNoFEB()
+	def getCurrentTimeTag(self):
+		triggerUnit = self.getTriggerUnit()
+		if triggerUnit is not None:
+			portID, slaveID = triggerUnit
+		else:
+			activeFEBD = self.getActiveFEBDs()
+			if activeFEBD != []:
+				portID, slaveID = activeFEBD[0]
+			else:
+				raise ErrorNoFEB()
 
-		portID = min(activePorts)
-		timeTag = self.read_config_register(portID, 0, 46, 0x0203)
-		frameID = timeTag / 1024
-		return frameID
-	
+		return self.read_config_register(portID, 0, 46, 0x0203)
+
+
+	def getAcquisitionStartTime(self):
+		currentTime = time()
+		currentTimeTag = self.getCurrentTimeTag()
+		return currentTime - currentTimeTag / self.__systemFrequency
 
 	def __max111xx_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
 		w = 8 * len(command)

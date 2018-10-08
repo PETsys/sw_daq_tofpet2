@@ -1,65 +1,81 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from petsys import daqd
-from time import sleep
 from math import sqrt
+import time
+import argparse
+import sys
 
-daqd = daqd.Connection()
-for portID, slaveID in daqd.getActiveFEBDs():
-	femType = daqd.read_config_register(portID, slaveID, 16, 0x0002)
-	print "FEB/D (%2d, %2d)" % (portID, slaveID);
+
+def main(argv):
+	parser = argparse.ArgumentParser(description='Set FEM powe ON/OFF')
+	parser.add_argument("--time", type=float, required=False, default=0, help="Acquisition time (in seconds)")
+	parser.add_argument("--interval", type=float, required=False, default=10, help="Measurement interval (in seconds)")
+	parser.add_argument("-o", type=str, dest="fileName", required=False, default="/dev/null", help="Data filename")
+	args = parser.parse_args()
 	
-	if femType == 0x0000:
-		# TOFPET 2 TB with TMP104 sensors
-		nSensors = daqd.fe_temp_enumerate_tmp104(portID, slaveID)
-		tmp104Readings = daqd.fe_temp_read_tmp104(portID, slaveID, nSensors)
-		for i, value in enumerate(tmp104Readings):
-			print "\tSensor %2d: %2d ºC" % (i, value) 
+	connection = daqd.Connection()
+	femTypeList = {}
+	for portID, slaveID in connection.getActiveFEBDs():
+		femTypeList[(portID, slaveID)] = connection.read_config_register(portID, slaveID, 16, 0x0002)
 	
-	elif femType == 0x0001:
-		# FEM-128 with MAX111xx ADC
-		nSensors = 0
-		for i in range(8):
-			if not daqd.fe_temp_check_max1111xx(portID, slaveID, i):
-				print "Module %d: not present" % i
-			else:
-				nSensors += 1
-				print "Module %d" % i
-				for j in range(4):
-					u = daqd.fe_tempp_read_max111xx(portID, slaveID, i, j)
-					v = u*2.5/4.096
-					if j in [0, 3]:
-						# LMT86
-						T = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
-						tmpType = "FEB/A"
+	dataFile = open(args.fileName, "w")
+	
+	# Write acquisition start time in UNIX time
+	dataFile.write("%f\n" % connection.getAcquisitionStartTime())
+
+	tEnd = time.time() + args.time
+	while True:
+		tNextRead = time.time() + args.interval
+
+		# Get current system time tag _in clock cycles_
+		timestamp = connection.getCurrentTimeTag()
+
+		for (portID, slaveID), femType in femTypeList.items():
+			print "FEB/D (%2d, %2d)" % (portID, slaveID)
+
+			if femType == 0x0000:
+				# TOFPET 2 TB with TMP104 sensors
+				nSensors = connection.fe_temp_enumerate_tmp104(portID, slaveID)
+				tmp104Readings = connection.fe_temp_read_tmp104(portID, slaveID, nSensors)
+				for i, value in enumerate(tmp104Readings):
+					print "\tSensor %2d: %2d ºC" % (i, value) 
+					dataFile.write("%(timestamp)d\t%(portID)d\t%(slaveID)d\t%(i)d\t0\t%(value)d\n" % locals())
+
+			elif femType == 0x0001:
+				# FEM-128 with MAX111xx ADC
+				nSensors = 0
+				for i in range(8):
+					if not connection.fe_temp_check_max1111xx(portID, slaveID, i):
+						print "Module %d: not present" % i
 					else:
-						# LMT70
-						T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
-						tmpType = "FEB/S"
-						
-					print "  Channel %d (%s): %7.2f ºC (%5d ADC or %5.1f mV)" % (j, tmpType, T, u, v)
-		
-		if nSensors == 0:
-			print "WARNING: No sensors found in FEB/D (%2d, %2d). Check if FEM are connected and FEM power is enabled." % (portID, slaveID)
-	
-	#sensorList = daqd.getTemperatureSensorsList(portID, slaveID)
-	#print "FEB/D at port %d slave %d has %d sensor(s): " % (portID, slaveID, len(sensorList))
-	#for sensorType, chipID, channelID in sensorList:
-		
-		
-		
-		#u =  daqd.getTemperatureSensorReading(portID, slaveID, chipID, channelID)
-		
-		#if sensorType == 0x0000:
-			#print "\tSensor %2d: %2d ºC" % (chipID, u) 
-		#else:
-			#v = u*2.5/4.096
-			#if channelID in [0, 3]:
-				## LMT86
-				#T = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
-			#else:
-				## LMT70
-				#T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+						nSensors += 1
+						print "Module %d" % i
+						for j in range(4):
+							u = connection.fe_tempp_read_max111xx(portID, slaveID, i, j)
+							v = u*2.5/4.096
+							if j in [0, 3]:
+								# LMT86
+								T = 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+								tmpType = "FEB/A"
+							else:
+								# LMT70
+								T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+								tmpType = "FEB/S"
+
+							print "  Channel %d (%s): %7.2f ºC (%5d ADC or %5.1f mV)" % (j, tmpType, T, u, v)
+							dataFile.write("%(timestamp)d\t%(portID)d\t%(slaveID)d\t%(i)d\t%(j)d\t%(T)f\n" % locals())
+
+				if nSensors == 0:
+					print "WARNING: No sensors found in FEB/D (%2d, %2d). Check if FEM are connected and FEM power is enabled." % (portID, slaveID)
 				
-			#print "\tSensor %2d:%d: %7.2f ºC (%5d ADC or %5.1f mV)" % (chipID, channelID, T, u, v)
+		
+		if tNextRead > tEnd:
+			break
 			
+		tNow = time.time()
+		if tNextRead > tNow:
+			time.sleep(tNextRead - tNow)
+
+if __name__ == '__main__':
+	sys.exit(main(sys.argv))
