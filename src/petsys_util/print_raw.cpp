@@ -25,9 +25,11 @@ int main(int argc, char *argv[])
 {
 	char *inputFilePrefix = NULL;
 	bool suppressEmpty = false;
+	bool statsOnly = false;
 	
 	static struct option longOptions[] = {
                 { "suppress-empty", no_argument, 0, 0 },
+		{ "stats-only", no_argument, 0, 0 }
         };
 
 	while(true) {
@@ -45,6 +47,7 @@ int main(int argc, char *argv[])
 		else if(c == 0) {
 			switch(optionIndex) {
 			case 0: 	suppressEmpty = true ; break;
+			case 1:		statsOnly = true; break;
 			default:	displayUsage(); exit(1);
 			}
 		}
@@ -76,17 +79,45 @@ int main(int argc, char *argv[])
 	RawDataFrame *tmpRawDataFrame = new RawDataFrame;
 	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
 		fseek(dataFile, startOffset, SEEK_SET);
+		
+		bool firstFrame = true;
+		long long unsigned lastFrameID = 0;
+		bool lastFrameLost = false;
+		
+		unsigned long long sumDataFrames = 0;
+		unsigned long long sumDataFramesLost = 0;
+		unsigned long long sumEvents = 0;
+		
 		while(ftell(dataFile) < endOffset) {
 			fread((void *)(tmpRawDataFrame->data), sizeof(uint64_t), 2, dataFile);
 			long frameSize = tmpRawDataFrame->getFrameSize();
 			fread((void *)((tmpRawDataFrame->data)+2), sizeof(uint64_t), frameSize-2, dataFile);
 			
-			
+			long long unsigned frameID = tmpRawDataFrame->getFrameID();
+			bool frameLost = tmpRawDataFrame->getFrameLost();
 			int nEvents = tmpRawDataFrame->getNEvents();
+
+			/*
+			 * Sequences of frames with zero events are suppressed after the first frame in the sequence
+			 * These can be either good frames or discarded frames
+			 * They are not mixed
+			 */
+			int framesCompacted = firstFrame ? 0 : frameID - lastFrameID - 1;
+			sumDataFrames += framesCompacted;
+			sumDataFramesLost += lastFrameLost ? framesCompacted : 0;
+			lastFrameID = frameID;
+			lastFrameLost = frameLost;
+			
+			sumDataFrames += 1;
+			sumDataFramesLost += frameLost ? 1 : 0;
+			sumEvents += nEvents;
+
+			if(statsOnly) continue;
 			if(suppressEmpty && nEvents == 0) continue;
 			
-			printf("%04d %016llx Size: %-4llu FrameID: %-20llu\n", 0, tmpRawDataFrame->data[0], tmpRawDataFrame->getFrameSize(), tmpRawDataFrame->getFrameID());
-			printf("%04d %016llx nEvents: %20llu %4s\n", 1,  tmpRawDataFrame->data[1], tmpRawDataFrame->getNEvents(), tmpRawDataFrame->getFrameLost() ? "LOST" : "");
+			
+			printf("%04d %016llx Size: %-4llu FrameID: %-20llu\n", 0, tmpRawDataFrame->data[0], tmpRawDataFrame->getFrameSize(), frameID);
+			printf("%04d %016llx nEvents: %20llu %4s\n", 1,  tmpRawDataFrame->data[1], tmpRawDataFrame->getNEvents(), frameLost ? "LOST" : "");
 			
 			for (int i = 0; i < nEvents; i++) {
 
@@ -98,12 +129,14 @@ int main(int argc, char *argv[])
 				unsigned long eFine = tmpRawDataFrame->getEFine(i);
 				
 				printf("%04d %016llx", i+2,  tmpRawDataFrame->data[i+2]);
-				printf(" ChannelID: (%02d %02d %02d %02d)", (channelID >> 16) % 32, (channelID >> 11) % 32, (channelID >> 6) % 64, (channelID % 64));
+				printf(" ChannelID: (%02d %02d %02d %02d)", (channelID >> 17) % 32, (channelID >> 12) % 32, (channelID >> 6) % 64, (channelID % 64));
 				printf(" TacID: %d TCoarse: %4d TFine: %4d ECoarse: %4d EFine: %4d", tacID, tCoarse, tFine, eCoarse, eFine);
 				printf("\n");
 			}
 			
+			
 		}
+		printf("STAT %llu %llu %llu\n", sumDataFrames, sumDataFramesLost, sumEvents);
 	}
 	delete tmpRawDataFrame;
 	
