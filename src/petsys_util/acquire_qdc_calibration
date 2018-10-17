@@ -6,6 +6,7 @@ from copy import deepcopy
 import argparse
 import math
 import time
+import os.path
 
 parser = argparse.ArgumentParser(description='Acquire data for QDC calibration')
 parser.add_argument("--config", type=str, required=True, help="Configuration file")
@@ -19,9 +20,10 @@ systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
 nPhases = 3
 nLengths = 200
-f = open(args.fileNamePrefix + '.bins', 'w')
-f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
-f.close()
+if not os.path.samefile(args.fileNamePrefix, "/dev/null"):
+	f = open(args.fileNamePrefix + '.bins', 'w')
+	f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
+	f.close()
 
 daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=True)
 asicsConfig = daqd.getAsicsConfig()
