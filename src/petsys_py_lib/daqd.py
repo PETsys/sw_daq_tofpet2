@@ -1074,6 +1074,23 @@ class Connection:
 		data = pout.read(n2)
 		rdPointer,  = struct.unpack(template2, data)
 		self.__setDataFrameReadPointer(rdPointer)
+		
+		# Check ASIC link status at end of acquisition
+		bad_rx_found = False
+		for portID, slaveID in self.getActiveFEBDs():
+			asic_enable_vector = self.read_config_register(portID, slaveID, 64, 0x0318)
+			asic_deserializer_vector =  self.read_config_register(portID, slaveID, 64, 0x0302)
+			asic_decoder_vector = self.read_config_register(portID, slaveID, 64, 0x0310)
+			
+			asic_bad_rx = asic_enable_vector & ~(asic_deserializer_vector & asic_decoder_vector)
+			
+			for n in range(64):
+				if (asic_bad_rx & (1 << n)) != 0:
+					print "ASIC (%2d, %2d, %2d) RX links is down " % (portID, slaveID, n)
+					bad_rx_found = True
+					
+		if bad_rx_found:
+			raise ErrorAsicLinkDown()
 
 		return None
 
@@ -1400,3 +1417,7 @@ class UnknownAuxIO(Exception):
 		self.__which = which
 	def __str__(self):
 		return "Unkown auxilliary I/O: %s" % self.__which
+
+class ErrorAsicLinkDown(Exception):
+	def __str__(self):
+		return "ASIC RX link is unexpectedly down"
