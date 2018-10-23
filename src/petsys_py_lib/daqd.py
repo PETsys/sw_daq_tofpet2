@@ -1007,6 +1007,9 @@ class Connection:
         # @param step2 Tag to a given variable specific to this acquisition
         # @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
+		# Check ASIC link status at start of acquisition
+		self.checkAsicRx()
+		
 		(pin, pout) = (self.__helperPipe.stdin, self.__helperPipe.stdout)
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
@@ -1076,6 +1079,11 @@ class Connection:
 		self.__setDataFrameReadPointer(rdPointer)
 		
 		# Check ASIC link status at end of acquisition
+		self.checkAsicRx()
+
+		return None
+	
+	def checkAsicRx(self):
 		bad_rx_found = False
 		for portID, slaveID in self.getActiveFEBDs():
 			asic_enable_vector = self.read_config_register(portID, slaveID, 64, 0x0318)
@@ -1086,13 +1094,11 @@ class Connection:
 			
 			for n in range(64):
 				if (asic_bad_rx & (1 << n)) != 0:
-					print "ASIC (%2d, %2d, %2d) RX links is down " % (portID, slaveID, n)
+					print "ASIC (%2d, %2d, %2d) RX links are down " % (portID, slaveID, n)
 					bad_rx_found = True
 					
 		if bad_rx_found:
 			raise ErrorAsicLinkDown()
-
-		return None
 
 	## Gets the current write and read pointer
 	def __getDataFrameWriteReadPointer(self):
