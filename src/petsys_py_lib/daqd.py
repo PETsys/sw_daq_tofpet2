@@ -366,6 +366,7 @@ class Connection:
 		# Enable ASIC receiver logic for all ASIC
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, 0xFFFFFFFFFFFFFFFF)
 
+		# Set all ASICs to receiver logic calibration  mode
 		# Set ASIC receiver logic to calibration mode
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b0)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b1)
@@ -1007,9 +1008,6 @@ class Connection:
         # @param step2 Tag to a given variable specific to this acquisition
         # @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
-		# Check ASIC link status at start of acquisition
-		self.checkAsicRx()
-		
 		(pin, pout) = (self.__helperPipe.stdin, self.__helperPipe.stdout)
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
@@ -1094,7 +1092,9 @@ class Connection:
 			
 			for n in range(64):
 				if (asic_bad_rx & (1 << n)) != 0:
-					print "ASIC (%2d, %2d, %2d) RX links are down " % (portID, slaveID, n)
+					a = (asic_deserializer_vector >> n) & 1
+					b = (asic_decoder_vector >> n) & 1
+					print "ASIC (%2d, %2d, %2d) RX links are down (0b%d%d)" % (portID, slaveID, n, b, a)
 					bad_rx_found = True
 					
 		if bad_rx_found:
@@ -1166,6 +1166,14 @@ class Connection:
 	## Discards all data frames which may have been generated before the function is called. Used to synchronize data reading with the effect of previous configuration commands.
 	def __synchronizeDataToConfig(self, clearFrames=True):
 		frameLength = 1024 / self.__systemFrequency
+
+		# Check ASIC link status at start of acquisition
+		# but wait for  firmware has finshed sync'ing after config and locking
+		# - 8 frames for resync
+		# - 4 frames for lock
+		sleep(12 * frameLength)
+		self.checkAsicRx()
+
 		while True:	
 			targetFrameID = self.getCurrentTimeTag() / 1024
 			#print "Waiting for frame %1d" % targetFrameID
