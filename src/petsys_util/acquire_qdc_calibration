@@ -20,7 +20,7 @@ systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
 nPhases = 3
 nLengths = 200
-if not os.path.samefile(args.fileNamePrefix, "/dev/null"):
+if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileNamePrefix, "/dev/null"):
 	f = open(args.fileNamePrefix + '.bins', 'w')
 	f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
 	f.close()

@@ -28,7 +28,7 @@ phaseMin = 0.0
 phaseMax = 8.0
 nBins = 165
 
-if not os.path.samefile(args.fileNamePrefix, "/dev/null"):
+if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileNamePrefix, "/dev/null"):
 	binParameterFile = open(args.fileNamePrefix + ".bins", "w")
 	binParameterFile.write("%d\t%f\t%f\n" % (nBins, phaseMin, phaseMax))
 	binParameterFile.close()
