@@ -19,7 +19,7 @@ config = config.ConfigFromFile(args.config, loadMask=config.LOAD_DISC_CALIBRATIO
 
 outputFile = open(args.o, "w")
 
-outputFile.write("# portID\tslaveID\tchipID\tchannelID\tvth_t1\tvth_t2\tvth_e\n")
+outputFile.write("#portID\tslaveID\tchipID\tchannelID\tvth_t1\tvth_t2\tvth_e\n")
 for portID, slaveID, chipID, channelID in config.getCalibratedDiscChannels():
 	outputFile.write("%d\t%d\t%d\t%d\t%d\t%d\t%d\n" % (portID, slaveID, chipID, channelID, args.vth_t1, args.vth_t2, args.vth_e))
 
