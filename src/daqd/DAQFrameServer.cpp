@@ -60,6 +60,8 @@ void DAQFrameServer::stopAcquisition()
 
 int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	DP->getPortUp(); // Hack: trigger a hwLock lock/unlock cycle before starting timers
+
 	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);	
 
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
