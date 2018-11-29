@@ -12,11 +12,16 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
-
+#include <set>  
 #include <shm_raw.hpp>
 #include <boost/lexical_cast.hpp>
 
 using namespace std;
+
+struct CalibrationData{
+	uint64_t eventWord;
+	int freq;
+};
 
 
 struct BlockHeader  {
@@ -27,19 +32,21 @@ struct BlockHeader  {
 	int32_t endOfStep;
 };
 
+
 enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 6);
+	assert(argc == 7);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
 	bool qdcMode = (argv[4][0] == 'Q');
 	double acquisitionStartTime = boost::lexical_cast<double>(argv[5]);
+	bool acqStdMode = (argv[6][0] == 'N');
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
-
+	  
 	char fNameRaw[1024];
 	char fNameIdx[1024];
 	if(strcmp(outputFilePrefix, "/dev/null") == 0) {
@@ -74,6 +81,9 @@ int main(int argc, char *argv[])
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
 	memcpy(header+1, &acquisitionStartTime, sizeof(double));
 	fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
+	
+	multiset<uint64_t> calEventSet;  
+	CalibrationData calData;
 
 	bool firstBlock = true;
 	float step1;
@@ -124,8 +134,9 @@ int main(int argc, char *argv[])
 				uint64_t lostFrameBuffer[2];
 				lostFrameBuffer[0] = (2ULL << 36) | (lastFrameID + 1);
 				lostFrameBuffer[1] = 1ULL << 16;
-				fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
-
+				if(acqStdMode)
+					fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
+				
 				// .. and we set the lastFrameType
 				lastFrameType = FRAME_TYPE_ALL_LOST;
 			}
@@ -142,7 +153,15 @@ int main(int argc, char *argv[])
 			int frameSize = shm->getFrameSize(index);
 			int nEvents = shm->getNEvents(index);
 			bool frameLost = shm->getFrameLost(index);
-
+			
+			// If acquiring calibration data, insert events into multiset for data compression
+			if(!acqStdMode){
+				for(int i = 0 ; i < nEvents ; i++){
+					uint64_t event = shm->getFrameWord(index, i+2);
+					calEventSet.insert(event);
+				}
+			}
+		
 			// Accounting
 			stepEvents += nEvents;
 			stepMaxFrame = stepMaxFrame > nEvents ? stepMaxFrame : nEvents;
@@ -175,12 +194,26 @@ int main(int argc, char *argv[])
 			lastFrameType = frameType;
 			
 			// Write out the data frame contents
-			fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
-
+			if(acqStdMode){
+				fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
+			}
+	        
 		}		
 		
 		if(blockHeader.endOfStep != 0) {
-
+			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk 
+			if(!acqStdMode){
+				multiset<uint64_t>::iterator eventIt = calEventSet.begin();
+		        
+				while(eventIt != calEventSet.end()){
+					calData.freq = calEventSet.count(*eventIt);
+					calData.eventWord = *eventIt;
+					fwrite(&calData, sizeof(CalibrationData), 1, dataFile);
+					fflush(dataFile);
+					eventIt = calEventSet.upper_bound(*eventIt);
+				}
+				calEventSet.clear();
+			}	
 			
 			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %d event/frame max\n", 
 					stepAllFrames, stepEvents, 
@@ -206,7 +239,7 @@ int main(int argc, char *argv[])
 			stepFirstFrameID = -1;
 			lastFrameType = FRAME_TYPE_UNKNOWN;
 		}
-
+		
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
 		fflush(stdout);
 	}

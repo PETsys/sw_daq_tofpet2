@@ -19,7 +19,7 @@ daqd = daqd.Connection()
 daqd.initializeSystem()
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
 
-daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False)
+daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False, calMode = True)
 asicsConfig = daqd.getAsicsConfig()
 
 ## Calibration parameters
@@ -63,17 +63,17 @@ simultaneousChannels = min([simultaneousChannels, 126/16, 1024/80])
 simultaneousChannels = 1
 
 channelStep = int(math.ceil(64.0/simultaneousChannels))
+
 for firstChannel in range(0, channelStep):
 	activeChannels = [ channel for channel in range(firstChannel, 64, channelStep) ]
 	activeChannels_string = (", ").join([ "%d" % channel for channel in activeChannels ])
-
 	# Enable triggering for active channels
 	cfg = deepcopy(asicsConfig)
 	for ac in cfg.values():
 		for channel in activeChannels:
 			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
 	daqd.setAsicsConfig(cfg)
-
+        
 	for i in range(0, nBins):
 		t_start = time.time()
 		binSize = (phaseMax - phaseMin) / nBins

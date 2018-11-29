@@ -991,8 +991,13 @@ class Connection:
 			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
-	def openRawAcquisition(self, fileNamePrefix, qdcMode=False):
-		cmd = [ "./write_raw", self.__shmName, fileNamePrefix, str(int(self.__systemFrequency)), qdcMode and 'Q' or 'T', "%1.12f" % self.getAcquisitionStartTime() ]
+	def openRawAcquisition(self, fileNamePrefix, qdcMode=False, calMode = False):
+		cmd = [ "./write_raw", \
+			self.__shmName, \
+			fileNamePrefix, \
+			str(int(self.__systemFrequency)), \
+			qdcMode and 'Q' or 'T', "%1.12f" % self.getAcquisitionStartTime(),
+			calMode and 'T' or 'N' ]
 		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 	## Closes the current acquisition file
@@ -1041,12 +1046,20 @@ class Connection:
 			if nFramesInBlock > bs:
 				nFramesInBlock = 2*bs - nFramesInBlock
 
+                        # Don't use more frames than needed
+                        framesToTarget = stopFrame - currentFrame
+                        if nFramesInBlock > framesToTarget:
+                                nFramesInBlock = framesToTarget
+
+
 			# Do not feed more than bs/2 frame blocks to writeRaw in a single call
 			# Because the entire frame block won't be freed until writeRaw is done, we can end up in a situation
 			# where writeRaw owns all frames and daqd has no buffer space, even if writeRaw has already processed 
 			# some/most of the frame block
 			if nFramesInBlock > bs/2:
-				wrPointer = (rdPointer + bs/2) % (2*bs)
+                                nFramesInBlock = bs/2
+
+                        wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
 			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
 			pin.write(data); pin.flush()

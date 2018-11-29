@@ -7,7 +7,7 @@ import argparse
 import math
 from math import sqrt, fabs
 from time import sleep, time
-
+import sys
 
 
 #systemConfig = config.ConfigFromFile("config_example.ini", loadMask=0)
@@ -67,9 +67,9 @@ for it in range(0,nSteps,1):
                         break
         if isStable == True:
                 print "\nASIC temperatures stable over the last minute. System ready to acquire."
-                exit()
+                sys.exit(0)
 
-        
+sys.exit(1)
 
 
                                 

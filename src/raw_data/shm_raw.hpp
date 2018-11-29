@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string>
+#include <event_decode.hpp>
 #include <sys/mman.h>
 
 namespace PETSYS {
@@ -36,37 +37,33 @@ struct RawDataFrame {
 	}; 
 	
 	unsigned getEFine(int event) {
-		uint64_t eventWord = data[event+2];
-		unsigned v = eventWord % 1024;
-		v = (v + 27) % 1024;	// rd_clk_en
-		return v;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getEFine();
 	};
 
 	unsigned getTFine(int event) {
-		uint64_t eventWord = data[event+2];
-		unsigned v = (eventWord>>10) % 1024;
-		v = (v + 27) % 1024;	// rd_clk_en
-		return v;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getTFine();
 	};
 
 	unsigned getECoarse(int event) {
-		uint64_t eventWord = data[event+2];
-		return (eventWord>>20) % 1024;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getECoarse();
 	};
 	
 	unsigned getTCoarse(int event) {
-		uint64_t eventWord = data[event+2];
-		return (eventWord>>30) % 1024;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getTCoarse();
 	};
 	
 	unsigned getTacID(int event) {
-		uint64_t eventWord = data[event+2];
-		return (eventWord>>40) % 4;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getTacID();
 	};
 	
 	unsigned getChannelID(int event) {
-		uint64_t eventWord = data[event+2];
-		return eventWord>>42;
+		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
+		return rawEvent->getChannelID();
 	};
 	
 };
@@ -141,3 +138,5 @@ private:
 
 }
 #endif
+
+

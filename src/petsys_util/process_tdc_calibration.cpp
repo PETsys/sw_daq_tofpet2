@@ -14,8 +14,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
-
 #include <shm_raw.hpp>
+#include <event_decode.hpp>
 
 #include <boost/random.hpp>
 #include <boost/nondet_random.hpp>
@@ -32,12 +32,19 @@
 using namespace PETSYS;
 
 // Use 128K file buffers
-#define BUFFER_SIZE	131072
+#define BUFFER_SIZE	4096
 
-struct CalibrationEvent {
+
+struct RawCalibrationData{
+	uint64_t eventWord;
+	int freq;
+};
+
+struct CalibrationData{
 	unsigned long gid;
 	unsigned short coarse;
 	unsigned short fine;
+	int freq;
 	float phase;
 };
 
@@ -206,60 +213,66 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 	
 	long startOffset, endOffset;
 	float step1, step2;
-	RawDataFrame *tmpRawDataFrame = new RawDataFrame;
+
+
 	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
 		fseek(dataFile, startOffset, SEEK_SET);
-		while(ftell(dataFile) < endOffset) {
-			fread((void *)(tmpRawDataFrame->data), sizeof(uint64_t), 2, dataFile);
-			long frameSize = tmpRawDataFrame->getFrameSize();
-			fread((void *)((tmpRawDataFrame->data)+2), sizeof(uint64_t), frameSize-2, dataFile);
+		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
+		RawCalibrationData *tmpRawCalDataBlock = new RawCalibrationData[nCalData];
+		
+		fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
+		for (int i = 0; i < nCalData; i++) {
 			
-			int nEvents = tmpRawDataFrame->getNEvents();
-			for (int i = 0; i < nEvents; i++) {
-				unsigned gChannelID = tmpRawDataFrame->getChannelID(i);
-				unsigned tacID = tmpRawDataFrame->getTacID(i);
-				unsigned gAsicID = (gChannelID >> 6);
+			RawEventWord *eWord =  new RawEventWord(tmpRawCalDataBlock[i].eventWord);   
+			unsigned gChannelID = eWord->getChannelID();
+			unsigned tacID = eWord->getTacID();	       
+			unsigned gAsicID = (gChannelID >> 6);
 
-				maxgAsicID = (maxgAsicID > gAsicID) ? maxgAsicID : gAsicID;
+			maxgAsicID = (maxgAsicID > gAsicID) ? maxgAsicID : gAsicID;
 
-				FILE * f = tmpDataFiles[gAsicID];
+			FILE * f = tmpDataFiles[gAsicID];
+			if(f == NULL) {
+				// We haven't opened this file yet.
+				unsigned chipID = (gChannelID >> 6) % 64;
+				unsigned slaveID = (gChannelID >> 12) % 32;
+				unsigned portID = (gChannelID >> 17) % 32;
+				char *fn = new char[1024];
+				sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", tmpFilePrefix, portID, slaveID, chipID);
+				f = fopen(fn, "w");
 				if(f == NULL) {
-					// We haven't opened this file yet.
-					unsigned chipID = (gChannelID >> 6) % 64;
-					unsigned slaveID = (gChannelID >> 12) % 32;
-					unsigned portID = (gChannelID >> 17) % 32;
-					char *fn = new char[1024];
-					sprintf(fn, "%s_%02u_%02u_%02u_data.tmp", tmpFilePrefix, portID, slaveID, chipID);
-					f = fopen(fn, "w");
-					if(f == NULL) {
-						fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
-						exit(1);
-					}
-					setbuffer(f, new char[BUFFER_SIZE], BUFFER_SIZE);
-					posix_fadvise(fileno(f), 0, 0, POSIX_FADV_SEQUENTIAL);
-					tmpDataFiles[gAsicID] = f;
-					tmpDataFileNames[gAsicID] = fn;
+					fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+					exit(1);
 				}
-				
-				CalibrationEvent e;
-				// Write data for T branch
-				e.gid = (gChannelID << 3) | (tacID << 1) | 0x0;
-				e.coarse = tmpRawDataFrame->getTCoarse(i);
-				e.fine = tmpRawDataFrame->getTFine(i);
-				e.phase = step1;
-				fwrite((void*)&e, sizeof(e), 1, f);
-
-				// Write data for E branch
-				e.gid = (gChannelID << 3) | (tacID << 1) | 0x1;
-				e.coarse = tmpRawDataFrame->getECoarse(i);
-				e.fine = tmpRawDataFrame->getEFine(i);
-				e.phase = step1;
-				fwrite((void*)&e, sizeof(e), 1, f);
+				setbuffer(f, new char[BUFFER_SIZE], BUFFER_SIZE);
+				posix_fadvise(fileno(f), 0, 0, POSIX_FADV_SEQUENTIAL);
+				tmpDataFiles[gAsicID] = f;
+				tmpDataFileNames[gAsicID] = fn;
 			}
+			CalibrationData calData;
+			// Write data for T branch
+			calData.gid = (gChannelID << 3) | (tacID << 1) | 0x0;
+			calData.coarse = eWord->getTCoarse();
+			calData.fine = eWord->getTFine();
+			calData.freq = tmpRawCalDataBlock[i].freq;
+			calData.phase = step1;
+
+			fwrite(&calData, sizeof(CalibrationData), 1, f);
+		
+			// Write data for E branch
+			calData.gid = (gChannelID << 3) | (tacID << 1) | 0x1;
+			calData.coarse = eWord->getECoarse();
+			calData.fine = eWord->getEFine();
+			calData.freq = tmpRawCalDataBlock[i].freq;
+			calData.phase = step1;			
+			fwrite(&calData, sizeof(CalibrationData), 1, f);
+
+		      
+		
 			
 		}
+
 	}
-	delete tmpRawDataFrame;
+	
 	
 	for(unsigned long gAsicID = 0; gAsicID <= maxgAsicID; gAsicID++) {
 		if(tmpDataFiles[gAsicID] != NULL) {
@@ -347,23 +360,27 @@ void calibrateAsic(
 	}
 	struct timespec t0;
 	clock_gettime(CLOCK_REALTIME, &t0);
-
-	unsigned READ_BUFFER_SIZE = BUFFER_SIZE / sizeof(CalibrationEvent);
-	CalibrationEvent *eventBuffer = new CalibrationEvent[READ_BUFFER_SIZE];
+ 
+	unsigned READ_BUFFER_SIZE = BUFFER_SIZE / sizeof(CalibrationData);
+	CalibrationData *calDataBuffer = new CalibrationData[READ_BUFFER_SIZE];
 	int r;
 	bool asicPresent = false;
 	lseek(linearityDataFile, 0, SEEK_SET);
-	while((r = read(linearityDataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
-		readahead(linearityDataFile, lseek(linearityDataFile, 0, SEEK_CUR), BUFFER_SIZE);
-		int nEvents = r / sizeof(CalibrationEvent);
-		for(int i = 0; i < nEvents; i++) {
-			CalibrationEvent &event = eventBuffer[i];
-			assert(hFine2_list[event.gid-gidStart] != NULL);
-			//if(event.fine < 0.5 * nominalM || event.fine > 4 * nominalM) continue;
-			hFine2_list[event.gid-gidStart]->Fill(event.phase, event.fine);
-			hCoarse2_list[event.gid-gidStart]->Fill(event.phase, event.coarse);
+
+	while((r = read(linearityDataFile, calDataBuffer, sizeof(CalibrationData)*READ_BUFFER_SIZE)) > 0) {
+		int nRead = r / sizeof(CalibrationData);
+	
+		for(int i = 0; i < nRead; i++) {
+			
+			CalibrationData &calData = calDataBuffer[i];
+			
+			assert(hFine2_list[calData.gid-gidStart] != NULL); 		
+			for(int j = 0; j < calData.freq; j++){ 
+				hFine2_list[calData.gid-gidStart]->Fill(calData.phase, calData.fine);
+				hCoarse2_list[calData.gid-gidStart]->Fill(calData.phase, calData.coarse);			}
 			asicPresent = true;
 		}
+		
 	}
 	
 	struct timespec t1;
@@ -696,37 +713,40 @@ void calibrateAsic(
 	
 		lseek(linearityDataFile, 0, SEEK_SET);
 		int r;
-		while((r = read(linearityDataFile, eventBuffer, sizeof(CalibrationEvent)*READ_BUFFER_SIZE)) > 0) {
-			readahead(linearityDataFile, lseek(linearityDataFile, 0, SEEK_CUR), BUFFER_SIZE);
-			int nEvents = r / sizeof(CalibrationEvent);
+		while((r = read(linearityDataFile, calDataBuffer, sizeof(CalibrationData)*READ_BUFFER_SIZE)) > 0) {
+		
+			int nEvents = r / sizeof(CalibrationData);
 			for (int i = 0; i < nEvents; i++) {
-				CalibrationEvent &event = eventBuffer[i];
-				assert(event.gid >= gidStart);
-				assert(event.gid < gidEnd);
+				CalibrationData &calData = calDataBuffer[i];
+				
+				
+				assert(calData.gid >= gidStart);
+				assert(calData.gid < gidEnd);
 
-				CalibrationEntry &entry = calibrationTable[event.gid];
+				CalibrationEntry &entry = calibrationTable[calData.gid];
 				if(!entry.valid) continue;
 				
 				
-				float t = event.phase;
+				float t = calData.phase;
 				float t_ = fmod(1024.0 + t - entry.tEdge, TDC_PERIOD);
-				
-				//float qEstimate = +( 2.0f * entry.p2 * entry.tB + sqrtf(4.0f * event.fine * entry.p2 + entry.m*entry.m) - entry.m)/(2.0f * entry.p2);
-				float qEstimate = ( -entry.a1 + sqrtf((entry.a1 * entry.a1) - (4.0f * (entry.a0 - event.fine) * entry.a2))) / (2.0f * entry.a2) ;  
+
+				float qEstimate = ( -entry.a1 + sqrtf((entry.a1 * entry.a1) - (4.0f * (entry.a0 - calData.fine) * entry.a2))) / (2.0f * entry.a2) ;  
 
 
 				assert(TDC_PERIOD == 1); // No support for TDC_PERIOD != 1 operation
 				
-				float tEstimate = event.coarse - qEstimate - entry.t0;
-				float tError = tEstimate - event.phase;
+				float tEstimate = calData.coarse - qEstimate - entry.t0;
+				float tError = tEstimate - calData.phase;
 
-				TProfile *pControlT = pControlT_list[event.gid-gidStart];
-				TH1S *hControlE = hControlE_list[event.gid-gidStart];
+				TProfile *pControlT = pControlT_list[calData.gid-gidStart];
+				TH1S *hControlE = hControlE_list[calData.gid-gidStart];
 				
-				pControlT->Fill(event.phase, tError);
-				// Don't fill if out of histogram's range
-				if(fabs(tError) < ControlHistogramRange ) {
-					hControlE->Fill(tError);
+				for(int j = 0; j < calData.freq; j++){ 
+					pControlT->Fill(calData.phase, tError);
+					// Don't fill if out of histogram's range
+					if(fabs(tError) < ControlHistogramRange ) {
+						hControlE->Fill(tError);
+					}
 				}
 			}
 		}
@@ -763,7 +783,7 @@ void calibrateAsic(
 		}
 	}
 
-	delete [] eventBuffer;
+	
 	
 	for(unsigned long gChannelID = gidStart/8; gChannelID < gidEnd/8; gChannelID++) {
 		unsigned long channelID = gChannelID % 64;
