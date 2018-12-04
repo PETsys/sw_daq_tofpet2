@@ -433,9 +433,11 @@ int PFP_KX7::recvReply(char *buffer, int bufferSize)
 	setLastCommandTimeIdleCount();
 	pthread_mutex_unlock(&hwLock);
 	
-	int replyLength = outBuffer[1];
-	replyLength = replyLength < bufferSize ? replyLength : bufferSize;
+	uint64_t replyLength = outBuffer[1];
+	replyLength = replyLength < unsigned(bufferSize) ? replyLength : unsigned(bufferSize);
+	replyLength = replyLength < 48 ? replyLength : 48;
 	memcpy(buffer, outBuffer+2, replyLength);
+
 	return replyLength;
 }
 
