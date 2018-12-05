@@ -60,43 +60,93 @@ void DAQFrameServer::stopAcquisition()
 
 int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);
+	
+	const int MAX_PACKET_WORDS = 8;
+	int packetLength = 2 + ceil(commandLength / 8.0);
+	if(packetLength > MAX_PACKET_WORDS) {
+		fprintf(stderr, "Error in DAQFrameServer::sendCommand(): packet length %d is too large.\n", packetLength);
+		return -1;
+	}
+	
+	uint64_t packetBuffer[MAX_PACKET_WORDS];
+	for(int i = 0; i < 8; i++) packetBuffer[i] = 0x0FULL << (4*i);
+
+	uint64_t header = 0;
+	header = header + (8ULL << 36);
+	header = header + (uint64_t(portID) << 59) + (uint64_t(slaveID) << 54);
+
+	packetBuffer[0] = header;
+	packetBuffer[1] = commandLength;
+	memcpy((void*)(packetBuffer+2), buffer, commandLength);
+
 	DP->getPortUp(); // Hack: trigger a hwLock lock/unlock cycle before starting timers
-
-	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);	
-
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
-	DP->sendCommand(portID, slaveID, buffer,bufferSize, commandLength);
+	DP->sendCommand(packetBuffer, packetLength);
 	
 
 	boost::posix_time::ptime t2 = boost::posix_time::microsec_clock::local_time();
 
 	int replyLength = 0;
 	int nLoops = 0;
-	char replyBuffer[12*4];
 	do {
+		replyLength = 0;
+		
 		boost::posix_time::ptime tl = boost::posix_time::microsec_clock::local_time();
 		if((tl - t2).total_milliseconds() > CommandTimeout) break;
 
-		int status = DP->recvReply(replyBuffer, 12*4);
+		int status = DP->recvReply(packetBuffer, MAX_PACKET_WORDS);
 		if (status < 0) {
 			continue; // Timed out and did not receive a reply
 		}
 		
-		if(status < 2) { // Received something weird
-			fprintf(stderr, "Received very short reply: %d bytes\n", status);
+		int recvPortID = packetBuffer[0] >> 59;
+		int recvSlaveID = (packetBuffer[0] >> 54) & 0x1F;
+		
+		if((portID != recvPortID) || (slaveID != recvSlaveID)) {
+			fprintf(stderr, "Mismatched address. Sent (%2d, %2d), received (%2d, %2d).\n",
+				portID, slaveID, 
+				recvPortID, recvSlaveID
+			);
+			continue;
+		}
+
+		replyLength = packetBuffer[1];
+		if(replyLength < 2) { // Received something weird
+			fprintf(stderr, "Received very short reply from (%2d, %2d): %d bytes.\n", 
+				portID, slaveID, 
+				replyLength
+			);
 			continue;
 		}
 		
-		uint16_t recvSN = (unsigned(replyBuffer[0]) << 8) + replyBuffer[1];
-		if(sentSN != recvSN) {
-			fprintf(stderr, "Mismatched SN: sent %6hx, got %6hx\n", sentSN, recvSN);
+		if(replyLength > 8*(MAX_PACKET_WORDS-2)) {
+			fprintf(stderr, "Truncated packet from (%2d, %2d): expected %d bytes.\n", 
+				portID, slaveID, 
+				replyLength
+			);
 			continue;
 		}
-	
-		// Got what looks like a valid reply with the correct SN
-		replyLength = status;
-		memcpy(buffer, replyBuffer, replyLength);		
-	} while(replyLength == 0);	
+
+		if(replyLength > bufferSize) {
+			fprintf(stderr, "Packet too large from (%2d, %2d): %d bytes.\n", 
+				portID, slaveID, 
+				replyLength
+			);
+			continue;
+		}
+		
+		memcpy(buffer, packetBuffer+2, replyLength);
+		
+		uint16_t recvSN = (unsigned(buffer[0]) << 8) + buffer[1];
+		if(sentSN != recvSN) {
+			fprintf(stderr, "Mismatched SN  from (%2d, %2d): sent %04hx, got %04hx.\n",
+				portID, slaveID, 
+				sentSN, recvSN
+			);
+			continue;
+		}
+	} while(replyLength == 0);
 	
 	boost::posix_time::ptime t3 = boost::posix_time::microsec_clock::local_time();
 	

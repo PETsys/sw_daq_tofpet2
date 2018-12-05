@@ -345,26 +345,15 @@ bool PFP_KX7::cardOK()
 }
 
 
-int PFP_KX7::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
+int PFP_KX7::sendCommand(uint64_t *packetBuffer, int packetBufferSize)
 {
-	if(commandLength > 64) {
-		fprintf(stderr, "ERROR: PFP_KX7::sendCommand(...) commandLength too large: %d\n", commandLength);
+	if(packetBufferSize > 64) {
+		fprintf(stderr, "ERROR in PFP_KX7::sendCommand(...) packetBufferSize %d is too large.\n", packetBufferSize);
+		return -1;
 	}
+
 	setLastCommandTimeIdleCount();
 	int status;
-
-	uint64_t outBuffer[8];
-	for(int i = 0; i < 8; i++) outBuffer[i] = 0x0FULL << (4*i);
-
-	uint64_t header = 0;
-	header = header + (8ULL << 36);
-	header = header + (uint64_t(portID) << 59) + (uint64_t(slaveID) << 54);
-
-	outBuffer[0] = header;
-	outBuffer[1] = commandLength;
-	memcpy((void*)(outBuffer+2), buffer, commandLength);
-	int nWords = 2 + ceil(float(commandLength)/sizeof(uint64_t));
-	
 	uint32_t txRdPointer;
 
 	pthread_mutex_lock(&hwLock);
@@ -385,7 +374,7 @@ int PFP_KX7::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, 
 	} while( ((txWrPointer & 16) != (txRdPointer & 16)) && ((txWrPointer & 15) == (txRdPointer & 15)) );
 	
 	uint32_t wrSlot = txWrPointer & 15;
-	status = WriteAndCheck(wrSlot * 16 * 4 , (uint32_t *)outBuffer, (nWords * 2));
+	status = WriteAndCheck(wrSlot * 16 * 4 , (uint32_t *)packetBuffer, (packetBufferSize * 2));
 		
 	txWrPointer += 1;
 	txWrPointer = txWrPointer & 31;	// There are only 16 slots, but we use another bit for the empty/full condition
@@ -398,12 +387,11 @@ int PFP_KX7::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, 
 
 }
 
-int PFP_KX7::recvReply(char *buffer, int bufferSize)
+int PFP_KX7::recvReply(uint64_t *packetBuffer, int packetBufferSize)
 {
+	assert(packetBufferSize >= 8);
 	setLastCommandTimeIdleCount();
 	int status;
-	uint64_t outBuffer[8];
-	
 	uint32_t rxWrPointer;
 
 	pthread_mutex_lock(&hwLock);
@@ -424,7 +412,7 @@ int PFP_KX7::recvReply(char *buffer, int bufferSize)
 	} while((rxWrPointer & 31) == (rxRdPointer & 31));
 	uint32_t rdSlot = rxRdPointer & 15;
 	
-	status = ReadAndCheck((768 + rdSlot * 16) * 4 , (uint32_t *)outBuffer, 16);
+	status = ReadAndCheck((768 + rdSlot * 16) * 4 , (uint32_t *)packetBuffer, 16);
 	rxRdPointer += 1;
 	rxRdPointer = rxRdPointer & 31;	// There are only 16 slots, but we use another bit for the empty/full condition
 	rxRdPointer |= 0xFACE9100;
@@ -432,13 +420,8 @@ int PFP_KX7::recvReply(char *buffer, int bufferSize)
 	status = WriteAndCheck(rxRdPointerReg * 4 , &rxRdPointer, 1);
 	setLastCommandTimeIdleCount();
 	pthread_mutex_unlock(&hwLock);
-	
-	uint64_t replyLength = outBuffer[1];
-	replyLength = replyLength < unsigned(bufferSize) ? replyLength : unsigned(bufferSize);
-	replyLength = replyLength < 48 ? replyLength : 48;
-	memcpy(buffer, outBuffer+2, replyLength);
 
-	return replyLength;
+	return 8;
 }
 
 int PFP_KX7::setAcquistionOnOff(bool enable)

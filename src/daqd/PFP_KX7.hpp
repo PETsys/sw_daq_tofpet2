@@ -28,8 +28,8 @@ public:
 	  void stopWorker();
 	  void startWorker();
 	bool cardOK();
-	int sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength);
-	int recvReply(char *buffer, int bufferSize);
+	int sendCommand(uint64_t *packetBuffer, int packetBufferSize);
+	int recvReply(uint64_t *packetBuffer, int packetBufferSize);
 	int setAcquistionOnOff(bool enable);
 	uint64_t getPortUp();
 	uint64_t getPortCounts(int channel, int whichCount);
