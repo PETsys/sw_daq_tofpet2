@@ -104,7 +104,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 		int recvSlaveID = (packetBuffer[0] >> 54) & 0x1F;
 		
 		if((portID != recvPortID) || (slaveID != recvSlaveID)) {
-			fprintf(stderr, "Mismatched address. Sent (%2d, %2d), received (%2d, %2d).\n",
+			fprintf(stderr, "WARNING: Mismatched address. Sent (%2d, %2d), received (%2d, %2d).\n",
 				portID, slaveID, 
 				recvPortID, recvSlaveID
 			);
@@ -113,7 +113,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 
 		replyLength = packetBuffer[1];
 		if(replyLength < 2) { // Received something weird
-			fprintf(stderr, "Received very short reply from (%2d, %2d): %d bytes.\n", 
+			fprintf(stderr, "WARNING: Received very short reply from (%2d, %2d): %d bytes.\n", 
 				portID, slaveID, 
 				replyLength
 			);
@@ -121,7 +121,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 		}
 		
 		if(replyLength > 8*(MAX_PACKET_WORDS-2)) {
-			fprintf(stderr, "Truncated packet from (%2d, %2d): expected %d bytes.\n", 
+			fprintf(stderr, "WARNING: Truncated packet from (%2d, %2d): expected %d bytes.\n", 
 				portID, slaveID, 
 				replyLength
 			);
@@ -129,7 +129,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 		}
 
 		if(replyLength > bufferSize) {
-			fprintf(stderr, "Packet too large from (%2d, %2d): %d bytes.\n", 
+			fprintf(stderr, "WARNING: Packet too large from (%2d, %2d): %d bytes.\n", 
 				portID, slaveID, 
 				replyLength
 			);
@@ -140,7 +140,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 		
 		uint16_t recvSN = (unsigned(buffer[0]) << 8) + buffer[1];
 		if(sentSN != recvSN) {
-			fprintf(stderr, "Mismatched SN  from (%2d, %2d): sent %04hx, got %04hx.\n",
+			fprintf(stderr, "WARNING: Mismatched SN  from (%2d, %2d): sent %04hx, got %04hx.\n",
 				portID, slaveID, 
 				sentSN, recvSN
 			);
@@ -151,11 +151,10 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 	boost::posix_time::ptime t3 = boost::posix_time::microsec_clock::local_time();
 	
 	if (replyLength == 0 ) {
-		printf("Command reply timing: (t2 - t1) => %ld us, (t3 - t2) => %ld us, i = %d, status = %s\n", 
+		printf("WARNING: Command to (%2d, %2d) timed out: %ld + %ld us\n",
+			portID, slaveID, 
 			(t2 - t1).total_microseconds(), 
-			(t3 - t2).total_microseconds(),
-			nLoops,
-			replyLength > 0 ? "OK" : "FAIL"
+			(t3 - t2).total_microseconds()
 		);
 	}
 	
