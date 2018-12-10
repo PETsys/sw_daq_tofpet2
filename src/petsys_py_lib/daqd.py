@@ -471,7 +471,7 @@ class Connection:
 			else:
 				print "INFO: FEB/D (%2d, %2d) has 0 active ASICs." % (portID, slaveID)
 
-		
+		self.__synchronizeDataToConfig()
 		return None
 		
 
