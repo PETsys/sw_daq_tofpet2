@@ -1,0 +1,1416 @@
+#!/usr/bin/env python
+
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk
+from gi.repository import GdkPixbuf
+from gi.repository import Gdk
+from gi.repository import Gio
+from gi.repository import GLib
+from gi.repository import GObject
+import sys
+import os
+import subprocess
+import signal
+import os.path
+from collections import Counter
+from time import sleep, time
+import csv
+from petsys import daqd
+from fcntl import fcntl, F_GETFL, F_SETFL
+from os import O_NONBLOCK, read
+
+class GUI:
+    def __init__ (self):
+        self.builder = Gtk.Builder()
+        self.builder.add_from_file('src/gui/gui_layout.glade')
+        
+        self.MainWindow = self.builder.get_object("MainWindow")
+
+        self.processWindow = self.builder.get_object("executeWindow")
+        
+        self.builder.connect_signals(self)
+        
+        self.__daqd_switch_handle_set = False
+       
+        self.__daqdPid = None
+        self.__process = None
+        self.__terminalPid = None
+       
+        self.__workingFolder = None
+
+        self.__febdTopology = []
+
+        self.__fem_switch_handle_set = False
+        self.__bias_switch_handle_set = False
+
+        self.__scroll = True
+        self.__usedStopButton = False
+        
+    def on_executeStopButton_clicked(self, button):
+        if self.__process is not None:
+            if self.show_confirmation_dialog("","Stop the process?",  self.processWindow):
+                self.__usedStopButton = True
+                os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
+        return True
+
+    def on_scrollButton_toggled(self, button):
+        isActive = self.builder.get_object("executeScrollButton").get_active()
+        if isActive:
+            self.__scroll = True
+        else:
+            self.__scroll = False
+        
+
+    def execute(self,command, processName ="", message1="", message2=""):
+        
+        self.__usedStopButton = False
+        self.__process = subprocess.Popen(command, shell=True, bufsize=0, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+
+        flags = fcntl(self.__process.stdout, F_GETFL) # get current p.stdout flags
+        fcntl(self.__process.stdout, F_SETFL, flags | O_NONBLOCK)
+        
+        flags = fcntl(self.__process.stderr, F_GETFL) # get current p.stdout flags
+        fcntl(self.__process.stderr, F_SETFL, flags | O_NONBLOCK)
+
+        # turn off sensitive property of all widgets that are not on the execute process window
+        for widget in self.builder.get_objects():
+            if widget.find_property("sensitive") is not None:
+                if "execute" in  Gtk.Buildable.get_name(widget):
+                    widget.set_sensitive(True)
+                else:
+                    widget.set_sensitive(False)
+        
+        self.builder.get_object("executeScrollButton").set_sensitive(True)
+        self.builder.get_object("executeStopButton").set_sensitive(True)
+
+        self.processWindow.set_title("%s (running)" % processName)
+        self.processWindow.show()
+        self.builder.get_object("executeSpinner").start()
+
+        GLib.io_add_watch(self.__process.stdout, # file descriptor
+                          GLib.IO_IN,  # condition
+                          self.write_to_textview ) # callback
+
+        
+        GLib.io_add_watch(self.__process.stderr, # file descriptor
+                          GLib.IO_IN,  # condition
+                          self.write_to_textview ) # callback
+
+        data = [processName, message1, message2]
+            
+        self.timeout_id = GLib.timeout_add(1000, self.check_if_finished, data)
+    
+    
+
+    def check_if_finished(self, data):
+        message1 = data[1]
+        message2 = data[2]
+        if self.__process is None:
+            return True
+        if self.__process.poll() is not None:
+            self.builder.get_object("executeSpinner").stop()
+            GLib.source_remove(self.timeout_id)
+            # Make all widgets sensitive again...
+            for widget in self.builder.get_objects():
+                if widget.find_property("sensitive") is not None:
+                    widget.set_sensitive(True)
+
+            self.builder.get_object("executeScrollButton").set_sensitive(False)
+            self.builder.get_object("executeStopButton").set_sensitive(False)
+            if not self.__usedStopButton:
+                self.processWindow.set_title("%s (finished)" % data[0])
+            else:
+                self.processWindow.set_title("%s (stopped by user)" % data[0])
+           
+            comboBox =  self.builder.get_object("processingConvertBoxOptions")
+            self.on_processingConvertBoxOptions_changed(comboBox)
+
+            textView = self.builder.get_object("executeTextView")
+            self.scroll_to_end(textView)
+            buf = textView.get_buffer()
+            buf.insert_at_cursor("\n\n")
+            self.__process = None
+            if message1 != "" and not self.__usedStopButton:
+                self.show_info_dialog(message1, message2, self.processWindow)
+        
+        return True
+
+ 
+    def write_to_textview(self, fd, condition):
+        if condition == GLib.IO_IN: 
+            char = fd.read() 
+            tview = self.builder.get_object("executeTextView")
+            buf = self.builder.get_object("executeTextView").get_buffer()
+        
+            if "Python:: Acquired" in char:
+                if "\r" in char:
+                    char = char[:-1]
+                nLines =  buf.get_line_count()
+                lineIterStart = buf.get_iter_at_line_index(nLines-1,0)
+                lineIterEnd = buf.get_end_iter()
+                buf.delete(lineIterStart, lineIterEnd)
+                buf.place_cursor(buf.get_end_iter())
+            buf.insert_at_cursor(char)
+                
+            if self.__scroll:
+                self.scroll_to_end(self.builder.get_object("executeTextView"))
+            return True 
+        else:
+            return False 
+
+    def scroll_to_end(self,textview):
+        i = textview.props.buffer.get_end_iter()
+        mark = textview.props.buffer.get_insert()
+        textview.props.buffer.place_cursor(i)
+        textview.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
+
+
+    def on_MainWindow_delete_event(self, MainWindow, data): 
+        if self.show_confirmation_dialog("This will close any running process","Exit?"):
+            if self.__process is not None:
+                os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
+            if self.__daqdPid != None and self.is_daqd_running():
+                os.kill(int(self.__daqdPid), signal.SIGTERM)
+                sleep(0.3)
+                if self.__terminalPid != None:
+                    os.kill(int(self.__terminalPid), signal.SIGKILL)    
+            Gtk.main_quit()
+        return True
+                                
+    def on_executeWindow_delete_event(self, window, data): 
+        if self.__process is not None:
+            if self.show_confirmation_dialog("Closing window will stop the running process. Proceed?", "", self.processWindow):
+                os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
+                window.hide()
+        else:
+            if self.show_confirmation_dialog("","Close window?", self.processWindow):
+                window.hide()
+        return True
+
+        # Main menu handler functions       
+    def on_menuFileQuit_activate(self, menuFileQuit): # quit with Quit button
+        if self.show_confirmation_dialog("This will close any running process","Exit?"):
+            if self.__process is not None:
+                os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
+            if self.__daqdPid != None and self.is_daqd_running():
+                os.kill(int(self.__daqdPid), signal.SIGTERM)
+                sleep(0.3)
+                if self.__terminalPid != None:
+                    os.kill(int(self.__terminalPid), signal.SIGKILL)    
+            Gtk.main_quit()
+        
+    def on_menuHelpAbout_activate(self, menuHelpAbout): 
+        about = Gtk.AboutDialog.new()
+        about.set_transient_for(self.MainWindow)
+        about.set_version("v2018.09")
+        about.set_logo(GdkPixbuf.Pixbuf.new_from_file("src/gui/logo_PETsys2.png"))
+        about.set_website("http://www.petsyselectronics.com")
+        about.set_website_label("petsyselectronics.com")
+        about.set_program_name("TOFPET2 Data Acquisition Software")
+        about.set_authors(["Ricardo Bugalho","Luis Ferramacho"])
+        about.show()
+        
+    def on_menuHelpDoc_activate(self, menuHelpDoc):
+        Gtk.show_uri_on_window(None, "https://drive.google.com/drive/u/0/folders/0BxJ0aPS8qNAxZmtLVEdBWUdicWs?ogsrc=32",0)
+
+    #Daqd section handler function  
+    def on_daqdSwitch_state_set(self, daqdSwitch, isON):
+
+        isGBE = self.builder.get_object("radioButtonGBE").get_active()
+      
+        if isGBE:
+            command = "./daqd --socket-name /tmp/d.sock --daq-type GBE"
+        else:
+            command = "./daqd --socket-name /tmp/d.sock --daq-type PFP_KX7"
+            
+       # command2 = "gnome-terminal -e 'bash -c \"%s; exec bash\"'" % command
+        command2 = "xterm -hold -e \"%s\"" % command
+        if isON:   
+            # Check if there are other instances of daqd
+            if not self.__daqd_switch_handle_set:
+                if self.is_daqd_running():
+                    daqdPids = subprocess.check_output(["pidof", "daqd"])
+                    pidsToKill = daqdPids.split(" ")
+
+                    if self.show_confirmation_dialog("There are other instances of daqd running in the system. Kill them and open a new instance?"):
+                        for pid in pidsToKill:
+                            os.kill(int(pid), signal.SIGTERM)
+                    else:
+                        self.__daqdPid = pidsToKill[0]
+                        return
+
+                #Check if socket and shm files exist
+                if os.path.exists('/tmp/d.sock'):
+                    subprocess.call("rm /tmp/d.sock", shell=True) 
+
+                if os.path.exists('/dev/shm/daqd_shm'):
+                    subprocess.call("rm /dev/shm/daqd_shm", shell=True) 
+
+                #Open ./daqd
+                daqdOpenPipe = subprocess.Popen(command2, shell=True)                
+                sleep(1.5)
+
+                # Check if daqd opened successfully and store pids of processes
+                if self.is_daqd_running():
+                    daqdPid = subprocess.check_output(["pidof", "daqd"])
+                    self.__daqdPid = daqdPid.split(" ")[0]
+                else:
+                    self.show_error_dialog("daqd server was unable to start correctly. Please check error message in the terminal and retry")
+                    self.__daqdPid = None
+                    self.__daqd_switch_handle_set = True
+                    daqdSwitch.set_active(False)
+                    self.__daqd_switch_handle_set = False
+                    return True
+
+                terminalPid = subprocess.check_output(["pidof", "xterm"])
+                terminalPids = terminalPid.split(" ")
+                for pid in terminalPids:
+                    pid2 = pid.strip('\n')
+                    command3 = "ps -o etime= -p \"%s\"" % pid2
+                    time =  subprocess.check_output(command3, shell=True ) 
+                    time2 = time.strip('\n')
+                    if time2.count(':') == 1 and time2.count('-')==0:
+                        timeSec = sum(x * int(t) for x, t in zip([60, 1], time2.split(":")))
+                    elif time2.count(':') == 2 and time2.count('-') ==0:
+                        timeSec = sum(x * int(t) for x, t in zip([3600,60, 1], time2.split(":")))
+                    else:
+                        continue
+                    if timeSec < 5:
+                        self.__terminalPid = pid2
+            
+        else:
+            if not self.__daqd_switch_handle_set:
+                isDaqdPresent = subprocess.call(["pidof", "daqd"], stdout= subprocess.PIPE) == 0
+                if self.__daqdPid != None and self.is_daqd_running():
+                    os.kill(int(self.__daqdPid), signal.SIGTERM)
+                    sleep(0.3)
+                if self.__terminalPid != None:
+                    os.kill(int(self.__terminalPid), signal.SIGKILL)
+      
+
+    def is_daqd_running(self):
+        isDaqdPresent = subprocess.call(["pidof", "daqd"], stdout= subprocess.PIPE) == 0
+        return isDaqdPresent
+
+
+    def on_dataFolderChooseButton_clicked(self, dataFolderChooseButton):   
+        folderChooser = self.builder.get_object("dataFolderChooser")
+        folderEntry = self.builder.get_object("dataFolderEntry")
+        folderChooser.set_default_size(1200, 400)
+
+        response = folderChooser.run()
+        if response == Gtk.ResponseType.OK:
+            folderEntry.set_text(folderChooser.get_filename())
+            self.__workingFolder = folderChooser.get_filename()+"/"
+            self.check_bias_settings_file()
+            self.check_disc_settings_file()
+            
+        elif response == Gtk.ResponseType.CANCEL:
+            folderChooser.hide()
+
+        folderChooser.hide()
+        
+    def check_bias_settings_file(self):
+        filename = self.__workingFolder + "bias_settings.tsv"
+        if not os.path.exists(filename):
+            return
+            
+        # Check if bias settings file exists and is not custom made (all 4 last collumns have equal values)
+        offset = []
+        prebd = []
+        bd = []
+        ov = []
+        with open(filename) as csvfile:
+            reader = csv.DictReader(csvfile, delimiter='\t')
+            for row in reader:
+                offset.append(row['Offset'])
+                prebd.append(row['Pre-breakdown'])
+                bd.append(row['Breakdown'])
+                ov.append(row['Overvoltage'])
+             
+        if (len(set(offset)) == 1 and len(set(prebd)) == 1 and len(set(bd)) == 1 and len(set(ov)) == 1):
+            self.builder.get_object("biasSpinButton1").set_value(float(prebd[0]))
+            self.builder.get_object("biasSpinButton2").set_value(float(bd[0]))
+            self.builder.get_object("biasSpinButton3").set_value(float(ov[0]))
+            self.show_info_dialog("WARNING: Simple Bias Settings file detected in working folder", "Values were updated in the Bias Settings Section")
+        else:
+            self.builder.get_object("biasSpinButton1").set_value(0)
+            self.builder.get_object("biasSpinButton2").set_value(0)
+            self.builder.get_object("biasSpinButton3").set_value(0)
+            self.show_info_dialog("WARNING: Custom Bias Settings file detected in working folder", "Save button in Bias Settings Section can override them")
+
+    def check_disc_settings_file(self):
+        filename = self.__workingFolder + "disc_settings.tsv"
+        if not os.path.exists(filename):
+            return
+
+        # Check if bias settings file exists and is not custom made (all 4 last collumns have equal values)
+        vth_t1 = []
+        vth_t2 = []
+        vth_e = []
+        with open(filename) as csvfile:
+            reader = csv.DictReader(csvfile, delimiter='\t')
+            for row in reader:
+                vth_t1.append(row['vth_t1'])
+                vth_t2.append(row['vth_t2'])
+                vth_e.append(row['vth_e'])
+                          
+        if (len(set(vth_t1)) == 1 and len(set(vth_t2)) == 1 and len(set(vth_e)) == 1):
+            self.builder.get_object("threshSpinButton1").set_value(float(vth_t1[0]))
+            self.builder.get_object("threshSpinButton2").set_value(float(vth_t2[0]))
+            self.builder.get_object("threshSpinButton3").set_value(float(vth_e[0]))
+            self.show_info_dialog("WARNING: Simple Discriminator Thresholds Settings file detected in working folder", "Values were updated in the ASIC Thresholds Settings Section")
+        else:
+            self.builder.get_object("threshSpinButton1").set_value(0)
+            self.builder.get_object("threshSpinButton2").set_value(0)
+            self.builder.get_object("threshSpinButton3").set_value(0)
+            self.show_info_dialog("WARNING: Custom Discriminator Thresholds Settings file detected in working folder", "Caution: Save button in ASIC Thresholds Settings Section will overwrite it!")
+
+     
+    def on_dataFolderEntry_activate(self, dataFolderEntry):
+        folderExists= os.path.exists(dataFolderEntry.get_text())
+        if not folderExists:
+            if self.show_confirmation_dialog("No such folder exists. Create folder?"):
+                subprocess.call("mkdir "+ dataFolderEntry.get_text(), shell=True) 
+                self.__workingFolder = dataFolderEntry.get_text() + "/"
+            else: 
+                return True
+        else:
+            self.__workingFolder = dataFolderEntry.get_text() + "/"
+            self.check_bias_settings_file()
+            self.check_disc_settings_file()
+            
+    def on_biasApplyButton_clicked(self, biasApplyButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "config.ini"):
+            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect and save button to create one.")
+            return
+        if not os.path.exists(self.__workingFolder + "bias_calibration.tsv"):
+            self.show_error_dialog("Bias Calibration file not detected in working folder. Please use the detect and save button in 'System Configuration' section.")
+            return
+
+        preBD = self.builder.get_object("biasSpinButton1").get_value()
+        BD = self.builder.get_object("biasSpinButton2").get_value()
+        OV = self.builder.get_object("biasSpinButton3").get_value()
+            
+        configFile = self.__workingFolder + "config.ini"
+        outFile = self.__workingFolder + "bias_settings.tsv"
+        
+        if os.path.exists(outFile):
+            if not self.show_confirmation_dialog("A Bias Settings file exists in the working folder. Overwrite?"):
+                return
+            
+        command = "./make_simple_bias_settings_table --config %s --offset 0.75 --prebd %.2f --bd %.2f --over %.2f -o %s" % (configFile, preBD, BD, OV, outFile)
+         
+        subprocess.call(command, shell=True)
+
+        self.show_info_dialog("Bias Settings saved","")
+       
+    def on_biasEditButton_clicked(self, biasEditButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
+            self.show_error_dialog("Please use the save button before editing the bias settings file.")
+        appChooser = self.builder.get_object("applicationChooser")
+        response = appChooser.run()
+        if response == Gtk.ResponseType.OK:
+            info = appChooser.get_app_info()
+            biasFile = Gio.File.new_for_path(self.__workingFolder + "bias_settings.tsv")
+            info.launch([biasFile], None)
+        appChooser.hide()
+    
+    def on_threshEditButton_clicked(self, threshEditButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
+            self.show_error_dialog("Please use the save button before editing the discriminator settings file.")
+        appChooser = self.builder.get_object("applicationChooser")
+        response = appChooser.run()
+        if response == Gtk.ResponseType.OK:
+            info = appChooser.get_app_info()
+            discFile = Gio.File.new_for_path(self.__workingFolder + "disc_settings.tsv")
+            info.launch([discFile], None)
+        appChooser.hide()
+    
+    def on_editMapsButton_clicked(self, mapsEditButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "map_channel.tsv"):
+            self.show_error_dialog("Please use the detect and save button before editing the channel and trigger maps.")
+        appChooser = self.builder.get_object("applicationChooser")
+        response = appChooser.run()
+        if response == Gtk.ResponseType.OK:
+            info = appChooser.get_app_info()
+            file1 = Gio.File.new_for_path(self.__workingFolder + "map_channel.tsv")
+            file2 = Gio.File.new_for_path(self.__workingFolder + "map_trigger.tsv")
+            info.launch([file1, file2], None)
+        appChooser.hide()
+
+    def on_editConfigButton_clicked(self, mapsEditButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "config.ini"):
+            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect button and save a valid configuration")
+        appChooser = self.builder.get_object("applicationChooser")
+        response = appChooser.run()
+        if response == Gtk.ResponseType.OK:
+            info = appChooser.get_app_info()
+            configFile = Gio.File.new_for_path(self.__workingFolder + "config.ini")
+            info.launch([configFile], None)
+        appChooser.hide()
+
+
+    def on_threshApplyButton_clicked(self, threshApplyButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        if not os.path.exists(self.__workingFolder + "config.ini"):
+            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect and save button to create one.")
+            return
+        if not os.path.exists(self.__workingFolder + "disc_calibration.tsv"):
+            self.show_error_dialog("Discriminator Calibration file not detected in working folder. Please perform ASIC calibration.")
+            return
+
+        vth_t1 = self.builder.get_object("threshSpinButton1").get_value()
+        vth_t2 = self.builder.get_object("threshSpinButton2").get_value()
+        vth_e = self.builder.get_object("threshSpinButton3").get_value()
+        
+        configFile = self.__workingFolder + "config.ini"
+        outFile = self.__workingFolder + "disc_settings.tsv"
+        if os.path.exists(outFile):
+            if not self.show_confirmation_dialog("A Discriminator Threshold Settings file exists in the working folder. Overwrite?"):
+                return
+            
+        command = "./make_simple_disc_settings_table --config %s --vth_t1 %d --vth_t2 %d --vth_e %d -o %s" % (configFile, int(vth_t1), int(vth_t2), int(vth_e), outFile)
+         
+        subprocess.call(command, shell=True)
+        
+        self.show_info_dialog("Threshold Settings saved","")
+
+
+    def on_systemDetectButton_clicked(self, systemButton):
+        if not self.is_daqd_running():
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+
+        systemTopology = []
+        self.__febdTopology = []
+        self.__febdNumber = 0 
+
+        connection = daqd.Connection()
+
+        for portID, slaveID in connection.getActiveUnits():
+            
+            register0 = connection.read_config_register(portID, slaveID, 1, 0x0000)
+            register1 = connection.read_config_register(portID, slaveID, 1, 0x0001)
+        
+        
+            if (register0 == 1):
+                if (register1 == 1):
+                    isEkit = True
+                if connection.getBiasType(portID, slaveID) == 1:
+                        unitType = "FEB/D_64P"
+                else:
+                        unitType = "FEB/D_16P"
+               
+                self.__febdTopology.append([portID, slaveID, 0, unitType,""])
+            
+                    
+            if (register0 == 0 and register1 == 1):
+                hasTrigger = True
+                isEkit = False
+                unitType = "CLK&TRIGGER"
+                
+            systemTopology.append([portID, slaveID, 0, unitType,""])
+            
+        if self.__febdTopology == []:
+             self.show_error_dialog("No FEB/Ds detected. Please check connections and try again.")
+             return True
+        
+        if isEkit and unitType == "FEB/D_64P":
+            self.show_info_dialog( "Detected Evaluation Kit","                - 1 FEB/D + Bias Mezzanine 64P\n\nCalibration file required. Opening file chooser dialog...")
+            if not self.choose_BiasCal_File(systemButton, 0, None):
+                self.show_info_dialog("System configuration not saved","")  
+                return True
+
+            if self.show_confirmation_dialog("- 1 FEB/D + Bias Mezzanine 64P with calibration file %s\n\n        Save configuration files in Working Data Folder?" % self.__febdTopology[0][4], "Evaluation Kit Configuration"):
+                self.saveSystemSettings()
+            else:
+                self.show_info_dialog("System configuration not saved","")  
+            return True
+
+        elif isEkit and unitType == "FEB/D_16P":
+            if self.show_confirmation_dialog("           - 1 FEB/D + Bias Mezzanine 16P \n\n Save configuration files in Working Data Folder?", "Detected Evaluation Kit"):
+                self.saveSystemSettings()
+            return True
+        else:
+            topology = ""
+            for febd in systemTopology:
+                if febd[3] == "FEB/D_64P":
+                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d\n" % (febd[0], febd[1])
+                    self.__febdNumber += 1
+                elif febd[3] == "FEB/D_16P":
+                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d\n" % (febd[0], febd[1])
+                    self.__febdNumber += 1
+                else:
+                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
+            
+            topology += "\n  Opening configuration window..."
+            self.show_info_dialog("Detected SIPM Readout System", topology)
+                    
+            hBox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
+
+            self.builder.add_objects_from_file("src/gui/gui_layout.glade", ("febdConfigDialog","febdConfigDialogBox",""))
+
+            febdConfigBox = self.builder.get_object("febdConfigDialogBox")
+            grid = Gtk.Grid()
+            febdConfigBox.pack_start(grid, True, True, 0)
+
+
+            label1 = Gtk.Label("portID")
+            label1.set_margin_right(10)
+            label1.set_margin_left(10)
+            label1.set_property("halign",3)  
+            grid.add(label1)
+
+            label2 = Gtk.Label("slaveID")
+            label2.set_margin_right(10)
+            label2.set_margin_left(10)
+            label2.set_property("halign",3)
+            grid.attach_next_to(label2, label1, Gtk.PositionType.RIGHT, 1, 1)
+
+            label3 = Gtk.Label("triggerID")
+            label3.set_property("halign",3)
+            grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 1, 1)
+
+            if any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
+                label4 = Gtk.Label("HV-DAC Calibration file")
+                label4.set_property("halign",3)
+                grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
+
+            portLabelList = [0 for x in range(self.__febdNumber)]
+            slaveLabelList = [0 for x in range(self.__febdNumber)]
+            fileButtonList = [0 for x in range(self.__febdNumber)]
+            triggerSpinButtonList = [0 for x in range(self.__febdNumber)]
+            triggerSpinAdjustmentList = [0 for x in range(self.__febdNumber)]
+            fileEntryList = [0 for x in range(self.__febdNumber)]
+
+            for i, febd in enumerate(self.__febdTopology):
+
+                portLabelList[i] = Gtk.Label()
+                portLabelList[i].set_text(str(febd[0]))
+
+                slaveLabelList[i] = Gtk.Label()
+                slaveLabelList[i].set_text(str(febd[1]))
+
+                triggerSpinButtonList[i] = Gtk.SpinButton()
+                triggerSpinAdjustmentList[i] = Gtk.Adjustment(febd[2], 0, 32, 1, 1, 0)
+                triggerSpinButtonList[i].set_adjustment(triggerSpinAdjustmentList[i])
+                triggerSpinButtonList[i].set_width_chars(1)
+                triggerSpinButtonList[i].set_max_width_chars(2)
+
+                grid.attach(portLabelList[i], 0, i+1, 1, 1)
+                grid.attach(slaveLabelList[i], 1, i+1, 1, 1)
+                grid.attach(triggerSpinButtonList[i], 2, i+1, 1, 1)
+
+
+                if febd[3] == "FEB/D_64P":
+                    fileEntryList[i] = Gtk.Entry()
+                    grid.attach(fileEntryList[i], 3, i+1, 1, 1)
+                    fileEntryList[i].set_margin_left(10)
+                    fileEntryList[i].set_width_chars(30)
+                    fileEntryList[i].set_max_width_chars(30)
+                    fileButtonList[i] = Gtk.Button("Choose")
+                    grid.attach(fileButtonList[i], 4, i+1, 1, 1)
+                    fileButtonList[i].connect("clicked", self.choose_BiasCal_File, i, fileEntryList[i])
+
+
+            febdConfigBox.show_all()
+            febdConfigDialog = self.builder.get_object("febdConfigDialog")
+            febdConfigDialog.connect("response", self.validate_response2, triggerSpinButtonList)
+            response2 = febdConfigDialog.run()
+
+
+            topology = ""
+            for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
+                if  biasMezzType == "FEB/D_64P":
+                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d, trigger %d, calibration file '%s'\n" % (portID,slaveID, triggerID, biasCalFile)
+                    self.__febdNumber += 1
+                elif  biasMezzType == "FEB/D_16P":
+                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d, trigger %d\n" % (portID,slaveID, triggerID)
+                    self.__febdNumber += 1
+            for febd in systemTopology:
+                if febd[3] == "CLK&TRIGGER":
+                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
+            
+            topology += "\n\n\n        Save configuration files in Working Data Folder?"
+
+            if self.show_confirmation_dialog(topology, "SIPM Readout System configuration"):
+                self.saveSystemSettings()
+            else:
+                self.show_info_dialog("System configuration not saved","")  
+            return True
+            
+            
+        
+    def saveSystemSettings(self):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        
+        if not os.path.exists(self.__workingFolder + "config.ini"):
+            subprocess.call("cp config.ini "+self.__workingFolder, shell=True)
+
+        commandMap = "./make_simple_channel_map -o " + self.__workingFolder + "map"
+        commandBias = "./make_bias_calibration_table -o " + self.__workingFolder + "bias_calibration.tsv"
+
+        commandMapExtension = ""
+        commandBiasExtension = ""
+
+        for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
+            if  biasMezzType == "FEB/D_16P":
+                commandMapExtension += " --port %d --slave %d --trigger %d" % (portID,slaveID, triggerID)
+                commandBiasExtension += ""
+            elif biasMezzType == "FEB/D_64P":
+                commandMapExtension += " --port %d --slave %d --trigger %d" % (portID,slaveID, triggerID)
+                commandBiasExtension += " --port %d --slave %d --filename %s" % (portID,slaveID, biasCalFile)
+
+        subprocess.call(commandMap+commandMapExtension, shell=True)
+        subprocess.call(commandBias+commandBiasExtension, shell=True)
+
+        self.show_info_dialog("System configuration saved","")
+                
+    def validate_response2(self, dialog, response_id, triggerSpinButtonList):
+        if (response_id == -6):
+            dialog.hide()
+            return True
+        for i in range(self.__febdNumber):
+            self.__febdTopology[i][2] = triggerSpinButtonList[i].get_value()
+        valid = self.is_FEBD_Config_Valid()
+        if valid:
+            dialog.hide()
+            
+        return True
+           
+    def is_FEBD_Config_Valid(self):
+        if self.__febdTopology == None:
+            return False
+        
+        countPorts = Counter([(port,slave) for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])
+        countTrigger = Counter([trigger for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])
+        countFiles = Counter([("FEB/D_64P" == biastype, biasFile) for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])            
+              
+        if any(count > 1 for count in countPorts.values()):
+            self.show_error_dialog("Each FEB/D should have a unique pair of (portID,slaveID).")
+            return False
+        
+        if any(count > 1 for count in countTrigger.values()):
+            self.show_error_dialog("Each FEB/D should have a unique triggerID value.")
+            return False
+
+        if (True, "") in  countFiles:
+            self.show_error_dialog("Bias calibration file is not defined for all required FEB/Ds.")
+            return False
+
+        return True
+        
+        
+    def choose_BiasCal_File(self, fileButton, febdID, fileEntry):
+        dialog = self.builder.get_object("biasCalFileChooser")
+        dialog.set_transient_for(self.MainWindow)
+        
+        filter_file = Gtk.FileFilter()
+        filter_file.set_name(".tsv files")
+        filter_file.add_pattern("*.tsv")
+        dialog.add_filter(filter_file)
+        
+        response = dialog.run()
+        if response == Gtk.ResponseType.OK:
+            if fileEntry != None:
+                fileEntry.set_text(dialog.get_filename())
+            
+            self.__febdTopology[febdID][4] = dialog.get_filename()
+        dialog.hide()
+        return response == Gtk.ResponseType.OK
+            
+      
+    def on_asicCalStartButton_clicked(self, systemCalStartButton):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        
+        if not self.is_daqd_running():
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+        
+        ask_cal = [True, True, True]
+       
+        ask_cal[0] = self.builder.get_object("asicCalCheckButton1").get_active()
+        ask_cal[1] = self.builder.get_object("asicCalCheckButton2").get_active()
+        ask_cal[2] = self.builder.get_object("asicCalCheckButton3").get_active()
+
+        do_cal = ask_cal
+
+        for i,f in enumerate(["disc_calibration.tsv", "tdc_calibration.tsv", "qdc_calibration.tsv"]):
+            if os.path.exists(self.__workingFolder+f) and ask_cal[i]:
+                do_cal[i] = self.show_confirmation_dialog("A calibration file '%s' already exists in the working folder. Overwrite?" % (f))
+
+        if not any(do_cal):
+            return
+        
+        confirm = True
+        if do_cal[1] or do_cal[2]:
+            confirm = self.show_confirmation_dialog("Calibration procedure can take more than 40 minutes to complete. Are you sure you want to proceed?")
+        
+        if not confirm:
+            return True
+            
+        start = time()
+        
+        command = ""
+        if do_cal[0]:
+            command += "python -u ./acquire_threshold_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"disc_calibration;"
+            command += "python -u ./process_threshold_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
+            command += "python -u ./make_simple_disc_settings_table --config " + self.__workingFolder+"config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
+            
+        if do_cal[1]:
+            command += "python -u ./acquire_tdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"tdc_calibration;"
+            command += "./process_tdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"tdc_calibration -o "+ self.__workingFolder+"tdc_calibration;"
+
+        if do_cal[2]:
+            command += "python -u ./acquire_qdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"qdc_calibration;"
+            command += "./process_qdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"qdc_calibration -o "+ self.__workingFolder+"qdc_calibration;"
+       
+        
+            
+        self.execute(command,"ASIC Calibration","Calibration finished", "Please check calibration summary plots.")
+
+        #end = time()
+        
+        #if ((end-start) < 300 and (do_cal[1] or do_cal[2])):
+        #    self.show_error_dialog("Calibration finished too soon! Please check terminal output.")
+        #else:
+       #     self.show_info_dialog("Calibration finished","Please check calibration summary plots.")
+                    
+
+    def on_temperatureStartupButton_clicked(self, button):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        
+        if not self.is_daqd_running():
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+           
+        self.execute("python -u ./startup", "Check for temperature stability")
+            
+        #if success:
+        #    self.show_info_dialog("Temperature is stable","ASIC(s) temperatures stable over the last minute. System ready to acquire.")
+        #else:
+        #    self.show_info_dialog("Temperature is unstable","ASIC(s) temperatures not stable over the last 10 minutes. Please ensure a stable temperature environment or proceed with measurements anyway")
+
+        
+            
+
+    def on_temperatureReadButton_clicked(self, button):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+                     
+        if not self.is_daqd_running():    
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+
+        self.execute("python -u ./read_temperature_sensors", "Read Temperature Sensors")
+        
+    def on_femOnOffSwitch_state_set(self, switch, isOn):
+        if not self.is_daqd_running(): 
+            if not self.__fem_switch_handle_set: 
+                self.show_error_dialog("daqd communication server is not running.")
+                self.__fem_switch_handle_set = True
+                self.builder.get_object("femOnOffSwitch").set_active(not isOn)
+                self.__fem_switch_handle_set = False
+            return True
+
+        if self.__workingFolder == None:
+            if not self.__fem_switch_handle_set:
+                self.show_error_dialog("Please choose a working folder.")
+                self.__fem_switch_handle_set = True
+                self.builder.get_object("femOnOffSwitch").set_active(not isOn)
+                self.__fem_switch_handle_set = False
+            return True 
+            
+        if isOn:
+            if not self.__fem_switch_handle_set:
+                if self.show_confirmation_dialog("Turn FEM power on?"):
+                    success = subprocess.call("./set_fem_power --power on", shell=True) == 0
+                    if success:
+                        self.builder.get_object("biasOnOffLabel").set_sensitive(True)
+                        self.builder.get_object("biasOnOffSwitch").set_sensitive(True)
+                        return True
+                self.__fem_switch_handle_set = True
+                self.builder.get_object("femOnOffSwitch").set_active(False)
+                self.__fem_switch_handle_set = False
+                return True
+
+        else:
+            if not self.__fem_switch_handle_set:
+                if self.show_confirmation_dialog("Turn FEM power off?"):
+                    success = subprocess.call("./set_fem_power --power off", shell=True) == 0
+                    if success:
+                        self.builder.get_object("biasOnOffLabel").set_sensitive(False)
+                        self.builder.get_object("biasOnOffSwitch").set_sensitive(False)
+                        return True
+                self.__fem_switch_handle_set = True
+                self.builder.get_object("femOnOffSwitch").set_active(True)
+                self.__fem_switch_handle_set = False
+                return True
+
+          
+    def on_biasOnOffSwitch_state_set(self, button, isOn):
+        if not self.is_daqd_running(): 
+            if not self.__bias_switch_handle_set: 
+                self.show_error_dialog("daqd communication server is not running.")
+                self.__bias_switch_handle_set = True
+                self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
+                self.__bias_switch_handle_set = False
+            return True
+        if self.__workingFolder == None:
+            if not self.__bias_switch_handle_set:
+                self.show_error_dialog("Please choose a working folder.")
+                self.__bias_switch_handle_set = True
+                self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
+                self.__bias_switch_handle_set = False
+            return True 
+        if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
+            if not self.__bias_switch_handle_set:
+                self.show_error_dialog("Please save bias voltage settings")
+                self.__bias_switch_handle_set = True
+                self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
+                self.__bias_switch_handle_set = False
+            return True
+   
+        if isOn:
+            if not self.__bias_switch_handle_set:
+                if self.show_confirmation_dialog("Turn Bias power on?"):
+                    success = subprocess.call("./set_bias_power --config %sconfig.ini --power on" % self.__workingFolder, shell=True)== 0
+                    if success:
+                        return True
+                self.__bias_switch_handle_set = True
+                self.builder.get_object("biasOnOffSwitch").set_active(False)
+                self.__bias_switch_handle_set = False
+                return True
+        else:
+            if not self.__bias_switch_handle_set:
+                if self.show_confirmation_dialog("Turn Bias power off?"): 
+                    success = subprocess.call("./set_bias_power --config %sconfig.ini --power off" % self.__workingFolder, shell=True)== 0
+                    if success:
+                        return True
+                self.__bias_switch_handle_set = True
+                self.builder.get_object("biasOnOffSwitch").set_active(True)
+                self.__bias_switch_handle_set = False
+                return True
+            
+
+    def on_acqFileChooseButton_clicked(self, acqFileChooseButton):
+        
+        fileChooser = self.builder.get_object("acqFileChooser")
+        fileEntry = self.builder.get_object("acqFileEntry")
+
+        if self.__workingFolder != None:
+            fileChooser.set_current_folder(self.__workingFolder)
+
+        filter_file = Gtk.FileFilter()
+        filter_file.set_name("Raw data")
+        filter_file.add_pattern("*.rawf")
+        fileChooser.add_filter(filter_file)
+
+        response = fileChooser.run()
+        if response == Gtk.ResponseType.OK:
+            fileName = os.path.basename(fileChooser.get_filename())
+            if fileName.endswith('.rawf'):
+                fileName, ext = os.path.splitext(fileName)
+
+            if ' ' in fileName:
+                self.show_error_dialog("Please choose file name prefix without spaces")
+                fileChooser.hide()
+                return True
+
+            fileEntry.set_text(fileName)
+            self.builder.get_object("processingFileChooseEntry").set_text(fileName)
+            
+            dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+            dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+
+            if dataType == "Singles":
+                extType = "_single"
+            elif dataType == "Coincidences":
+                extType = "_coinc"
+            elif dataType == "Groups":
+                extType = "_group"
+            elif dataType == "Raw":
+                extType = "_raw"
+
+            if dataFormat == "Binary":
+                extData = ".ldat"
+            elif dataFormat == "ROOT":
+                extData = ".root"
+            else:
+                extData = ".dat"
+
+            self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
+
+        fileChooser.hide()
+        
+    def on_acqFileEntry_changed(self, entry):
+
+        fileName = entry.get_text()
+
+        if ' ' in fileName:
+            self.show_error_dialog("Please choose file name prefix without spaces")
+            return True
+
+      
+        if fileName is "":
+            self.builder.get_object("processingFileChooseEntry").set_text("")
+            self.builder.get_object("processingFileChooseEntry1").set_text("")
+            return True
+            
+        
+
+        self.builder.get_object("processingFileChooseEntry").set_text(fileName)
+
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+
+        if dataType == "Singles":
+            extType = "_single"
+        elif dataType == "Coincidences":
+            extType = "_coinc"
+        elif dataType == "Groups":
+            extType = "_group"
+        elif dataType == "Raw":
+            extType = "_raw"
+
+        if dataFormat == "Binary":
+            extData = ".ldat"
+        elif dataFormat == "ROOT":
+            extData = ".root"
+        else:
+            extData = ".dat"
+
+        self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
+
+
+        
+     
+    def on_acqAcquireButton_clicked(self, acqFileChooseButton):   
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return
+        
+        if not self.is_daqd_running():   
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+       
+        if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
+            self.show_error_dialog("Please save bias voltage settings")
+            return
+            
+        if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
+            self.show_error_dialog("Please save threshold settings.")
+            return
+
+        if self.builder.get_object("acqFileEntry").get_text() == "":
+            self.show_error_dialog("Please choose an output file name.")
+            return
+       
+        
+
+
+        outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
+
+        if outFile.endswith('.rawf'):
+            fileName, ext = os.path.splitext(fileName)
+
+        if ' ' in outFile:
+            self.show_error_dialog("Please choose file name prefix without spaces")
+            return
+
+        if os.path.exists(outFile+".rawf"):
+            if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
+                return True
+
+        mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
+        time = self.builder.get_object("acqTimeSpinButton").get_value()
+        if time == 0:
+            self.show_error_dialog("Acquision duration time set to 0. Please choose a valid acquisition duration time.")
+            return
+
+        useTrigger = self.builder.get_object("acqTriggerOn").get_active()
+        
+        if useTrigger:
+            flag = "--enable-hw-trigger"
+        else:
+            flag = ""
+         
+        command = "python -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+       
+        #subprocess.call()
+        self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
+        
+    def on_processingConvertBoxOptions_changed(self, comboBox):
+
+        dataType =  self.builder.get_object("processingConvertBoxOptions").get_active_text()
+
+        if dataType in ("Groups","Coincidences"):
+            self.builder.get_object("processingLabel5").set_sensitive(True)
+            self.builder.get_object("processingHitsSpinButton").set_sensitive(True)
+            extType = (dataType == "Groups") and "_group" or "_coinc" 
+        else:
+            self.builder.get_object("processingLabel5").set_sensitive(False)
+            self.builder.get_object("processingHitsSpinButton").set_sensitive(False)
+    
+        if dataType == "Raw":
+            extType = "_raw"
+            self.builder.get_object("processingDataFormatBoxOptions").remove_all()
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"ROOT")
+            self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
+        
+        if dataType != "Raw":
+            self.builder.get_object("processingDataFormatBoxOptions").remove_all()
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"Binary")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"Text")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(2,"ROOT")
+            self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
+
+        if dataType == "Singles":
+            extType = "_single"
+
+        dataFormat =  self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+       
+        if dataFormat == "Binary":
+            extData = ".ldat"
+        elif dataFormat == "ROOT":
+            extData = ".root"
+        else:
+            extData = ".dat"
+            
+        if self.builder.get_object("processingFileChooseEntry").get_text() != "":
+            fileName = self.builder.get_object("processingFileChooseEntry").get_text() 
+            self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
+   
+    def on_processingDataFormatBoxOptions_changed(self, comboBox):
+        dataType =  self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat =  self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+        
+        if dataType == "Singles":
+            extType = "_single"
+        elif dataType == "Coincidences":
+            extType = "_coinc"
+        elif dataType == "Groups":
+            extType = "_group"
+        elif dataType == "Raw":
+            extType = "_raw"
+
+        if dataFormat == "Binary":
+            extData = ".ldat"
+        elif dataFormat == "ROOT":
+            extData = ".root"
+        else:
+            extData = ".dat"
+
+        if self.builder.get_object("processingFileChooseEntry").get_text() != "":
+            fileName = self.builder.get_object("processingFileChooseEntry").get_text() 
+            self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
+        
+
+    def on_processingFileChooseButton_clicked(self, button):
+        fileChooser = self.builder.get_object("processingFileChooserDialog")
+        fileEntry = self.builder.get_object("processingFileChooseEntry")
+        fileEntry1 = self.builder.get_object("processingFileChooseEntry1")
+
+        if self.__workingFolder != None:
+            fileChooser.set_current_folder(self.__workingFolder)
+
+        filter_file = Gtk.FileFilter()
+        filter_file.set_name("Raw data")
+        filter_file.add_pattern("*.rawf")
+        fileChooser.add_filter(filter_file)
+
+        response = fileChooser.run()
+        if response == Gtk.ResponseType.OK:
+            fileName, ext = os.path.splitext(os.path.basename(fileChooser.get_filename()))
+            fileEntry.set_text(fileName)
+            dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+            dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+
+            if dataType == "Singles":
+                extType = "_single"
+            elif dataType == "Coincidences":
+                extType = "_coinc"
+            elif dataType == "Groups":
+                extType = "_group"
+            elif dataType == "Raw":
+                extType = "_raw"
+         
+            if dataFormat == "Binary":
+                extData = ".ldat"
+            elif dataFormat == "ROOT":
+                extData = ".root"
+            else:
+                extData = ".dat"
+            fileEntry1.set_text(fileName+extType+extData)
+            fileChooser.hide()
+        elif response == Gtk.ResponseType.CANCEL:
+            fileChooser.hide()
+        
+    def on_processingFileChooseButton1_clicked(self, button):
+        fileChooser = self.builder.get_object("processingFileChooserDialog1")
+        fileEntry = self.builder.get_object("processingFileChooseEntry1")
+
+        if self.__workingFolder != None:
+            fileChooser.set_current_folder(self.__workingFolder)
+
+        filter_file = Gtk.FileFilter()
+        filter_file.set_name("Raw data")
+        filter_file.add_pattern("*.rawf")
+        fileChooser.add_filter(filter_file)
+
+        response = fileChooser.run()
+        if response == Gtk.ResponseType.OK:
+            fileName, ext = os.path.splitext(os.path.basename(fileChooser.get_filename()))
+            fileEntry.set_text(fileName)
+            fileChooser.hide()
+        elif response == Gtk.ResponseType.CANCEL:
+            fileChooser.hide()
+        
+
+
+    def on_processingFileChooseEntry_changed(self, dataFolderEntry):
+        fileName = self.builder.get_object("processingFileChooseEntry").get_text()
+        if fileName.endswith('.rawf'):
+            fileName, ext = os.path.splitext(fileName)
+        
+        if fileName is "":
+            self.builder.get_object("processingFileChooseEntry1").set_text("")
+            return True
+        
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+
+        if dataType == "Singles":
+            extType = "_single"
+        elif dataType == "Coincidences":
+            extType = "_coinc"
+        elif dataType == "Groups":
+            extType = "_group"
+        elif dataType == "Raw":
+            extType = "_raw"
+         
+        if dataFormat == "Binary":
+            extData = ".ldat"
+        elif dataFormat == "ROOT":
+            extData = ".root"
+        else:
+            extData = ".dat"
+
+        self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
+        return True
+    
+    def on_processButton_clicked(self, button):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return True
+
+        fileName = self.builder.get_object("processingFileChooseEntry").get_text()
+        fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")
+        if not fileExists:
+            self.show_error_dialog("Raw file doesn't exist. Please enter an existing file or use the Choose button.")
+            return True
+        if not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
+            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
+            return True
+
+        inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
+        
+        if inFileName == "":
+            self.show_error_dialog("Please choose a file to process.")
+            return True
+        
+        if inFileName.endswith('.rawf'):
+            inFileName, ext = os.path.splitext(inFileName)
+
+        outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+        inFile = self.__workingFolder + inFileName
+        outFile = self.__workingFolder + outFileName
+
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+        fraction = self.builder.get_object("processingFractionSpinButton").get_value()
+
+        
+        if dataFormat == "Binary":
+            flag1 = "--writeBinary"
+            if outFile.endswith('.ldat'):
+                outFile, ext = os.path.splitext(outFile)
+
+        elif dataFormat == "ROOT":
+            flag1 = "--writeRoot"
+        else:
+            flag1 = ""
+        
+        flag2 = "--writeFraction %d" % (fraction)
+
+        if dataType in ("Groups","Coincidences"):
+            nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
+            flag3 = "--writeMultipleHits %d" % (nHits)
+        else:
+            flag3 = ""
+       
+        if dataType == "Singles":
+            command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3) 
+        if dataType == "Coincidences":
+            command = "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+        if dataType == "Groups":
+            command = "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+        if dataType == "Raw":
+            command = "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s" % (self.__workingFolder, inFile, outFile)
+        
+        self.execute(command, "Raw data Processing", "Finished Data Processing", "Processed data written to  %s" % self.__workingFolder+outFileName )
+    
+    def on_acqAcquireProcessButton_clicked(self, button):
+        if self.__workingFolder == None:
+            self.show_error_dialog("Please choose a working folder.")
+            return 
+        
+        if not self.is_daqd_running():   
+            self.show_error_dialog("daqd communication server is not running.")
+            return
+       
+        if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
+            self.show_error_dialog("Please save bias voltage settings")
+            return
+            
+        if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
+            self.show_error_dialog("Please save threshold settings.")
+            return
+
+        if self.builder.get_object("acqFileEntry").get_text() == "":
+            self.show_error_dialog("Please choose an output file name.")
+            return
+
+        if not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
+            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
+            return
+       
+
+        outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
+
+    
+        if os.path.exists(outFile+".rawf"):
+            if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
+                return True
+        
+    
+        mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
+        time = self.builder.get_object("acqTimeSpinButton").get_value()
+        if time == 0:
+            self.show_error_dialog("Acquision duration time set to 0. Please choose a valid acquisition duration time.")
+            return True
+
+        useTrigger = self.builder.get_object("acqTriggerOn").get_active()
+        
+        if useTrigger:
+            flag = "--enable-hw-trigger"
+        else:
+            flag = ""
+         
+        command = "python -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+
+        fileName = self.builder.get_object("processingFileChooseEntry").get_text()
+        fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")
+
+        inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
+        
+        if inFileName.endswith('.rawf'):
+            inFileName, ext = os.path.splitext(inFileName)
+
+        outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+        inFile = self.__workingFolder + inFileName
+        outFile = self.__workingFolder + outFileName
+
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+        fraction = self.builder.get_object("processingFractionSpinButton").get_value()
+
+        
+       
+        if dataFormat == "Binary":
+            flag1 = "--writeBinary"
+            if outFile.endswith('.ldat'):
+                outFile, ext = os.path.splitext(outFile)
+                
+        elif dataFormat == "ROOT":
+            flag1 = "--writeRoot"
+        else:
+            flag1 = ""
+        
+        flag2 = "--writeFraction %d" % (fraction)
+
+        if dataType in ("Groups","Coincidences"):
+            nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
+            flag3 = "--writeMultipleHits %d" % (nHits)
+        else:
+            flag3 = ""
+       
+        if dataType == "Singles":
+            command += "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3) 
+        if dataType == "Coincidences":
+            command += "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+        if dataType == "Groups":
+            command += "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+        if dataType == "Raw":
+            command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s;" % (self.__workingFolder, inFile, outFile)
+        
+        self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
+              
+    def show_error_dialog(self, string):
+        dialog = Gtk.MessageDialog(self.MainWindow, 0, Gtk.MessageType.ERROR, Gtk.ButtonsType.OK, "ERROR")
+        dialog.format_secondary_text(string)
+        dialog.run()
+        dialog.destroy()
+
+    def show_confirmation_dialog(self, query, title = "WARNING", parent = None):
+        if parent is None:
+            parent = self.MainWindow
+        dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO, title)
+        dialog.format_secondary_text(query)
+        rtn = dialog.run()
+        dialog.destroy()
+        return rtn == Gtk.ResponseType.YES
+
+    def show_info_dialog(self, title, text, parent = None):
+        if parent is None:
+            parent = self.MainWindow
+        dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.INFO, Gtk.ButtonsType.OK, title)
+        dialog.format_secondary_text(text)
+        dialog.run()
+        dialog.destroy()
+
+
+def main():
+    gui = GUI()
+    gui.MainWindow.show()
+    Gtk.main()
+    return 0
+
+if __name__ == "__main__":  
+    sys.exit(main())

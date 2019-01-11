@@ -19,7 +19,8 @@ kernel kernel-devel \
 python-devel \
 cmake \
 iniparser-devel \
-python2-bitarray.x86_64
+python2-bitarray.x86_64 \
+xterm
 
 
 

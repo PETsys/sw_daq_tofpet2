@@ -260,8 +260,7 @@ int psDrawCTR(char const *filePrefix, Int_t channelA=-1, Int_t channelB=-1)
 		char pdfName[1024];
 		sprintf(pdfName, "%s_%08.2f_%08.2f.pdf", filePrefix, step1, step2);
 		c2->SaveAs(pdfName);
-		sprintf(pdfName, "%s_%08.2f_%08.2f.png", filePrefix, step1, step2);
-		c2->SaveAs(pdfName);
+       
 		
 		float sigma = hDelta->GetRMS();
 		float mean = hDelta->GetMean();
