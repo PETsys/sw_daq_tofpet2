@@ -103,8 +103,10 @@ PFP_KX7::PFP_KX7()
 	pthread_mutex_init(&hwLock, NULL);
 	lastCommandIdleCount = 0;
 	
-	ReadAndCheck(txWrPointerReg * 4 , &txWrPointer, 1);
-	ReadAndCheck(rxRdPointerReg * 4 , &rxRdPointer, 1);
+	ReadAndCheck(txRdPointerReg * 4 , &txWrPointer, 1);
+	WriteAndCheck(txWrPointerReg * 4, &txWrPointer, 1);
+	ReadAndCheck(rxWrPointerReg * 4 , &rxRdPointer, 1);
+	WriteAndCheck(rxRdPointerReg * 4 , &rxRdPointer, 1);
 
 	dmaBufferRdPtr = 0;
 	dmaBufferWrPtr = 0;
