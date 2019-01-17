@@ -10,7 +10,7 @@ class RawEventWord{
 
 public:
 	RawEventWord(uint64_t word) : word(word){};
-	~RawEventWord();
+	~RawEventWord() {};
 	
 	unsigned getEFine() {
 		unsigned v = word % 1024;

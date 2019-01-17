@@ -37,33 +37,33 @@ struct RawDataFrame {
 	}; 
 	
 	unsigned getEFine(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getEFine();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getEFine();
 	};
 
 	unsigned getTFine(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getTFine();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getTFine();
 	};
 
 	unsigned getECoarse(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getECoarse();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getECoarse();
 	};
 	
 	unsigned getTCoarse(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getTCoarse();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getTCoarse();
 	};
 	
 	unsigned getTacID(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getTacID();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getTacID();
 	};
 	
 	unsigned getChannelID(int event) {
-		RawEventWord *rawEvent = new RawEventWord(data[event+2]);
-		return rawEvent->getChannelID();
+		RawEventWord rawEvent(data[event+2]);
+		return rawEvent.getChannelID();
 	};
 	
 };
