@@ -50,12 +50,19 @@ struct CalibrationData{
 	int freq;
 	
 	float getTime (SystemConfig *config){
-		unsigned channelID = (gid >> 2) % 64;
+		float time, q_T;
+		unsigned channelID = (gid >> 2);
 		unsigned tacID = (gid >> 0) % 4;
 		SystemConfig::ChannelConfig &cc = config->getChannelConfig(channelID);
 		SystemConfig::TacConfig &ct = cc.tac_T[tacID];
-		float q_T =  ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - tfine) * ct.a2))) / (2.0f * ct.a2) ;
-		float time = tcoarse - q_T - ct.t0;
+		float delta = (ct.a1 * ct.a1) - (4.0f * (ct.a0 - tfine) * ct.a2);
+		if(delta<0){
+			time = tcoarse;
+		}
+		else{
+			q_T =  ( -ct.a1 + sqrtf(delta) ) / (2.0f * ct.a2) ;	
+		        time = tcoarse - q_T - ct.t0;
+		}
 		return time;
 	};
 };
@@ -266,9 +273,9 @@ printf("Sorting data into temporary files...\n");
 			calData.qfine = eWord->getEFine();			
 			calData.freq = tmpRawCalDataBlock[i].freq;       	
 			fwrite(&calData, sizeof(CalibrationData), 1, f);	
-			
+			delete eWord;
 		}
-
+		delete[] tmpRawCalDataBlock; 
 	}
 	
 	
