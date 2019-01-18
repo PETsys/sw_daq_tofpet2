@@ -729,8 +729,10 @@ void calibrateAsic(
 				
 				float t = calData.phase;
 				float t_ = fmod(1024.0 + t - entry.tEdge, TDC_PERIOD);
-
-				float qEstimate = ( -entry.a1 + sqrtf((entry.a1 * entry.a1) - (4.0f * (entry.a0 - calData.fine) * entry.a2))) / (2.0f * entry.a2) ;  
+				
+				float delta = (entry.a1 * entry.a1) - (4.0f * (entry.a0 - calData.fine) * entry.a2);
+				if(delta < 0) continue;
+				float qEstimate = ( -entry.a1 + sqrtf(delta)) / (2.0f * entry.a2);
 
 
 				assert(TDC_PERIOD == 1); // No support for TDC_PERIOD != 1 operation
