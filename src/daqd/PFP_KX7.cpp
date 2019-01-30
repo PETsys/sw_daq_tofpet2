@@ -344,6 +344,31 @@ bool PFP_KX7::cardOK()
 	return true;
 }
 
+void PFP_KX7::clearReplyQueue()
+{
+	pthread_mutex_lock(&hwLock);
+	int count = 0;
+
+	while(true) {
+
+		uint32_t rxWrPointer;
+		ReadAndCheck(rxWrPointerReg * 4 , &rxWrPointer, 1);
+
+		if((rxWrPointer & 31) == (rxRdPointer & 31)) break;
+
+		if(count % 100 == 99) fprintf(stderr, "WARNING: Resetting RX pointers (try = %d)\n", count);
+
+		rxRdPointer = rxWrPointer;
+		rxRdPointer &= 31;
+		rxRdPointer |= 0xFACE9100;
+		WriteAndCheck(rxRdPointerReg * 4 , &rxRdPointer, 1);
+		count += 1;
+		usleep(100);
+	}
+	setLastCommandTimeIdleCount();
+	pthread_mutex_unlock(&hwLock);
+}
+
 
 int PFP_KX7::sendCommand(uint64_t *packetBuffer, int packetBufferSize)
 {

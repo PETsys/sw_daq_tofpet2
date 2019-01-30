@@ -80,20 +80,26 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 	packetBuffer[1] = commandLength;
 	memcpy((void*)(packetBuffer+2), buffer, commandLength);
 
-	DP->getPortUp(); // Hack: trigger a hwLock lock/unlock cycle before starting timers
+	DP->clearReplyQueue();
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
 	DP->sendCommand(packetBuffer, packetLength);
 	
 
 	boost::posix_time::ptime t2 = boost::posix_time::microsec_clock::local_time();
 
-	int replyLength = 0;
 	int nLoops = 0;
-	do {
-		replyLength = 0;
+	while(true) {
+		nLoops += 1;
 		
-		boost::posix_time::ptime tl = boost::posix_time::microsec_clock::local_time();
-		if((tl - t2).total_milliseconds() > CommandTimeout) break;
+		boost::posix_time::ptime t3 = boost::posix_time::microsec_clock::local_time();
+		if((t3 - t2).total_milliseconds() > CommandTimeout) {
+			printf("WARNING: Command timeout: (t2 - t1) => %ld us, (t3 - t2) => %ld us, i = %d\n", 
+				(t2 - t1).total_microseconds(), 
+				(t3 - t2).total_microseconds(),
+				nLoops
+			);
+			return 0;
+		}
 
 		int status = DP->recvReply(packetBuffer, MAX_PACKET_WORDS);
 		if (status < 0) {
@@ -111,7 +117,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			continue;
 		}
 
-		replyLength = packetBuffer[1];
+		int replyLength = packetBuffer[1];
 		if(replyLength < 2) { // Received something weird
 			fprintf(stderr, "Received very short reply from (%2d, %2d): %d bytes.\n", 
 				portID, slaveID, 
@@ -146,20 +152,11 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			);
 			continue;
 		}
-	} while(replyLength == 0);
+
+		return replyLength;
+	};
 	
-	boost::posix_time::ptime t3 = boost::posix_time::microsec_clock::local_time();
-	
-	if (replyLength == 0 ) {
-		printf("Command reply timing: (t2 - t1) => %ld us, (t3 - t2) => %ld us, i = %d, status = %s\n", 
-			(t2 - t1).total_microseconds(), 
-			(t3 - t2).total_microseconds(),
-			nLoops,
-			replyLength > 0 ? "OK" : "FAIL"
-		);
-	}
-	
-	return replyLength;
+	return 0;
 }
 
 

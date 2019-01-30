@@ -15,6 +15,7 @@ public:
 	virtual ~AbstractDAQCard();
 
 	virtual int getWords(uint64_t *buffer, int count) = 0;
+	virtual void clearReplyQueue() = 0;
 	virtual int sendCommand(uint64_t *packetBuffer, int packetBufferSize) = 0;
 	virtual int recvReply(uint64_t *packetBuffer, int packetBufferSize) = 0;
 	virtual int setAcquistionOnOff(bool enable) = 0;
