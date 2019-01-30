@@ -28,6 +28,7 @@ public:
 	  void stopWorker();
 	  void startWorker();
 	bool cardOK();
+	void clearReplyQueue();
 	int sendCommand(uint64_t *packetBuffer, int packetBufferSize);
 	int recvReply(uint64_t *packetBuffer, int packetBufferSize);
 	int setAcquistionOnOff(bool enable);
