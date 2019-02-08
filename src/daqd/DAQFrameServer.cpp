@@ -152,7 +152,6 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			);
 			continue;
 		}
-			portID, slaveID, 
 
 		return replyLength;
 	};
