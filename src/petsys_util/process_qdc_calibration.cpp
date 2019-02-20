@@ -238,9 +238,9 @@ printf("Sorting data into temporary files...\n");
 		fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
 		for (int i = 0; i < nCalData; i++) {
 			
-			RawEventWord *eWord =  new RawEventWord(tmpRawCalDataBlock[i].eventWord);   
-			unsigned gChannelID = eWord->getChannelID();
-			unsigned tacID = eWord->getTacID();	       
+			RawEventWord eWord(tmpRawCalDataBlock[i].eventWord);   
+			unsigned gChannelID = eWord.getChannelID();
+			unsigned tacID = eWord.getTacID();	       
 			unsigned gAsicID = (gChannelID >> 6);
 			unsigned long gid = (gChannelID << 2) | tacID;
 
@@ -267,13 +267,12 @@ printf("Sorting data into temporary files...\n");
 			CalibrationData calData;
 	        
 			calData.gid =  gid;
-			calData.tcoarse = eWord->getTCoarse();
-			calData.ecoarse = eWord->getECoarse();
-			calData.tfine = eWord->getTFine();
-			calData.qfine = eWord->getEFine();			
+			calData.tcoarse = eWord.getTCoarse();
+			calData.ecoarse = eWord.getECoarse();
+			calData.tfine = eWord.getTFine();
+			calData.qfine = eWord.getEFine();			
 			calData.freq = tmpRawCalDataBlock[i].freq;       	
 			fwrite(&calData, sizeof(CalibrationData), 1, f);	
-			delete eWord;
 		}
 		delete[] tmpRawCalDataBlock; 
 	}

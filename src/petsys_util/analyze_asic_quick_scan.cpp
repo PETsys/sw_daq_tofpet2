@@ -62,13 +62,13 @@ public:
 	void addEvents(float step1, float step2, RawCalibrationData *buffer, int N) {
 		for (int i = 0; i < N; i++) {
 					
-			RawEventWord *eWord =  new RawEventWord(buffer[i].eventWord);   
+			RawEventWord eWord(buffer[i].eventWord);   
 			
-			unsigned gChannelID = eWord->getChannelID();
-			unsigned tacID = eWord->getTacID();	       		
+			unsigned gChannelID = eWord.getChannelID();
+			unsigned tacID = eWord.getTacID();	       		
 			int gid = gChannelID * 4 + tacID;
-			unsigned short tfine = eWord->getTFine();;
-			unsigned short efine = eWord->getEFine();;
+			unsigned short tfine = eWord.getTFine();;
+			unsigned short efine = eWord.getEFine();;
 			if (hList_T[gid] == NULL) {
 				char hName[128];
 				char hTitle[128];

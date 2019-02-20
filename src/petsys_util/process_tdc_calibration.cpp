@@ -223,9 +223,9 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 		fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
 		for (int i = 0; i < nCalData; i++) {
 			
-			RawEventWord *eWord =  new RawEventWord(tmpRawCalDataBlock[i].eventWord);   
-			unsigned gChannelID = eWord->getChannelID();
-			unsigned tacID = eWord->getTacID();	       
+			RawEventWord eWord(tmpRawCalDataBlock[i].eventWord);   
+			unsigned gChannelID = eWord.getChannelID();
+			unsigned tacID = eWord.getTacID();	       
 			unsigned gAsicID = (gChannelID >> 6);
 
 			maxgAsicID = (maxgAsicID > gAsicID) ? maxgAsicID : gAsicID;
@@ -251,8 +251,8 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 			CalibrationData calData;
 			// Write data for T branch
 			calData.gid = (gChannelID << 3) | (tacID << 1) | 0x0;
-			calData.coarse = eWord->getTCoarse();
-			calData.fine = eWord->getTFine();
+			calData.coarse = eWord.getTCoarse();
+			calData.fine = eWord.getTFine();
 			calData.freq = tmpRawCalDataBlock[i].freq;
 			calData.phase = step1;
 
@@ -260,8 +260,8 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 		
 			// Write data for E branch
 			calData.gid = (gChannelID << 3) | (tacID << 1) | 0x1;
-			calData.coarse = eWord->getECoarse();
-			calData.fine = eWord->getEFine();
+			calData.coarse = eWord.getECoarse();
+			calData.fine = eWord.getEFine();
 			calData.freq = tmpRawCalDataBlock[i].freq;
 			calData.phase = step1;			
 			fwrite(&calData, sizeof(CalibrationData), 1, f);
