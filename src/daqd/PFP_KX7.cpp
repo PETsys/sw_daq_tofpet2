@@ -348,6 +348,7 @@ bool PFP_KX7::cardOK()
 
 void PFP_KX7::clearReplyQueue()
 {
+	setLastCommandTimeIdleCount();
 	pthread_mutex_lock(&hwLock);
 	int count = 0;
 
@@ -364,6 +365,8 @@ void PFP_KX7::clearReplyQueue()
 		rxRdPointer &= 31;
 		rxRdPointer |= 0xFACE9100;
 		WriteAndCheck(rxRdPointerReg * 4 , &rxRdPointer, 1);
+		setLastCommandTimeIdleCount();
+
 		count += 1;
 		usleep(100);
 	}
