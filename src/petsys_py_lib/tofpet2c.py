@@ -214,7 +214,7 @@ class AsicChannelConfig(bitarray):
 			"fe_tp_en"		: [ n for n in nrange(108, 110) ],
 			"ch63_obuf_msb"		: [ n for n in nrange(110, 111) ],
 		#		"tdc_delay"		: [ n for n in nrange(110, 114) ],
-			"integ_source_sw"	: [ n for n in nrange(111,112)  ],
+			"integ_source_sw"	: [ n for n in nrange(111,113)  ],
 			"t1_hysteresis"		: [ n for n in nrange(115, 118) ],
 			"t2_hysteresis"		: [ n for n in nrange(118, 121) ],
 			"e_hysteresis"		: [ n for n in nrange(121, 124) ],
