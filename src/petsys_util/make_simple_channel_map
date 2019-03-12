@@ -13,17 +13,31 @@ def main():
 	parser.add_argument("-o", type=str, required=True, help="Output file")
 	parser.add_argument("--port", type=int, required=True, action="append", help="Port ID")
 	parser.add_argument("--slave", type=int, required=True, action="append", help="Slave ID")
-	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=True, action="append", help="File name")
+	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=False, action="append", help="File name")
+        parser.add_argument("--noTriggerBoard", dest="noTrigger", action="store_true", help="enable only if the system has a DAQ board but no Clock & Trigger board")
 	args = parser.parse_args()
 
 	channelOutputFile = open(args.o + "_channel.tsv", "w")
 	triggerOutputFile = open(args.o + "_trigger.tsv", "w")
 
+
+        if not args.noTrigger and args.trigger_port is None:
+                print "ERROR: Please enter same number of trigger_port IDs as FEB/Ds in the system"
+                exit(1)
+
+        if not args.noTrigger and len(args.trigger_port) != len(args.port):
+                print "ERROR: Please enter same number of trigger_port IDs as FEB/Ds in the system"
+                exit(1)
+        
+
 	region_list = []
 	for i in range(len(args.port)):
 		portID = int(args.port[i])
 		slaveID = int(args.slave[i])
-		trigger_port = int(args.trigger_port[i])
+                if args.noTrigger:
+                        trigger_port = i 
+                else:
+                        trigger_port = int(args.trigger_port[i])
 		
 		for quadrant in range(4):
 			trigger_region = 4 * trigger_port + quadrant

@@ -98,7 +98,6 @@
   </object>
   <object class="GtkWindow" id="executeWindow">
     <property name="can_focus">False</property>
-    <property name="resizable">False</property>
     <property name="default_width">700</property>
     <property name="default_height">800</property>
     <signal name="delete-event" handler="on_executeWindow_delete_event" swapped="no"/>
@@ -112,11 +111,15 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="shadow_type">in</property>
+            <property name="max_content_width">0</property>
             <child>
               <object class="GtkTextView" id="executeTextView">
                 <property name="visible">True</property>
                 <property name="can_focus">True</property>
                 <property name="vexpand">True</property>
+                <property name="editable">False</property>
+                <property name="wrap_mode">char</property>
+                <property name="cursor_visible">False</property>
               </object>
             </child>
           </object>
@@ -468,7 +471,7 @@
                             <property name="visible">True</property>
                             <property name="can_focus">True</property>
                             <property name="tooltip_text" translatable="yes">Type an existing data folder path and press ENTER</property>
-                            <property name="width_chars">68</property>
+                            <property name="width_chars">74</property>
                             <signal name="activate" handler="on_dataFolderEntry_activate" swapped="no"/>
                           </object>
                           <packing>
@@ -484,7 +487,7 @@
                             <property name="receives_default">True</property>
                             <property name="tooltip_text" translatable="yes">Open window to choose or create a working directory</property>
                             <property name="margin_left">2</property>
-                            <property name="margin_right">19</property>
+                            <property name="margin_right">8</property>
                             <signal name="clicked" handler="on_dataFolderChooseButton_clicked" swapped="no"/>
                           </object>
                           <packing>

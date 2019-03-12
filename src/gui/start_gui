@@ -40,6 +40,7 @@ class GUI:
         self.__workingFolder = None
 
         self.__febdTopology = []
+        self.__hasClockTrigger = False
 
         self.__fem_switch_handle_set = False
         self.__bias_switch_handle_set = False
@@ -123,8 +124,8 @@ class GUI:
             else:
                 self.processWindow.set_title("%s (stopped by user)" % data[0])
            
-            comboBox =  self.builder.get_object("processingConvertBoxOptions")
-            self.on_processingConvertBoxOptions_changed(comboBox)
+            #comboBox =  self.builder.get_object("processingConvertBoxOptions")
+            #self.on_processingConvertBoxOptions_changed(comboBox)
 
             textView = self.builder.get_object("executeTextView")
             self.scroll_to_end(textView)
@@ -203,7 +204,7 @@ class GUI:
     def on_menuHelpAbout_activate(self, menuHelpAbout): 
         about = Gtk.AboutDialog.new()
         about.set_transient_for(self.MainWindow)
-        about.set_version("v2018.09")
+        about.set_version("v2019.03.07")
         about.set_logo(GdkPixbuf.Pixbuf.new_from_file("src/gui/logo_PETsys2.png"))
         about.set_website("http://www.petsyselectronics.com")
         about.set_website_label("petsyselectronics.com")
@@ -515,6 +516,8 @@ class GUI:
             if (register0 == 1):
                 if (register1 == 1):
                     isEkit = True
+                else:
+                    isEkit = False
                 if connection.getBiasType(portID, slaveID) == 1:
                         unitType = "FEB/D_64P"
                 else:
@@ -524,9 +527,11 @@ class GUI:
             
                     
             if (register0 == 0 and register1 == 1):
-                hasTrigger = True
+                self.__hasClockTrigger = True
                 isEkit = False
                 unitType = "CLK&TRIGGER"
+
+            
                 
             systemTopology.append([portID, slaveID, 0, unitType,""])
             
@@ -585,16 +590,19 @@ class GUI:
             label2.set_margin_left(10)
             label2.set_property("halign",3)
             grid.attach_next_to(label2, label1, Gtk.PositionType.RIGHT, 1, 1)
-
-            label3 = Gtk.Label("triggerID")
-            label3.set_property("halign",3)
-            grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 1, 1)
-
-            if any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
-                label4 = Gtk.Label("HV-DAC Calibration file")
-                label4.set_property("halign",3)
-                grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
-
+            if self.__hasClockTrigger:
+                label3 = Gtk.Label("triggerID")
+                label3.set_property("halign",3)
+                grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 1, 1)
+                if any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
+                    label4 = Gtk.Label("HV-DAC Calibration file")
+                    label4.set_property("halign",3)
+                    grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
+            elif any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
+                label3 = Gtk.Label("HV-DAC Calibration file")
+                label3.set_property("halign",3)
+                grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 2, 1)
+                    
             portLabelList = [0 for x in range(self.__febdNumber)]
             slaveLabelList = [0 for x in range(self.__febdNumber)]
             fileButtonList = [0 for x in range(self.__febdNumber)]
@@ -618,18 +626,28 @@ class GUI:
 
                 grid.attach(portLabelList[i], 0, i+1, 1, 1)
                 grid.attach(slaveLabelList[i], 1, i+1, 1, 1)
-                grid.attach(triggerSpinButtonList[i], 2, i+1, 1, 1)
 
-
-                if febd[3] == "FEB/D_64P":
+                if self.__hasClockTrigger:
+                    grid.attach(triggerSpinButtonList[i], 2, i+1, 1, 1)
+                    if febd[3] == "FEB/D_64P":
+                        fileEntryList[i] = Gtk.Entry()
+                        grid.attach(fileEntryList[i], 3, i+1, 1, 1)
+                        fileEntryList[i].set_margin_left(10)
+                        fileEntryList[i].set_width_chars(30)
+                        fileEntryList[i].set_max_width_chars(30)
+                        fileButtonList[i] = Gtk.Button("Choose")
+                        grid.attach(fileButtonList[i], 4, i+1, 1, 1)
+                        fileButtonList[i].connect("clicked", self.choose_BiasCal_File, i, fileEntryList[i])
+                elif febd[3] == "FEB/D_64P":
                     fileEntryList[i] = Gtk.Entry()
-                    grid.attach(fileEntryList[i], 3, i+1, 1, 1)
+                    grid.attach(fileEntryList[i], 2, i+1, 1, 1)
                     fileEntryList[i].set_margin_left(10)
                     fileEntryList[i].set_width_chars(30)
                     fileEntryList[i].set_max_width_chars(30)
                     fileButtonList[i] = Gtk.Button("Choose")
-                    grid.attach(fileButtonList[i], 4, i+1, 1, 1)
+                    grid.attach(fileButtonList[i], 3, i+1, 1, 1)
                     fileButtonList[i].connect("clicked", self.choose_BiasCal_File, i, fileEntryList[i])
+                    
 
 
             febdConfigBox.show_all()
@@ -674,12 +692,16 @@ class GUI:
         commandMapExtension = ""
         commandBiasExtension = ""
 
+
         for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
-            if  biasMezzType == "FEB/D_16P":
+            if self.__hasClockTrigger:
                 commandMapExtension += " --port %d --slave %d --trigger %d" % (portID,slaveID, triggerID)
+            else:
+                commandMapExtension += " --port %d --slave %d --noTriggerBoard" % (portID,slaveID)
+            
+            if  biasMezzType == "FEB/D_16P":
                 commandBiasExtension += ""
             elif biasMezzType == "FEB/D_64P":
-                commandMapExtension += " --port %d --slave %d --trigger %d" % (portID,slaveID, triggerID)
                 commandBiasExtension += " --port %d --slave %d --filename %s" % (portID,slaveID, biasCalFile)
 
         subprocess.call(commandMap+commandMapExtension, shell=True)
@@ -711,7 +733,7 @@ class GUI:
             self.show_error_dialog("Each FEB/D should have a unique pair of (portID,slaveID).")
             return False
         
-        if any(count > 1 for count in countTrigger.values()):
+        if any(count > 1 for count in countTrigger.values()) and self.__hasClockTrigger:
             self.show_error_dialog("Each FEB/D should have a unique triggerID value.")
             return False
 
@@ -750,6 +772,10 @@ class GUI:
             self.show_error_dialog("daqd communication server is not running.")
             return
         
+        if not os.path.exists(self.__workingFolder+"bias_settings.tsv"):
+            self.show_error_dialog("Please save bias voltage settings (even if no SIPMs are connected).")
+            return
+
         ask_cal = [True, True, True]
        
         ask_cal[0] = self.builder.get_object("asicCalCheckButton1").get_active()
@@ -899,24 +925,22 @@ class GUI:
    
         if isOn:
             if not self.__bias_switch_handle_set:
-                if self.show_confirmation_dialog("Turn Bias power on?"):
-                    success = subprocess.call("./set_bias_power --config %sconfig.ini --power on" % self.__workingFolder, shell=True)== 0
+                if self.show_confirmation_dialog("Activate bias voltage lines?"):
+                    success = subprocess.call("./set_bias --power on", shell=True)== 0
                     if success:
+                        self.__bias_switch_handle_set = True
+                        self.builder.get_object("biasOnOffSwitch").set_active(True)
+                        self.__bias_switch_handle_set = False
                         return True
-                self.__bias_switch_handle_set = True
-                self.builder.get_object("biasOnOffSwitch").set_active(False)
-                self.__bias_switch_handle_set = False
-                return True
         else:
             if not self.__bias_switch_handle_set:
-                if self.show_confirmation_dialog("Turn Bias power off?"): 
-                    success = subprocess.call("./set_bias_power --config %sconfig.ini --power off" % self.__workingFolder, shell=True)== 0
+                if self.show_confirmation_dialog("Deactivate bias voltage lines?"): 
+                    success = subprocess.call("./set_bias --power off", shell=True)== 0
                     if success:
+                        self.__bias_switch_handle_set = True
+                        self.builder.get_object("biasOnOffSwitch").set_active(False)
+                        self.__bias_switch_handle_set = False
                         return True
-                self.__bias_switch_handle_set = True
-                self.builder.get_object("biasOnOffSwitch").set_active(True)
-                self.__bias_switch_handle_set = False
-                return True
             
 
     def on_acqFileChooseButton_clicked(self, acqFileChooseButton):
@@ -1021,7 +1045,7 @@ class GUI:
             return
        
         if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
-            self.show_error_dialog("Please save bias voltage settings")
+            self.show_error_dialog("Please save bias voltage settings.")
             return
             
         if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):

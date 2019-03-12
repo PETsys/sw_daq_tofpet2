@@ -186,8 +186,8 @@ int main(int argc, char *argv[])
 void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 {
 	
-printf("Sorting data into temporary files...\n");
-	 
+	printf("Sorting data into temporary files...\n");
+	fflush(stdout);
 	int maxChannelsPerWorker = 64;
 	int maxWorkFiles = int(ceil(float(MAX_N_ASIC*64)/maxChannelsPerWorker));
 	
@@ -607,6 +607,7 @@ void calibrateAllAsics(SystemConfig *config, CalibrationEntry *calibrationTable,
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
 			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
+			fflush(stdout);
 			calibrateAsic(config, gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix, nBins, xMin, xMax);
 			exit(0);
 		} else {
