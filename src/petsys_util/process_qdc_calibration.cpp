@@ -375,13 +375,14 @@ void calibrateAsic(
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
 		float yMin = pFine->GetMinimum(2);
-		float yMax = pFine->GetMaximum(1024.0);
-		float yRange = (yMax - yMin);
+		int bMin = pFine->FindFirstBinAbove(yMin);
+		float xMin = pFine->GetBinLowEdge(bMin);
 
-		float xMin = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMin+0.5));
-		float xMax = pFine->GetBinCenter(pFine->FindFirstBinAbove(yMax-0.5));
+		float yMax = pFine->GetMaximum();
+		int bMax = pFine->FindFirstBinAbove(0.95 * yMax);
+		float xMax = pFine->GetBinLowEdge(bMax+1);
 
-		pFine->Fit("pol9", "QW", "", xMin, xMax);
+		pFine->Fit("pol9", "Q", "", xMin, xMax);
 		TF1 *polN = pFine->GetFunction("pol9");
 		if(polN == NULL) {
 			fprintf(stderr, "WARNING: Could not make a fit. Skipping TAC (%02u %02d %02d %02d %u)\n",

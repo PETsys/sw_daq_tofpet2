@@ -70,7 +70,9 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				// 5 iterations are more than enought
 				float p0 = cq.p0 - in.efine;
 				float t_eq = ti;
-				for(int iter = 0; iter < 5; iter++) {
+				float delta = 0;
+				int iter = 0;
+				do {
 					float f = (cq.p0 - in.efine) +
 						cq.p1 * t_eq + 
 						cq.p2 * t_eq * t_eq + 
@@ -91,9 +93,20 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 						cq.p7 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 7 + 
 						cq.p8 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 8 +
 					        cq.p9 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 9;
-					t_eq = t_eq - f / f_;
-				}
+
+					delta = - f / f_;
+
+					// Avoid very large steps
+					if(delta < -10.0) delta = -10.0;
+					if(delta > +10.0) delta = +10.0;
+
+					t_eq = t_eq + delta;
+					iter += 1;
+				} while ((fabs(delta) > 0.05) && (iter < 100));
 				
+				if(in.channelID == 181) {
+				//	fprintf(stderr, "* %16p %03d %d %8.3f %4d : %4d %8.3f + %8.3f\n", inBuffer, in.channelID, in.tacID, ti, in.efine, iter, t_eq, delta);
+				}
 				// Express energy as t_eq - actual integration time
 				// WARNING Adding 1.0 clock to shift spectrum into positive range
 				// .. needs better understanding.
