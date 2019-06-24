@@ -42,7 +42,7 @@ class Connection:
 
 		self.__activePorts = []
 		self.__activeFEBDs = {}
-		self.__activeAsics = []
+		self.__activeAsics = {}
 
 		self.__asicConfigCache = None
 		self.__asicConfigCache_TAC_Refresh = None
@@ -164,9 +164,9 @@ class Connection:
 		return None
 
         ## Sets the properties of the internal FPGA pulse generator
-        # @param length Sets the length of the test pulse, from 1 to 1023 clock periods. 0 disables the test pulse.
-        # @param interval Sets the interval between test pulses. The actual interval will be (interval+1)*1024 clock cycles.
-        # @param finePhase Defines the delay of the test pulse regarding the start of the frame, in units of 1/392 of the clock.
+        # @param length Sets the length of the test pulse, from 1 to 1023 clock cycles. 0 disables the test pulse.
+        # @param interval Sets the interval between test pulses in clock cycles.
+        # @param finePhase Defines the delay of the test pulse in clock cycles.
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
 		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
