@@ -379,7 +379,7 @@ void calibrateAsic(
 		float xMin = pFine->GetBinLowEdge(bMin);
 
 		float yMax = pFine->GetMaximum();
-		int bMax = pFine->FindFirstBinAbove(0.95 * yMax);
+		int bMax = pFine->FindFirstBinAbove(0.97 * yMax);
 		float xMax = pFine->GetBinLowEdge(bMax+1);
 
 		pFine->Fit("pol9", "Q", "", xMin, xMax);
