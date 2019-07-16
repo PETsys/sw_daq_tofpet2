@@ -198,7 +198,7 @@ int main(int argc, char *argv[])
 			
 			// Write out the data frame contents
 			if(acqStdMode){
-				fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
+				r = fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
 				if(r != frameSize) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			}
 	        
@@ -212,7 +212,7 @@ int main(int argc, char *argv[])
 				while(eventIt != calEventSet.end()){
 					calData.freq = calEventSet.count(*eventIt);
 					calData.eventWord = *eventIt;
-					fwrite(&calData, sizeof(CalibrationData), 1, dataFile);
+					r = fwrite(&calData, sizeof(CalibrationData), 1, dataFile);
 					if(r != 1) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 					r = fflush(dataFile);
 					if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
@@ -234,7 +234,7 @@ int main(int argc, char *argv[])
 			int r = fflush(dataFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fprintf(indexFile, "%ld\t%ld\t%lld\t%lld\t%f\t%f\n", stepStartOffset, ftell(dataFile), stepFirstFrameID, lastFrameID, blockHeader.step1, blockHeader.step2);
-			if(r != 6) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(indexFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			stepStartOffset = ftell(dataFile);
