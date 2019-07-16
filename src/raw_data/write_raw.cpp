@@ -80,7 +80,8 @@ int main(int argc, char *argv[])
 	header[0] |= uint32_t(systemFrequency);
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
 	memcpy(header+1, &acquisitionStartTime, sizeof(double));
-	fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
+	int r = fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
+	if(r != 8) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 	
 	multiset<uint64_t> calEventSet;  
 	CalibrationData calData;
@@ -134,8 +135,10 @@ int main(int argc, char *argv[])
 				uint64_t lostFrameBuffer[2];
 				lostFrameBuffer[0] = (2ULL << 36) | (lastFrameID + 1);
 				lostFrameBuffer[1] = 1ULL << 16;
-				if(acqStdMode)
-					fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
+				if(acqStdMode) {
+					int r = fwrite((void*)lostFrameBuffer, sizeof(uint64_t), 2, dataFile);
+					if(r != 2) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+				}
 				
 				// .. and we set the lastFrameType
 				lastFrameType = FRAME_TYPE_ALL_LOST;
@@ -196,6 +199,7 @@ int main(int argc, char *argv[])
 			// Write out the data frame contents
 			if(acqStdMode){
 				fwrite((void *)(dataFrame->data), sizeof(uint64_t), frameSize, dataFile);
+				if(r != frameSize) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			}
 	        
 		}		
@@ -209,7 +213,9 @@ int main(int argc, char *argv[])
 					calData.freq = calEventSet.count(*eventIt);
 					calData.eventWord = *eventIt;
 					fwrite(&calData, sizeof(CalibrationData), 1, dataFile);
-					fflush(dataFile);
+					if(r != 1) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+					r = fflush(dataFile);
+					if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 					eventIt = calEventSet.upper_bound(*eventIt);
 				}
 				calEventSet.clear();
@@ -225,9 +231,12 @@ int main(int argc, char *argv[])
 					); 
 			fflush(stderr);
 			
-			fflush(dataFile);
-			fprintf(indexFile, "%ld\t%ld\t%lld\t%lld\t%f\t%f\n", stepStartOffset, ftell(dataFile), stepFirstFrameID, lastFrameID, blockHeader.step1, blockHeader.step2);
-			fflush(indexFile);
+			int r = fflush(dataFile);
+			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			r = fprintf(indexFile, "%ld\t%ld\t%lld\t%lld\t%f\t%f\n", stepStartOffset, ftell(dataFile), stepFirstFrameID, lastFrameID, blockHeader.step1, blockHeader.step2);
+			if(r != 6) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			r = fflush(indexFile);
+			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			stepStartOffset = ftell(dataFile);
 
 			stepAllFrames = 0;
