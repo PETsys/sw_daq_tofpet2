@@ -15,7 +15,7 @@ parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help="
 parser.add_argument("--time", type=float, required=True, help="Acquisition time (in seconds)")
 parser.add_argument("--mode", type=str, required=True, choices=["tot", "qdc"], help="Acquisition mode (ToT or QDC)")
 parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true", help="Enable the hardware coincidence filter")
-parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), att (set integrator gain)")
+parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
 
 args = parser.parse_args()
 
@@ -74,21 +74,20 @@ activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(6
 if args.paramTable is None:
         daqd.acquire(args.time, 0, 0)
 else:
-        for step1_ in step1Values:
-                step1 = config.toInt(step1_)
+        for step1 in step1Values:
+                step1 = float(step1)
                 if math.isnan(step1):
                         continue 
                 if parNames[0] in ['vth_t1', 'vth_t2', 'vth_e']:
                         for portID, slaveID, chipID, channelID in activeChannels:
                                 cc = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID]
-                                dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), parNames[0], step1)
+                                dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), parNames[0], int(step1))
                                 cc.setValue(parNames[0], dac_setting)
                 elif parNames[0] in ['disc_lsb_t1']:
                         for portID, slaveID, chipID in activeAsics:
                                 cc = asicsConfig[(portID, slaveID, chipID)].globalConfig
-                                cc.setValue(parNames[0], step1)
+                                cc.setValue(parNames[0], int(step1))
                 elif parNames[0] in ['OV']:
-                        step1 = step1_
                         biasVoltageConfig = daqd.get_hvdac_config()
                         for key in daqd.getActiveBiasChannels():
                                 offset, prebd, bd, over__ = systemConfig.getBiasChannelDefaultSettings(key)
@@ -98,21 +97,21 @@ else:
                                 daqd.set_hvdac_config(biasVoltageConfig)
                 daqd.setAsicsConfig(asicsConfig)       
               
-                for step2_ in step2Values:
-                        step2 = config.toInt(str(step2_))
+                for step2 in step2Values:
+                        step2 = float(step2)
                         if math.isnan(step2):
                                 continue 
                         if parNames[1] in ['vth_t1', 'vth_t2', 'vth_e']:
                                 for portID, slaveID, chipID, channelID in activeChannels:
                                         cc = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID]
-                                        dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), parNames[1], step2)
+                                        dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), parNames[1], int(step2))
                                         cc.setValue(parNames[1], dac_setting)
                         elif parNames[1] in ['disc_lsb_t1']:
                                 for portID, slaveID, chipID in activeAsics:
                                         cc = asicsConfig[(portID, slaveID, chipID)].globalConfig
-                                        cc.setValue(parNames[1], step2)
+                                        cc.setValue(parNames[1], int(step2))
                         elif parNames[1] in ['OV']:
-                                step2 = step2_
+                                #step2 = step2_
                                 biasVoltageConfig = daqd.get_hvdac_config()
                                 for key in daqd.getActiveBiasChannels():
                                         offset, prebd, bd, over__ = systemConfig.getBiasChannelDefaultSettings(key)
@@ -122,9 +121,9 @@ else:
                                 daqd.set_hvdac_config(biasVoltageConfig)
                 
                         if parNames[1] == "none":
-                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1_) 
+                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) 
                         else:
-                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1_) + " ; " + parNames[1] + " = " + str(step2_)  
+                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) + " ; " + parNames[1] + " = " + str(step2)  
                         daqd.setAsicsConfig(asicsConfig)
                         daqd.acquire(args.time, float(step1), float(step2))   
                     
