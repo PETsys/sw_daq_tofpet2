@@ -18,6 +18,7 @@ private:
 	uint32_t nReceivedInvalid;
 	uint32_t nTDCCalibrationMissing;
 	uint32_t nQDCCalibrationMissing;
+	uint32_t nEnergyCalibrationMissing;
 	uint32_t nXYZMissing;
 	uint32_t nSent;
 public:

@@ -10,6 +10,7 @@ OverlappedEventHandler<RawHit, Hit>(sink), systemConfig(systemConfig), qdcMode(q
 	nTDCCalibrationMissing = 0;
 	nQDCCalibrationMissing = 0;
 	nXYZMissing = 0;
+	nEnergyCalibrationMissing = 0;
 	nSent = 0;
 }
 
@@ -21,12 +22,14 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	
 	bool useTDC = systemConfig->useTDCCalibration();
 	bool useQDC = systemConfig->useQDCCalibration();
+	bool useEnergyCal = systemConfig->useEnergyCalibration();
 	bool useXYZ = systemConfig->useXYZ();
 	
 	uint32_t lReceived = 0;
 	uint32_t lReceivedInvalid = 0;
 	uint32_t lTDCCalibrationMissing = 0;
 	uint32_t lQDCCalibrationMissing = 0;
+	uint32_t lEnergyCalibrationMissing = 0;
 	uint32_t lXYZMissing = 0;
 	uint32_t lSent = 0;
 	
@@ -41,7 +44,8 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		SystemConfig::TacConfig &ct = cc.tac_T[in.tacID];
 		SystemConfig::TacConfig &ce = cc.tac_E[in.tacID];
 		SystemConfig::QacConfig &cq = cc.qac_Q[in.tacID];
-		
+		SystemConfig::EnergyConfig &cen = cc.eCal[in.tacID];
+
 		out.time = in.time;
 		if(useTDC) {
 			float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
@@ -93,12 +97,17 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					        cq.p9 * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * t_eq * 9;
 					t_eq = t_eq - f / f_;
 				}
-				
 				// Express energy as t_eq - actual integration time
 				// WARNING Adding 1.0 clock to shift spectrum into positive range
 				// .. needs better understanding.
 				out.energy = t_eq - ti ;
 				if(cq.p1 == 0) eventFlags |= 0x4;
+				if(useEnergyCal){
+					float Energy =  cen.p0 * pow(cen.p1,pow(out.energy,cen.p2)) + cen.p3 * out.energy - cen.p0;	 
+					out.energy = Energy;
+					if(cen.p0 == 0) eventFlags |= 0x16;
+				}
+				
 			}
 		}
 		
@@ -120,7 +129,8 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		if((eventFlags & 0x2) != 0) lTDCCalibrationMissing += 1;
 		if((eventFlags & 0x4) != 0) lQDCCalibrationMissing += 1;
 		if((eventFlags & 0x8) != 0) lXYZMissing += 1;
-		
+		if((eventFlags & 0x16) != 0) lEnergyCalibrationMissing += 1;
+
 		if(eventFlags == 0) {
 			out.valid = true;
 			outBuffer->pushWriteSlot();
@@ -132,6 +142,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	atomicAdd(nReceivedInvalid, lReceivedInvalid);
 	atomicAdd(nTDCCalibrationMissing, lTDCCalibrationMissing);
 	atomicAdd(nQDCCalibrationMissing, lQDCCalibrationMissing);
+	atomicAdd(nEnergyCalibrationMissing, lEnergyCalibrationMissing);	
 	atomicAdd(nXYZMissing, lXYZMissing);
 	atomicAdd(nSent, lSent);
 	
@@ -147,6 +158,8 @@ void ProcessHit::report()
 	fprintf(stderr, " hits dropped\n");
 	fprintf(stderr, "  %10u (%4.1f%%) missing TDC calibration\n", nTDCCalibrationMissing, 100.0 * nTDCCalibrationMissing / nReceived);
 	fprintf(stderr, "  %10u (%4.1f%%) missing QDC calibration\n", nQDCCalibrationMissing, 100.0 * nQDCCalibrationMissing / nReceived);
+	if(systemConfig->useEnergyCalibration())
+		fprintf(stderr, "  %10u (%4.1f%%) missing Energy calibration\n", nEnergyCalibrationMissing, 100.0 * nEnergyCalibrationMissing / nReceived);
 	fprintf(stderr, "  %10u (%4.1f%%) missing XYZ information\n", nXYZMissing, 100.0 * nXYZMissing / nReceived);
 	fprintf(stderr, " hits passed\n");
 	fprintf(stderr, "  %10u (%4.1f%%)\n", nSent, 100.0 * nSent / nReceived);

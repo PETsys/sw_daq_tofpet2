@@ -34,6 +34,12 @@ namespace PETSYS {
 		  	float p9;
 
 		};
+		struct EnergyConfig{
+			float p0;
+			float p1;
+			float p2;
+			float p3;
+		};
 		struct ChannelConfig {
 			float x, y, z;
 			int xi, yi;
@@ -42,8 +48,9 @@ namespace PETSYS {
 			TacConfig tac_T[4];
 			TacConfig tac_E[4];
 			QacConfig qac_Q[4];
+			EnergyConfig eCal[4];
 		};
-		
+	       
 
 		// Software trigger configuration
 		int sw_trigger_group_max_hits;
@@ -59,6 +66,7 @@ namespace PETSYS {
 		
 		inline bool useTDCCalibration() { return hasTDCCalibration; };
 		inline bool useQDCCalibration() { return hasQDCCalibration; };
+		inline bool useEnergyCalibration() { return hasEnergyCalibration; };
 		inline bool useXYZ() { return hasXYZ; };
 		
 		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
@@ -87,11 +95,13 @@ namespace PETSYS {
 		void touchChannelConfig(unsigned channelID);
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
 		static void loadQDCCalibration(SystemConfig *config, const char *fn);
+		static void loadEnergyCalibration(SystemConfig *config, const char *fn);
 		static void loadChannelMap(SystemConfig *config, const char *fn);
 		static void loadTriggerMap(SystemConfig *config, const char *fn);
 		
 		bool hasTDCCalibration;
 		bool hasQDCCalibration;
+		bool hasEnergyCalibration;
 		bool hasXYZ;
 		
 		ChannelConfig **channelConfig;
