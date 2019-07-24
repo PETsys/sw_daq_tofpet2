@@ -78,7 +78,7 @@ for firstChannel in range(0, channelStep):
 		t_start = time.time()
 		binSize = (phaseMax - phaseMin) / nBins
 		finePhase = phaseMin + (i+0.5) * binSize
-		daqd.setTestPulsePLL(100, 1024, finePhase, False)
+		daqd.set_test_pulse_febd(100, 1024, finePhase, False)
 		daqd.acquire(0.02, finePhase, 0)
 		t_finish = time.time()
 		print "Channel(s): %s Phase: %4.3f clk in %3.2f seconds " % (activeChannels_string, finePhase, t_finish - t_start)

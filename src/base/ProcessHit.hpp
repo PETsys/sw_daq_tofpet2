@@ -12,7 +12,7 @@ namespace PETSYS {
 class ProcessHit : public OverlappedEventHandler<RawHit, Hit> {
 private:
 	SystemConfig *systemConfig;
-	bool qdcMode;
+	EventStream *eventStream;
 	
 	uint32_t nReceived;
 	uint32_t nReceivedInvalid;
@@ -21,7 +21,7 @@ private:
 	uint32_t nXYZMissing;
 	uint32_t nSent;
 public:
-	ProcessHit(SystemConfig *systemConfig, bool qdcMode, EventSink<Hit> *sink);
+	ProcessHit(SystemConfig *systemConfig, EventStream *eventStream, EventSink<Hit> *sink);
 	virtual void report();
 	
 protected:

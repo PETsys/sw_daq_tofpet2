@@ -37,13 +37,14 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 7);
+	assert(argc == 8);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
 	bool qdcMode = (argv[4][0] == 'Q');
 	double acquisitionStartTime = boost::lexical_cast<double>(argv[5]);
 	bool acqStdMode = (argv[6][0] == 'N');
+	int triggerID = boost::lexical_cast<int>(argv[7]);
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 	  
@@ -80,8 +81,11 @@ int main(int argc, char *argv[])
 	header[0] |= uint32_t(systemFrequency);
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
 	memcpy(header+1, &acquisitionStartTime, sizeof(double));
+	if (triggerID != -1) { header[2] = 0x8000 + triggerID; }
+
 	int r = fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
 	if(r != 8) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+
 	
 	multiset<uint64_t> calEventSet;  
 	CalibrationData calData;

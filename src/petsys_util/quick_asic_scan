@@ -95,7 +95,7 @@ for firstChannel in range(0, K):
 	daqd.setAsicsConfig(asicsConfig)
 
 	for phase in phases:
-		daqd.setTestPulsePLL(200, 1024, phase, False)
+		daqd.set_test_pulse_febd(200, 1024, phase, False)
 		daqd.acquire(0.02, phase, 0)
 		
 daqd.closeAcquisition()
@@ -138,7 +138,7 @@ for firstChannel in range(0, K):
 
 	for phase in phases:
 		for length in lengths:
-			daqd.setTestPulsePLL(length, 1024, phase, False)
+			daqd.set_test_pulse_febd(length, 1024, phase, False)
 			daqd.acquire(0.02, phase, length)
 		
 daqd.closeAcquisition()
@@ -195,7 +195,7 @@ for channelID in range(64):
 
 	print "FETP channel %2d" % channelID
 	for phase in phases:
-		daqd.setTestPulsePLL(200, 400*1024, phase, False)
+		daqd.set_test_pulse_febd(200, 400*1024, phase, False)
 		daqd.acquire(0.2, phase, 0)
 		
 daqd.closeAcquisition()

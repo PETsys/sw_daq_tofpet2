@@ -63,6 +63,7 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 	reader->dataFile = rawFile;
 	reader->frequency = header[0] & 0xFFFFFFFFUL;
 	reader->qdcMode = (header[0] & 0x100000000UL) != 0;
+	if (header[2] & 0x8000 != 0) { reader->triggerID = header[2] & 0x7FFF; }
 
 	Step step;
 	while(fscanf(idxFile, "%lu\t%lu\t%lld\t%lld\t%f\t%f", &step.stepBegin, &step.stepEnd, &step.stepFirstFrame, &step.stepLastFrame, &step.step1, &step.step2) == 6) {
@@ -84,6 +85,11 @@ double RawReader::getFrequency()
 bool RawReader::isQDC()
 {
 	return qdcMode;
+}
+
+int RawReader::getTriggerID()
+{
+	return triggerID;
 }
 
 void RawReader::getStepValue(int n, float &step1, float &step2)

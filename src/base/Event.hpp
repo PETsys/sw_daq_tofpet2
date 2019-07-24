@@ -75,5 +75,14 @@ namespace PETSYS {
 				photons[i] = NULL;
 		};
 	};
+	
+	class EventStream {
+	public:
+		virtual bool isQDC() = 0;
+		virtual double getFrequency() = 0;
+		virtual int getTriggerID() = 0;
+
+		
+	};
 }
 #endif

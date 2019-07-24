@@ -321,7 +321,7 @@ int main(int argc, char *argv[])
 		fflush(stdout);
 		reader->processStep(stepIndex, true,
 				new CoarseSorter(
-				new ProcessHit(config, reader->isQDC(),
+				new ProcessHit(config, reader,
 				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<Hit>()
 				))));

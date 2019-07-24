@@ -159,16 +159,22 @@ class Connection:
 	## Disables test pulse 
 	def setTestPulseNone(self):
 		self.__setSorterMode(True)
-		for portID, slaveID in self.getActiveFEBDs():
+		for portID, slaveID in self.getActiveUnits():
 			self.write_config_register(portID, slaveID, 64, 0x20B, 0x0)
 		return None
+
+	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
+		self.set_test_pulse_febds(length, interval, finePhase, invert)
 
         ## Sets the properties of the internal FPGA pulse generator
         # @param length Sets the length of the test pulse, from 1 to 1023 clock cycles. 0 disables the test pulse.
         # @param interval Sets the interval between test pulses in clock cycles.
         # @param finePhase Defines the delay of the test pulse in clock cycles.
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
-	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
+	def set_test_pulse_febd(self, length, interval, finePhase, invert=False):
+		self.__set_test_pulse(self.getActiveFEBDs(), length, interval, finePhase, invert)
+
+	def __set_test_pulse(self, targets, length, interval, finePhase, invert=False):
 		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
 		# First, make sure we have a cache of settings
 		if self.__asicConfigCache_TAC_Refresh is None:
@@ -192,7 +198,7 @@ class Connection:
 		value |= (finePhase & 0xFFFFFF) << 31
 		if invert: value |= 1 << 61
 
-		for portID, slaveID in self.getActiveFEBDs():
+		for portID, slaveID in targets:
 			self.write_config_register(portID, slaveID, 64, 0x20B, value)
 		return None
 
@@ -578,6 +584,16 @@ class Connection:
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))
 		data_bytes = [ (value >> (8*i)) & 0xFF for i in range(n_bytes_per_word) ]
 		return self.write_mem_ctrl(portID, slaveID, 0x00, 8, base_address, data_bytes)
+
+	def write_config_register_tgr(self, word_width, base_address, value):
+		portID, slaveID = self.getTriggerUnit()
+		self.write_config_register(portID, slaveID, word_width, base_address, value)
+		return None
+
+	def write_config_register_febds(self,  word_width, base_address, value):
+		for portID, slaveID in self.getActiveFEBDs():
+			self.write_config_register(portID, slaveID, word_width, base_address, value)
+		return None
 	
 	def spi_master_execute(self, portID, slaveID, cfgFunctionID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data):
 		if len(mosi_data) == 0:
@@ -1006,12 +1022,23 @@ class Connection:
 		
 
 	def openRawAcquisition(self, fileNamePrefix, qdcMode=False, calMode = False):
+		triggerID = -1
+		trigger = self.getTriggerUnit()
+		if trigger is None:
+			triggerID = -1
+		elif [ trigger ] == self.getActiveFEBDs():
+			triggerID = 1
+		else:
+			portID, slaveID = trigger
+			triggerID = 32 * portID + slaveID
+		
 		cmd = [ "./write_raw", \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
 			qdcMode and 'Q' or 'T', "%1.12f" % self.getAcquisitionStartTime(),
-			calMode and 'T' or 'N' ]
+			calMode and 'T' or 'N', 
+			str(triggerID) ]
 		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 	## Closes the current acquisition file

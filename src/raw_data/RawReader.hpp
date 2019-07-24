@@ -7,13 +7,14 @@
 #include <vector>
 
 namespace PETSYS {
-	class RawReader {
+	class RawReader : public EventStream {
 	public:
 		~RawReader();
 		static RawReader *openFile(const char *fnPrefix);
 
 		bool isQDC();
 		double getFrequency();
+		int getTriggerID();
 		int getNSteps();
 		void getStepValue(int n, float &step1, float &step2);
 		void processStep(int n, bool verbose, EventSink<RawHit> *pipeline);
@@ -40,6 +41,7 @@ namespace PETSYS {
 
 		unsigned frequency;
 		bool qdcMode;
+		int triggerID;
 
 		
 	};

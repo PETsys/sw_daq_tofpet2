@@ -41,7 +41,7 @@ for ac in asicsConfig.values():
 			
 
 daqd.setAsicsConfig(asicsConfig)
-daqd.setTestPulsePLL(200, 400*1024, 0, False)
+daqd.set_test_pulse_febd(200, 400*1024, 0, False)
 daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=qdcMode)
 
 for channel in range(0,64):
