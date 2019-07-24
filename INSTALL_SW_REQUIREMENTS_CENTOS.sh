@@ -20,7 +20,8 @@ python-devel \
 cmake \
 iniparser-devel \
 python2-bitarray.x86_64 \
-xterm
+xterm \
+python-pandas
 
 
 

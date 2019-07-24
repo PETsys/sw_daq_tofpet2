@@ -325,7 +325,6 @@ def readSiPMBiasTable(fn):
 	for l in f:
 		l = normalizeAndSplit(l)
 		if l == ['']: continue
-
 		portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
 		c[(portID, slaveID, channelID)] = [ float(v) for v in l[3:7] ]
 	f.close()
@@ -374,3 +373,16 @@ def readTriggerMap(fn):
 			triggerMap.add((r1, r2))
 	f.close()
 	return triggerMap
+
+
+def readTopologyMap(fn):
+        f = open(fn)
+	c = {}
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, chipID = [ int(v) for v in l[0:3] ]
+                c[(portID, slaveID, chipID)] = [ v for v in l[3:4] ]
+        
+        f.close()
+	return c

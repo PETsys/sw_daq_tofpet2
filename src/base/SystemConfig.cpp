@@ -68,6 +68,19 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		config->hasQDCCalibration = true;
 	}
 	
+	config->hasEnergyCalibration = false;
+	if ((mask & LOAD_ENERGY_CALIBRATION) != 0) {
+		char *entry = iniparser_getstring(configFile, "main:energy_calibration_table", NULL);
+		if(entry == NULL) {
+			fprintf(stderr, "ERROR: energy_calibration_table not specified in section 'main' of '%s'\n", configFileName);
+			exit(1);
+		}
+		replace_variables(fn, entry, cdir);
+		loadEnergyCalibration(config, fn);
+		config->hasEnergyCalibration = true;
+	}
+
+
 	config->hasXYZ = false;
 	if((mask & LOAD_MAPPING) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
@@ -135,7 +148,7 @@ SystemConfig::SystemConfig()
 		nullChannelConfig.tac_T[n] = { 0, 0, 0, 0};
 		nullChannelConfig.tac_E[n] = { 0, 0, 0, 0};
 		nullChannelConfig.qac_Q[n] = { 0, 0, 0, 0, 0 };
-		
+		nullChannelConfig.eCal[n] = { 0, 0, 0, 0};
 		nullChannelConfig.x = 0.0;
 		nullChannelConfig.y = 0.0;
 		nullChannelConfig.z = 0.0;
@@ -272,6 +285,43 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 	}
 	fclose(f);
 }
+
+void SystemConfig::loadEnergyCalibration(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[1024];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+		
+		unsigned portID, slaveID, chipID, channelID, tacID;
+		float p0, p1, p2, p3;
+		
+		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t\t%f\t%f\t%f\t%f\n",
+			&portID, &slaveID, &chipID, &channelID, &tacID,
+			&p0, &p1, &p2, &p3) != 9) continue;
+		
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+		
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+		
+		EnergyConfig &eCal = channelConfig.eCal[tacID];
+		
+		eCal.p0 = p0;
+		eCal.p1 = p1;
+		eCal.p2 = p2;
+		eCal.p3 = p3;
+	}
+	fclose(f);
+}
+
+
+
 
 void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 {
