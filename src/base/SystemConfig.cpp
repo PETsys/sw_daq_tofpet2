@@ -57,6 +57,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 	}
 	
 	config->hasQDCCalibration = false;
+	config->hasEnergyCalibration = false;
 	if ((mask & LOAD_QDC_CALIBRATION) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:qdc_calibration_table", NULL);
 		if(entry == NULL) {
@@ -66,19 +67,15 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 		replace_variables(fn, entry, cdir);
 		loadQDCCalibration(config, fn);
 		config->hasQDCCalibration = true;
+
+		entry = iniparser_getstring(configFile, "main:energy_calibration_table", NULL);
+		if(entry != NULL) {
+			replace_variables(fn, entry, cdir);
+			loadEnergyCalibration(config, fn);
+			config->hasEnergyCalibration = true;
+		}	
 	}
 	
-	config->hasEnergyCalibration = false;
-	if ((mask & LOAD_ENERGY_CALIBRATION) != 0) {
-		char *entry = iniparser_getstring(configFile, "main:energy_calibration_table", NULL);
-		if(entry == NULL) {
-			fprintf(stderr, "ERROR: energy_calibration_table not specified in section 'main' of '%s'\n", configFileName);
-			exit(1);
-		}
-		replace_variables(fn, entry, cdir);
-		loadEnergyCalibration(config, fn);
-		config->hasEnergyCalibration = true;
-	}
 
 
 	config->hasXYZ = false;

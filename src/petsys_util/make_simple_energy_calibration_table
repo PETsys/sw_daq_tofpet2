@@ -22,7 +22,7 @@ p2 = 1.02734;
 p3 = 0.31909;
 
 
-outputFile.write("#portID\tslaveID\tchipID\tchannelID\tp0\tp1\tp2\p3\n")
+outputFile.write("#portID\tslaveID\tchipID\tchannelID\tp0\tp1\tp2\tp3\n")
 for portID, slaveID, chipID, channelID in config.getCalibratedDiscChannels():
         for tacID in range(4):
                 outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%f\t%f\t%f\n" % (portID, slaveID, chipID, channelID, tacID, p0, p1, p2, p3))

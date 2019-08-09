@@ -323,7 +323,7 @@ int main(int argc, char *argv[])
 	// If data was taken in ToT mode, do not attempt to load these files
 	unsigned long long mask = SystemConfig::LOAD_ALL;
 	if(!reader->isQDC()) {
-		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION);
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
