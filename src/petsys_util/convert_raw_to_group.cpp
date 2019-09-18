@@ -21,7 +21,6 @@ class DataFileWriter {
 private:
 	double frequency;
 	FILE_TYPE fileType;
-	bool qdcMode;
 	int hitLimitToWrite;
 	int eventFractionToWrite;
 	long long eventCounter;
@@ -63,10 +62,9 @@ private:
 	} __attribute__((__packed__));
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode, int hitLimitToWrite, int eventFractionToWrite) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite) {
 		this->frequency = frequency;
 		this->fileType = fileType;
-		this->qdcMode = qdcMode;
 		this->hitLimitToWrite = hitLimitToWrite;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
@@ -154,8 +152,7 @@ public:
 
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
-		float Eunit = qdcMode ? 1.0 : Tns;
-
+	
 		long long tMin = buffer->getTMin() * (long long)Tps;
 		
 		int N = buffer->getSize();
@@ -171,7 +168,7 @@ public:
 			int limit = (hitLimitToWrite < p.nHits) ? hitLimitToWrite : p.nHits;
 			for(int m = 0; m < limit; m++) {
 				Hit &h = *p.hits[m];
-				
+				float Eunit = h.raw->qdcMode ? 1.0 : Tns;
 				if (fileType == FILE_ROOT){
 					brStep1 = step1;
 					brStep2 = step2;
@@ -322,12 +319,12 @@ int main(int argc, char *argv[])
 	
 	// If data was taken in ToT mode, do not attempt to load these files
 	unsigned long long mask = SystemConfig::LOAD_ALL;
-	if(!reader->isQDC()) {
-		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION);
+	if(reader->isTOT()) {
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, reader->isQDC(), hitLimitToWrite, eventFractionToWrite);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;

@@ -9,6 +9,7 @@ namespace PETSYS {
 
 	struct RawHit {
 		bool valid;
+		bool qdcMode;
 		double time;
 		double timeEnd;
 		unsigned int channelID;
@@ -19,7 +20,7 @@ namespace PETSYS {
 		unsigned short tfine;
 		unsigned short efine;
 		unsigned short tacID;
-
+		
 		RawHit() {
 			valid = false;
 		};
@@ -78,7 +79,7 @@ namespace PETSYS {
 	
 	class EventStream {
 	public:
-		virtual bool isQDC() = 0;
+		//virtual bool isQDC(unsigned int gChannelID) = 0;
 		virtual double getFrequency() = 0;
 		virtual int getTriggerID() = 0;
 

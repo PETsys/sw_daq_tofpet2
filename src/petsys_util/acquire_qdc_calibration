@@ -25,16 +25,12 @@ if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileName
 	f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
 	f.close()
 
-daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=True, calMode=True)
+daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 asicsConfig = daqd.getAsicsConfig()
 
 for ac in asicsConfig.values():
 	gc = ac.globalConfig
 	for cc in ac.channelConfig:
-		# Set QDC mode
-		cc.setValue("qdc_mode", 1)
-		cc.setValue("intg_en", 1)
-		cc.setValue("intg_signal_en", 1)
 		# Set simplest trigger_mode_2_* setting
 		cc.setValue("trigger_mode_2_t", 0b00)
 		cc.setValue("trigger_mode_2_e", 0b000)

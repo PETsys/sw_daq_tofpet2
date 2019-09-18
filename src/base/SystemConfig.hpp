@@ -14,6 +14,7 @@ namespace PETSYS {
 		static const uint64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
 		static const uint64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
 		static const uint64_t LOAD_MAPPING		= 0x0000000000000010ULL;
+	
 
 		struct TacConfig {
 			float t0;

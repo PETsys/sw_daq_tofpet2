@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
-	bool qdcMode = (argv[4][0] == 'Q');
+	bool qdcMode = (strcmp(argv[4], "qdc") == 0);
 	double acquisitionStartTime = boost::lexical_cast<double>(argv[5]);
 	bool acqStdMode = (argv[6][0] == 'N');
 	int triggerID = boost::lexical_cast<int>(argv[7]);
@@ -50,6 +50,8 @@ int main(int argc, char *argv[])
 	  
 	char fNameRaw[1024];
 	char fNameIdx[1024];
+
+
 	if(strcmp(outputFilePrefix, "/dev/null") == 0) {
 		sprintf(fNameRaw, "%s", outputFilePrefix);
 		sprintf(fNameIdx, "%s", outputFilePrefix);
@@ -82,7 +84,7 @@ int main(int argc, char *argv[])
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
 	memcpy(header+1, &acquisitionStartTime, sizeof(double));
 	if (triggerID != -1) { header[2] = 0x8000 + triggerID; }
-
+	if (strcmp(argv[4], "mixed") == 0) { header[3] = 0x1UL; }
 	int r = fwrite((void *)&header, sizeof(uint64_t), 8, dataFile);
 	if(r != 8) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 

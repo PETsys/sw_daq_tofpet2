@@ -13,6 +13,7 @@ LOAD_BIAS_SETTINGS 	= 0x00000002
 LOAD_DISC_CALIBRATION	= 0x00000004
 LOAD_DISC_SETTINGS	= 0x00000008
 LOAD_MAP		= 0x00000010
+LOAD_QDCMODE_MAP	= 0x00000020
 LOAD_ALL		= 0xFFFFFFFF
 
 APPLY_BIAS_OFF		= 0x0
@@ -62,6 +63,13 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		config._Config__asicChannelThresholdSettingsTable = t
 		config._Config__loadMask |= LOAD_DISC_SETTINGS
 
+        if (loadMask & LOAD_QDCMODE_MAP) != 0:
+                fn = configParser.get("main", "acquisition_mode_table")
+		fn = replace_variables(fn, cdir)
+		t = readQDCModeTable(fn)
+		config._Config__asicChannelQDCModeTable = t
+		config._Config__loadMask |= LOAD_QDCMODE_MAP
+
 
 	# Load hw_trigger configuration IF hw_trigger section exists
 	hw_trigger_config = { "type" : None }
@@ -93,11 +101,12 @@ class Config:
 		self.__asicChannelBaselineSettingsTable = {}
 		self.__asicChannelThresholdCalibrationTable = {}
 		self.__asicChannelThresholdSettingsTable = {}
+                self.__asicChannelQDCModeTable = {}
 		self.__asicParameterTable = {}
 		self.__hw_trigger = None
 
 
-	def loadToHardware(self, daqd, bias_enable=APPLY_BIAS_OFF, hw_trigger_enable=False):
+	def loadToHardware(self, daqd, bias_enable=APPLY_BIAS_OFF, hw_trigger_enable=False, qdc_mode = "qdc"):
 		#
 		# Apply bias voltage settings
 		# 
@@ -144,22 +153,38 @@ class Config:
 					cc.setValue("baseline_t", baseline_t)
 					cc.setValue("baseline_e", baseline_e)
 
-		# Apply discriminator settings
-		if (self.__loadMask & LOAD_DISC_SETTINGS) != 0:
-			for portID, slaveID, chipID in asicsConfig.keys():
-				ac = asicsConfig[(portID, slaveID, chipID)]
-				for channelID in range(64):
-					vth_t1, vth_t2, vth_e = self.getAsicChannelDefaultThresholds((portID, slaveID, chipID, channelID))
-					cc = ac.channelConfig[channelID]
-					
-					vth_t1 = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t1", vth_t1)
-					vth_t2 = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t2", vth_t2)
-					vth_e = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_e", vth_e)
-					cc.setValue("vth_t1", vth_t1)
-					cc.setValue("vth_t2", vth_t2)
-					cc.setValue("vth_e", vth_e)
+		# Apply discriminator settings and energy acquisition mdoe 
+                qdcMode =  qdc_mode == "qdc"
 
+                for portID, slaveID, chipID in asicsConfig.keys():
+                        ac = asicsConfig[(portID, slaveID, chipID)]
+                        for channelID in range(64):
+                                cc = ac.channelConfig[channelID]
+                                if (self.__loadMask & LOAD_DISC_SETTINGS) != 0:
+                                        vth_t1, vth_t2, vth_e = self.getAsicChannelDefaultThresholds((portID, slaveID, chipID, channelID))
+                                        vth_t1 = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t1", vth_t1)
+                                        vth_t2 = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t2", vth_t2)
+                                        vth_e = self.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_e", vth_e)
+                                        cc.setValue("vth_t1", vth_t1)
+                                        cc.setValue("vth_t2", vth_t2)
+                                        cc.setValue("vth_e", vth_e)
 
+                                        cc.setValue("trigger_mode_1", 0b00)
+
+                                if (self.__loadMask & LOAD_QDCMODE_MAP) != 0:
+                                        qdcMode =  self.getAsicChannelQDCMode((portID, slaveID, chipID, channelID)) == "qdc"
+                                                               
+                                if not qdcMode:
+                                        cc.setValue("qdc_mode", 0)
+                                        cc.setValue("intg_en", 0)
+                                        cc.setValue("intg_signal_en", 0)
+                                else:
+                                        cc.setValue("qdc_mode", 1)
+                                        cc.setValue("intg_en", 1)
+                                        cc.setValue("intg_signal_en", 1)
+                              
+                                        
+                                        
 		daqd.setAsicsConfig(asicsConfig)
 
 
@@ -228,7 +253,10 @@ class Config:
 		
 	def getAsicChannelDefaultThresholds(self, key):
 		return self.__asicChannelThresholdSettingsTable[key]
-		
+        
+	def getAsicChannelQDCMode(self, key):
+                return self.__asicChannelQDCModeTable[key]
+			
 	def mapAsicChannelThresholdToDAC(self, key, vth_str, value):
 		vth_t1, vth_t2, vth_e = self.__asicChannelThresholdCalibrationTable[key]
 		tmp = { "vth_t1" : vth_t1, "vth_t2" : vth_t2, "vth_e" : vth_e }
@@ -354,6 +382,23 @@ def readDiscSettingsTable(fn):
 	f.close()
 	return c
 
+def readQDCModeTable(fn):
+	f = open(fn)
+	c = {}
+        ln = 0
+	for l in f:
+                ln += 1
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, chipID, channelID = [ int(v) for v in l[0:4] ]
+		c[(portID, slaveID, chipID, channelID)] =  l[4:5][0]
+                if c[(portID, slaveID, chipID, channelID)] not in ['tot', 'qdc']:
+			print "Error in '%s' line %d: mode must be 'qdc' or 'tot'\n" % (fn, ln)
+			exit(1)
+	f.close()
+	return c
+
+
 def readTriggerMap(fn):
 	f = open(fn)
 	triggerMap = set()
@@ -366,7 +411,7 @@ def readTriggerMap(fn):
 		r2 = int(l[1])
 		c = upper(l[2])
 		if c not in ['M', 'C']:
-			stdout.write("Error in '%s' line %d: type must be 'M' or 'C'\n" % (fn, ln))
+			print "Error in '%s' line %d: type must be 'M' or 'C'\n" % (fn, ln)
 			exit(1)
 
 		if c == 'C':

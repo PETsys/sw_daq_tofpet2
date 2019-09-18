@@ -1021,7 +1021,29 @@ class Connection:
 			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
-	def openRawAcquisition(self, fileNamePrefix, qdcMode=False, calMode = False):
+	def openRawAcquisition(self, fileNamePrefix, calMode = False):
+                
+                asicsConfig = self.getAsicsConfig()
+                modeFile = open(fileNamePrefix + ".modf", "w")
+                modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
+                modeList = [] 
+                for portID, slaveID, chipID in asicsConfig.keys():
+                        ac = asicsConfig[(portID, slaveID, chipID)]
+                        for channelID in range(64):
+                                cc = ac.channelConfig[channelID]
+                                mode = cc.getValue("qdc_mode") and "qdc" or "tot"
+                                modeList.append(mode)
+                                modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
+                                
+                if(len(set(modeList))!=1):
+                        qdcMode = "mixed"
+                elif(modeList[0] == "tot"):
+                        qdcMode = "tot" 
+                else:
+                        qdcMode = "qdc" 
+
+                modeFile.close() 
+        
 		triggerID = -1
 		trigger = self.getTriggerUnit()
 		if trigger is None:
@@ -1036,10 +1058,11 @@ class Connection:
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
-			qdcMode and 'Q' or 'T', "%1.12f" % self.getAcquisitionStartTime(),
+			str(qdcMode), "%1.12f" % self.getAcquisitionStartTime(),
 			calMode and 'T' or 'N', 
 			str(triggerID) ]
 		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):

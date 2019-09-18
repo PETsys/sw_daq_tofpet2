@@ -17,9 +17,9 @@ systemConfig = config.ConfigFromFile(args.config, loadMask=0)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode = "tot")
 
-daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False, calMode = True)
+daqd.openRawAcquisition(args.fileNamePrefix, calMode = True)
 asicsConfig = daqd.getAsicsConfig()
 
 ## Calibration parameters

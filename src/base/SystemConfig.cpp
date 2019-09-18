@@ -44,6 +44,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 	dictionary * configFile = iniparser_load(configFileName);
 	SystemConfig *config = new SystemConfig();
 	
+
 	config->hasTDCCalibration = false;
 	if((mask & LOAD_TDC_CALIBRATION) != 0) {
 		char *entry = iniparser_getstring(configFile, "main:tdc_calibration_table", NULL);
@@ -206,6 +207,8 @@ static unsigned MAKE_GID(unsigned long portID, unsigned long slaveID, unsigned l
 	gChannelID |= (portID << 17);
 	return gChannelID;
 }
+
+
 
 void SystemConfig::loadTDCCalibration(SystemConfig *config, const char *fn)
 {

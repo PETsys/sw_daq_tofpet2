@@ -6,13 +6,15 @@
 
 #include <vector>
 
+static const unsigned MAX_NUMBER_CHANNELS = 4194304;
+
 namespace PETSYS {
 	class RawReader : public EventStream {
 	public:
 		~RawReader();
 		static RawReader *openFile(const char *fnPrefix);
-
-		bool isQDC();
+		bool isQDC(unsigned int gChannelID);
+		bool isTOT();
 		double getFrequency();
 		int getTriggerID();
 		int getNSteps();
@@ -40,9 +42,9 @@ namespace PETSYS {
 		int readFromDataFile(char *buf, int count);
 
 		unsigned frequency;
-		bool qdcMode;
+		bool qdcMode[MAX_NUMBER_CHANNELS];		
 		int triggerID;
-
+		
 		
 	};
 }
