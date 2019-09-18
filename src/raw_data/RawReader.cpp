@@ -9,11 +9,34 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <boost/regex.hpp>
+#include <libgen.h>
+#include <limits.h>
+#include <boost/algorithm/string/replace.hpp>
+
 
 using namespace std;
 using namespace PETSYS;
 
+
 static const unsigned dataFileBufferSize = 131072; // 128K
+
+static void normalizeLine(char *line) {
+	std::string s = std::string(line);
+	// Remove carriage return, from Windows written files
+	s = boost::regex_replace(s, boost::regex("\r"), "");
+	// Remove comments
+	s = boost::regex_replace(s, boost::regex("\\s*#.*"), "");
+	// Remove leading white space
+	s = boost::regex_replace(s, boost::regex("^\\s+"), "");
+	// Remove trailing whitespace
+	s = boost::regex_replace(s, boost::regex("\\s+$"), "");
+	// Normalize white space to tab
+	s = boost::regex_replace(s, boost::regex("\\s+"), "\t");
+	strcpy(line, s.c_str());	
+}
+
+
 RawReader::RawReader() :
         steps(vector<Step>()),
 	dataFile(-1)
@@ -62,13 +85,40 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 	RawReader *reader = new RawReader();
 	reader->dataFile = rawFile;
 	reader->frequency = header[0] & 0xFFFFFFFFUL;
-	reader->qdcMode = (header[0] & 0x100000000UL) != 0;
 	if (header[2] & 0x8000 != 0) { 
 		reader->triggerID = header[2] & 0x7FFF; 
 	}
 	else {
 		reader->triggerID = -1;
 	}
+       
+	if(header[3]!=0){
+		sprintf(fName, "%s.modf", fnPrefix);
+		FILE *modeFile = fopen(fName, "r");
+		if(fName == NULL) {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
+		}
+		char line[PATH_MAX];
+		while(fscanf(modeFile, "%[^\n]\n", line) == 1) {
+			normalizeLine(line);
+			if(strlen(line) == 0) continue;
+			unsigned portID, slaveID, chipID,channelID;
+			char mode[128];		
+			if(sscanf(line, "%d\t%u\t%u\t%u\t%s", &portID, &slaveID, &chipID, &channelID, &mode)!= 5) continue;
+			unsigned long gChannelID = 0;
+			gChannelID |= channelID;
+			gChannelID |= (chipID << 6);
+			gChannelID |= (slaveID << 12);
+			gChannelID |= (portID << 17);
+			reader->qdcMode[gChannelID] = strcmp(mode, "qdc") == 0;
+		}
+	}
+	else{
+		for(unsigned long gChannelID = 0; gChannelID < MAX_NUMBER_CHANNELS; gChannelID++)
+			reader->qdcMode[gChannelID] = (header[0] & 0x100000000UL) != 0;
+	}
+	
 
 	Step step;
 	while(fscanf(idxFile, "%lu\t%lu\t%lld\t%lld\t%f\t%f", &step.stepBegin, &step.stepEnd, &step.stepFirstFrame, &step.stepLastFrame, &step.step1, &step.step2) == 6) {
@@ -87,9 +137,21 @@ double RawReader::getFrequency()
 	return (double) frequency;
 }
 
-bool RawReader::isQDC()
+bool RawReader::isQDC(unsigned int gChannelID)
 {
-	return qdcMode;
+	return qdcMode[gChannelID];
+}
+
+bool RawReader::isTOT()
+{
+	bool isToT = true;
+	for(unsigned long gChannelID = 0; gChannelID < MAX_NUMBER_CHANNELS; gChannelID++){
+		if(isQDC(gChannelID) == true){
+			isToT = false;
+			break;
+		}	
+	}
+	return isToT;
 }
 
 int RawReader::getTriggerID()
@@ -211,8 +273,8 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		
 		for(int i = 0; i < N; i++) {
 			RawHit &e = outBuffer->getWriteSlot();
-			
 			e.channelID = dataFrame->getChannelID(i);
+			e.qdcMode = isQDC(e.channelID);
 			e.tacID = dataFrame->getTacID(i);
 			e.frameID = frameID;
 			e.tcoarse = dataFrame->getTCoarse(i);
@@ -223,7 +285,7 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 			e.time = (frameID - currentBufferFirstFrame) * 1024 + e.tcoarse;
 			e.timeEnd = (frameID - currentBufferFirstFrame) * 1024 + e.ecoarse;
 			if((e.timeEnd - e.time) < -256) e.timeEnd += 1024;
-			
+				
 			e.valid = true;
 			
 			outBuffer->pushWriteSlot();
@@ -255,3 +317,5 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	delete sink;
 	
 }
+
+

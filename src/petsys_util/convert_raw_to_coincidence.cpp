@@ -22,7 +22,6 @@ class DataFileWriter {
 private:
 	double frequency;
 	FILE_TYPE fileType;
-	bool qdcMode;
 	int hitLimitToWrite;
 	int eventFractionToWrite;
 	long long eventCounter;
@@ -69,10 +68,9 @@ private:
 	} __attribute__((__packed__));
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, bool qdcMode, int hitLimitToWrite, int eventFractionToWrite) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite) {
 		this->frequency = frequency;
 		this->fileType = fileType;
-		this->qdcMode = qdcMode;
 		this->hitLimitToWrite = hitLimitToWrite;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
@@ -172,7 +170,7 @@ public:
 
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
-		float Eunit = qdcMode ? 1.0 : Tns;
+	
 
 		long long tMin = buffer->getTMin() * (long long)Tps;
 		
@@ -196,6 +194,9 @@ public:
 				Hit &h1 = *p1.hits[m];
 				Hit &h2 = *p2.hits[n];
 				
+				float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
+				float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
+
 				if (fileType == FILE_ROOT){
 					brStep1 = step1;
 					brStep2 = step2;
@@ -205,7 +206,7 @@ public:
 					br1Time = ((long long)(h1.time * Tps)) + tMin;
 					br1ChannelID = h1.raw->channelID;
 					br1ToT = (h1.timeEnd - h1.time) * Tps;
-					br1Energy = h1.energy * Eunit;
+					br1Energy = h1.energy * Eunit1;
 					br1TacID = h1.raw->tacID;
 					br1X = h1.x;
 					br1Y = h1.y;
@@ -218,7 +219,7 @@ public:
 					br2Time = ((long long)(h2.time * Tps)) + tMin;
 					br2ChannelID = h2.raw->channelID;
 					br2ToT = (h2.timeEnd - h2.time) * Tps;
-					br2Energy = h2.energy * Eunit;
+					br2Energy = h2.energy * Eunit2;
 					br2TacID = h2.raw->tacID;
 					br2X = h2.x;
 					br2Y = h2.y;
@@ -232,13 +233,13 @@ public:
 					Event eo = { 
 						(uint8_t)p1.nHits, (uint8_t)m,
 						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit,
+						h1.energy * Eunit1,
 						(int)h1.raw->channelID,
 						
 						
 						(uint8_t)p2.nHits, (uint8_t)n,
 						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit,
+						h2.energy * Eunit2,
 						(int)h2.raw->channelID
 						
 					};
@@ -248,12 +249,12 @@ public:
 					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
 						p1.nHits, m,
 						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit,
+						h1.energy * Eunit1,
 						h1.raw->channelID,
 						
 						p2.nHits, n,
 						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit,
+						h2.energy * Eunit2,
 						h2.raw->channelID
 					);
 				}
@@ -370,14 +371,15 @@ int main(int argc, char *argv[])
 
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
-	// If data was taken in ToT mode, do not attempt to load these files
-	unsigned long long mask = SystemConfig::LOAD_ALL;
-	if(!reader->isQDC()) {
-		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION);
+	// If data was taken in full ToT mode, do not attempt to load these files
+	unsigned long long mask = SystemConfig::LOAD_ALL;	
+	if(reader->isTOT()){ 
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
 	}
+
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, reader->isQDC(), hitLimitToWrite, eventFractionToWrite);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;

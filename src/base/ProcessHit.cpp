@@ -18,15 +18,16 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 {
 	// TODO Add instrumentation
 	unsigned N =  inBuffer->getSize();
+
 	EventBuffer<Hit> * outBuffer = new EventBuffer<Hit>(N, inBuffer);
-	
-	bool qdcMode = eventStream->isQDC();
+
 	int triggerID = eventStream->getTriggerID();
+
 	bool useTDC = systemConfig->useTDCCalibration();
 	bool useQDC = systemConfig->useQDCCalibration();
 	bool useEnergyCal = systemConfig->useEnergyCalibration();
 	bool useXYZ = systemConfig->useXYZ();
-	
+	//intf("%d\n", N);
 	uint32_t lReceived = 0;
 	uint32_t lReceivedInvalid = 0;
 	uint32_t lTDCCalibrationMissing = 0;
@@ -41,7 +42,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		out.raw = &in;
 		
 		uint8_t eventFlags = in.valid ? 0x0 : 0x1;
-
+		
 		if((in.channelID >> 12) == triggerID) {
 			// This event comes from the trigger
 			out.time = in.time;
@@ -53,12 +54,13 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			out.xi = out.yi = 0;
 		}
 		else {
-		
+	      		
 			SystemConfig::ChannelConfig &cc = systemConfig->getChannelConfig(in.channelID);
 			SystemConfig::TacConfig &ct = cc.tac_T[in.tacID];
 			SystemConfig::TacConfig &ce = cc.tac_E[in.tacID];
 			SystemConfig::QacConfig &cq = cc.qac_Q[in.tacID];
 			SystemConfig::EnergyConfig &cen = cc.eCal[in.tacID];
+	       
 			
 			out.time = in.time;
 			if(useTDC) {
@@ -66,8 +68,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				out.time = in.time - q_T - ct.t0;
 				if(ct.a1 == 0) eventFlags |= 0x2;
 			}
-			
-			if(!qdcMode) {
+			if(!in.qdcMode) {
 				out.timeEnd = in.timeEnd;
 				if(useTDC) {
 					float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
@@ -77,10 +78,12 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 				out.energy = out.timeEnd - out.time;
 			}
 			else {
+				
 				out.timeEnd = in.timeEnd;
 				out.energy = in.efine;
 			
 				if(useQDC) {
+				
 					float ti = (out.timeEnd - out.time);
 					
 					// Convert ADC into equivalent DC integration time t_eq
@@ -127,7 +130,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					// .. needs better understanding.
 					out.energy = t_eq - ti ;
 					if(cq.p1 == 0) eventFlags |= 0x4;
-					
+				
 					if(useEnergyCal){
 						float Energy =  cen.p0 * pow(cen.p1,pow(out.energy,cen.p2)) + cen.p3 * out.energy - cen.p0;	 
 						out.energy = Energy;

@@ -1375,7 +1375,6 @@ class GUI:
         dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
         fraction = self.builder.get_object("processingFractionSpinButton").get_value()
 
-        
        
         if dataFormat == "Binary":
             flag1 = "--writeBinary"

@@ -896,7 +896,7 @@ Topology</property>
                                   <object class="GtkLabel" id="acqLabel2">
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
-                                    <property name="tooltip_text" translatable="yes">Signal amplitude/energy measurement mode: Charge intergration (QDC) or Time-over-Threshold (TOT)</property>
+                                    <property name="tooltip_text" translatable="yes">Signal amplitude/energy measurement mode: Charge intergration (QDC), Time-over-Threshold (TOT) or MIXED. The MIXED mode requires to create and save a table (acquisition_mode_table.tsv) in the working data folder defining the acquision mode per channel.</property>
                                     <property name="label" translatable="yes">Mode</property>
                                   </object>
                                   <packing>
@@ -1034,6 +1034,7 @@ Topology</property>
                                     <items>
                                       <item id="0" translatable="yes">QDC</item>
                                       <item id="1" translatable="yes">TOT</item>
+                                      <item id="2" translatable="yes">MIXED</item>
                                     </items>
                                   </object>
                                   <packing>
