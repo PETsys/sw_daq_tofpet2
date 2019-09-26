@@ -172,7 +172,7 @@ class Config:
 
 				if qdc_mode == "tot":
 					channel_qdc_mode = "tot"
-				elif qdc_mode == "qdc"
+				elif qdc_mode == "qdc":
 					channel_qdc_mode = "qdc"
                                 else:
                                         channel_qdc_mode =  self.getAsicChannelQDCMode((portID, slaveID, chipID, channelID))
