@@ -171,9 +171,12 @@ class Connection:
         # @param interval Sets the interval between test pulses in clock cycles.
         # @param finePhase Defines the delay of the test pulse in clock cycles.
         # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
-	def set_test_pulse_febd(self, length, interval, finePhase, invert=False):
+	def set_test_pulse_febds(self, length, interval, finePhase, invert=False):
 		self.__set_test_pulse(self.getActiveFEBDs(), length, interval, finePhase, invert)
-
+		
+	def set_test_pulse_tgr(self, interval, finePhase, invert=False):
+		self.__set_test_pulse([ self.getTriggerUnit() ], length, interval, finePhase, invert)
+	
 	def __set_test_pulse(self, targets, length, interval, finePhase, invert=False):
 		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
 		# First, make sure we have a cache of settings
