@@ -154,8 +154,6 @@ class Config:
 					cc.setValue("baseline_e", baseline_e)
 
 		# Apply discriminator settings and energy acquisition mdoe 
-                qdcMode =  qdc_mode == "qdc"
-
                 for portID, slaveID, chipID in asicsConfig.keys():
                         ac = asicsConfig[(portID, slaveID, chipID)]
                         for channelID in range(64):
@@ -171,10 +169,15 @@ class Config:
 
                                         cc.setValue("trigger_mode_1", 0b00)
 
-                                if (self.__loadMask & LOAD_QDCMODE_MAP) != 0:
-                                        qdcMode =  self.getAsicChannelQDCMode((portID, slaveID, chipID, channelID)) == "qdc"
+
+				if qdc_mode == "tot":
+					channel_qdc_mode = "tot"
+				elif qdc_mode == "qdc"
+					channel_qdc_mode = "qdc"
+                                else:
+                                        channel_qdc_mode =  self.getAsicChannelQDCMode((portID, slaveID, chipID, channelID))
                                                                
-                                if not qdcMode:
+                                if channel_qdc_mode is "tot":
                                         cc.setValue("qdc_mode", 0)
                                         cc.setValue("intg_en", 0)
                                         cc.setValue("intg_signal_en", 0)

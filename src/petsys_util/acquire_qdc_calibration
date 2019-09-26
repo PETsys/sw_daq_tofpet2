@@ -16,7 +16,8 @@ args = parser.parse_args()
 systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="qdc"))
+daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 
 nPhases = 3
 nLengths = 200
@@ -25,9 +26,7 @@ if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileName
 	f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
 	f.close()
 
-daqd.openRawAcquisition(args.fileNamePrefix, qdcMode="qdc", calMode=True)
 asicsConfig = daqd.getAsicsConfig()
-
 for ac in asicsConfig.values():
 	gc = ac.globalConfig
 	for cc in ac.channelConfig:

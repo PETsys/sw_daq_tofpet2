@@ -56,35 +56,31 @@ current_file.close()
 
 
 
-asicsConfig0 = daqd.getAsicsConfig()
-
-
+baseAsicConfig = daqd.getAsicsConfig()
 
 
 ##
 ## Perform TDCA test
 ## 3 phase
 ##
-qdcMode = False
-daqd.openRawAcquisition(args.outFilePrefix + "_tdca", qdcMode=qdcMode, calMode = True)
+# Set all channels to ToT mode and disable trigger
+tdcaAsicConfig = deepcopy(baseAsicConfig)
+for ac in tdcaAsicConfig.values():
+	gc = ac.globalConfig
+	for cc in ac.channelConfig:
+		cc.setValue("trigger_mode_1", 0b11)
+		cc.setValue("qdc_mode", 0)
+		cc.setValue("intg_en", 0)
+		cc.setValue("intg_signal_en", 0)
+
+
+
+daqd.openRawAcquisition(args.outFilePrefix + "_tdca", calMode = True)
 K = 8
 phases = [ n / 4.0 for n in range(4) ]
 for firstChannel in range(0, K):
-	asicsConfig = deepcopy(asicsConfig0)
+	asicsConfig = deepcopy(tdcaAsicConfig)
 	for ac in asicsConfig.values():
-		gc = ac.globalConfig
-		for cc in ac.channelConfig:
-			cc.setValue("trigger_mode_1", 0b11)	# Disable channel from triggering
-
-			if not qdcMode:
-				cc.setValue("qdc_mode", 0)
-				cc.setValue("intg_en", 0)
-				cc.setValue("intg_signal_en", 0)
-			else:
-				cc.setValue("qdc_mode", 1)
-				cc.setValue("intg_en", 1)
-				cc.setValue("intg_signal_en", 1)
-				
 		# Activate target channel
 		for channelID in range(firstChannel, 64, K):
 			cc = ac.channelConfig[channelID]
@@ -104,29 +100,27 @@ daqd.closeAcquisition()
 ## Perform QDCA test
 ## 3 phase
 ##
-qdcMode = True
-daqd.openRawAcquisition(args.outFilePrefix + "_qdca", qdcMode=qdcMode, calMode = True)
+# Set all channels for QDCA mode with wide integration window
+# and disable trigger
+qdcaAsicConfig = deepcopy(baseAsicConfig)
+for ac in qdcaAsicConfig.values():
+	gc = ac.globalConfig
+	for cc in ac.channelConfig:
+		cc.setValue("trigger_mode_1", 0b11)
+		cc.setValue("qdc_mode", 1)
+		cc.setValue("intg_en", 1)
+		cc.setValue("intg_signal_en", 1)
+		cc.setValue("min_intg_time", 0)
+		cc.setValue("max_intg_time", 127)
+
+	
+daqd.openRawAcquisition(args.outFilePrefix + "_qdca", calMode = True)
 K = 8
 phases = [ n / 4.0 for n in range(4) ]
 lengths = [ 60, 80, 100 ]
 for firstChannel in range(0, K):
-	asicsConfig = deepcopy(asicsConfig0)
+	asicsConfig = deepcopy(qdcaAsicConfig)
 	for ac in asicsConfig.values():
-		gc = ac.globalConfig
-		for cc in ac.channelConfig:
-			cc.setValue("trigger_mode_1", 0b11)	# Disable channel from triggering
-
-			if not qdcMode:
-				cc.setValue("qdc_mode", 0)
-				cc.setValue("intg_en", 0)
-				cc.setValue("intg_signal_en", 0)
-			else:
-				cc.setValue("qdc_mode", 1)
-				cc.setValue("intg_en", 1)
-				cc.setValue("intg_signal_en", 1)
-				cc.setValue("min_intg_time", 0)
-				cc.setValue("max_intg_time", 127)
-				
 		# Activate target channel
 		for channelID in range(firstChannel, 64, K):
 			cc = ac.channelConfig[channelID]
@@ -149,41 +143,36 @@ daqd.closeAcquisition()
 ## 1 amplitude (max)
 ## 3 phase
 ##
-qdcMode = True
-daqd.openRawAcquisition(args.outFilePrefix + "_fetp", qdcMode=qdcMode, calMode = True)
+fetpAsicConfig = deepcopy(baseAsicConfig)
+for ac in fetpAsicConfig.values():
+	gc = ac.globalConfig
+	gc.setValue("disc_lsb_t1", 61)
+	gc.setValue("fetp_enable", 0b1)			# Enable FETP for ASIC
+	gc.setValue("v_cal_ref_ig", 31)			# Set FETP amplitude
+	for cc in ac.channelConfig:
+		cc.setValue("trigger_mode_1", 0b11)	# Disable channel from triggering
+		cc.setValue("fe_tp_en", 0b01)		# Disable FETP for channel but enable channel's capacitance
+
+		cc.setValue("qdc_mode", 1)
+		cc.setValue("intg_en", 1)
+		cc.setValue("intg_signal_en", 1)
+			
+		cc.setValue("trigger_mode_2_t", 0)	# 
+		cc.setValue("trigger_mode_2_e", 0)	# 
+		cc.setValue("trigger_mode_2_q", 0)	# 
+		cc.setValue("trigger_mode_2_b", 0)	# 
+		cc.setValue("baseline_e", 5)
+		cc.setValue("baseline_t", 50)
+		cc.setValue("vth_t1", 0)
+		cc.setValue("vth_t2", 0)
+		cc.setValue("vth_e", 0)
+
+
+daqd.openRawAcquisition(args.outFilePrefix + "_fetp", calMode = True)
 phases = [ n / 3.0 for n in range(3) ]
 for channelID in range(64):
-	asicsConfig = deepcopy(asicsConfig0)
+	asicsConfig = deepcopy(fetpAsicConfig)
 	for ac in asicsConfig.values():
-		gc = ac.globalConfig
-		gc.setValue("disc_lsb_t1", 61)
-		gc.setValue("fetp_enable", 0b1)			# Enable FETP for ASIC
-		gc.setValue("v_cal_ref_ig", 31)			# Set FETP amplitude
-		for cc in ac.channelConfig:
-			cc.setValue("trigger_mode_1", 0b11)	# Disable channel from triggering
-			cc.setValue("fe_tp_en", 0b01)		# Disable FETP for channel but enable channel's capacitance
-
-
-			if not qdcMode:
-				cc.setValue("qdc_mode", 0)
-				cc.setValue("intg_en", 0)
-				cc.setValue("intg_signal_en", 0)
-			else:
-				cc.setValue("qdc_mode", 1)
-				cc.setValue("intg_en", 1)
-				cc.setValue("intg_signal_en", 1)
-				
-			cc.setValue("trigger_mode_2_t", 0)	# 
-			cc.setValue("trigger_mode_2_e", 0)	# 
-			cc.setValue("trigger_mode_2_q", 0)	# 
-			cc.setValue("trigger_mode_2_b", 0)	# 
-			cc.setValue("baseline_e", 5)
-			cc.setValue("baseline_t", 50)
-			cc.setValue("vth_t1", 0)
-			cc.setValue("vth_t2", 0)
-			cc.setValue("vth_e", 0)
-
-				
 		# Activate target channel
 		cc = ac.channelConfig[channelID]
 		cc.setValue("fe_tp_en", 0b11)		# Enable FETP for channel

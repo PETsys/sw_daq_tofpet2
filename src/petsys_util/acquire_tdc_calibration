@@ -17,10 +17,8 @@ systemConfig = config.ConfigFromFile(args.config, loadMask=0)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
-
-daqd.openRawAcquisition(args.fileNamePrefix, qdcMode=False, calMode = True)
-asicsConfig = daqd.getAsicsConfig()
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="tot")
+daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 
 ## Calibration parameters
 ## Phase range: 0 to 8 clocks in 129 steps
@@ -34,14 +32,10 @@ if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileName
 	binParameterFile.close()
 
 
+asicsConfig = daqd.getAsicsConfig()
 # Prepare all channels for TDCA but disable actual triggering...
 for ac in asicsConfig.values():
 	for cc in ac.channelConfig:
-		# Set mode to ToT
-		cc.setValue("qdc_mode", 0)
-		cc.setValue("intg_en", 0)
-		cc.setValue("intg_signal_en", 0)
-
 		## Set simplest trigger_mode_2_* setting
 		cc.setValue("trigger_mode_2_t", 0b00)
 		cc.setValue("trigger_mode_2_e", 0b000)
