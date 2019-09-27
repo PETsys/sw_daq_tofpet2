@@ -16,7 +16,7 @@ args = parser.parse_args()
 systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="qdc"))
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="qdc")
 daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 
 nPhases = 3
@@ -67,7 +67,7 @@ for firstChannel in range(0, channelStep):
 	for phase in [float(x)/nPhases for x in range(nPhases)]:
 		for integrationTime in range(0, nLengths):
 			t_start = time.time()
-			daqd.set_test_pulse_febd(integrationTime, 1024, phase, False)
+			daqd.set_test_pulse_febds(integrationTime, 1024, phase, False)
 			daqd.acquire(0.02, integrationTime, phase)
 			t_finish = time.time()
 			print "Channel(s): %s Phase: %4.3f clk Length %d clk in %3.2f seconds " % (activeChannels_string, phase, integrationTime, t_finish - t_start)
