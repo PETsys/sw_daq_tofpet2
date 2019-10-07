@@ -174,7 +174,7 @@ class Connection:
 	def set_test_pulse_febds(self, length, interval, finePhase, invert=False):
 		self.__set_test_pulse(self.getActiveFEBDs(), length, interval, finePhase, invert)
 		
-	def set_test_pulse_tgr(self, interval, finePhase, invert=False):
+	def set_test_pulse_tgr(self, length, interval, finePhase, invert=False):
 		self.__set_test_pulse([ self.getTriggerUnit() ], length, interval, finePhase, invert)
 	
 	def __set_test_pulse(self, targets, length, interval, finePhase, invert=False):
