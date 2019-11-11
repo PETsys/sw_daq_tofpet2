@@ -1344,7 +1344,7 @@ class Connection:
 		
 		return True
 	
-	def fe_tempp_read_max111xx(self, portID, slaveID, chipID, channelID):
+	def fe_temp_read_max111xx(self, portID, slaveID, chipID, channelID):
 		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
 		m_repeat = 0x00000000
 		

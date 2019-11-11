@@ -52,7 +52,7 @@ def main(argv):
 						nSensors += 1
 						print "Module %d" % i
 						for j in range(4):
-							u = connection.fe_tempp_read_max111xx(portID, slaveID, i, j)
+							u = connection.fe_temp_read_max111xx(portID, slaveID, i, j)
 							v = u*2.5/4.096
 							if j in [0, 3]:
 								# LMT86
