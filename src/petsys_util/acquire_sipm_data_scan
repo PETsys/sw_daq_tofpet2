@@ -1,0 +1,118 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from petsys import daqd, config
+from copy import deepcopy
+import pandas
+import os
+import argparse
+import math
+import time
+
+
+parser = argparse.ArgumentParser(description='Acquire data for TDC calibration')
+parser.add_argument("--config", type=str, required=True, help="Configuration file")
+parser.add_argument("-o", type=str, dest="fileNamePrefix", required=False, help = "Data filename (prefix)")
+parser.add_argument("--time", type=float, required=True, help="Acquisition time (in seconds)")
+parser.add_argument("--mode", type=str, required=True, choices=["tot", "qdc", "mixed"], help = "Acquisition mode (tot, qdc or mixed)")
+parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true", help="Enable the hardware coincidence filter")
+parser.add_argument("--vth1", type=str, dest="vth1", required=True, help="comma separated values for vth1")
+parser.add_argument("--vth2", type=str, dest="vth2", required=True, help="comma separated values for vth2")
+parser.add_argument("--vthe", type=str, dest="vthe", required=True, help="comma separated values for vthe")
+parser.add_argument("--ov",   type=str, dest="ov",   required=True, help="comma separated values for ov")
+parser.add_argument("--trigger", type=str, dest="trigger", required=True, help="trigger type (none, ext, int)")
+
+args = parser.parse_args()
+
+vth1_list = args.vth1.split(',')
+vth2_list = args.vth2.split(',')
+vthe_list = args.vthe.split(',')
+ov_list   = args.ov.split(',')
+    
+mask = config.LOAD_ALL
+if args.mode != "mixed":
+        mask ^= config.LOAD_QDCMODE_MAP
+systemConfig = config.ConfigFromFile(args.config, loadMask=mask)
+
+
+daqd = daqd.Connection()
+daqd.initializeSystem()
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
+
+if args.trigger == "none":
+        daqd.setAuxIO("LEMO_J15", 0x00) #clock
+if args.trigger == "ext":
+        daqd.setAuxIO("LEMO_J15", 0x01) #external trigger + gate
+        daqd.write_config_register_tgr(1, 0x0202, 0b1)
+        daqd.write_config_register_tgr(1, 0x0298, 0b1)
+        daqd.write_config_register_tgr(10, 0x0294, 5000)
+        #daqd.enableEventGate(0)
+if args.trigger == "int":
+        daqd.setAuxIO("LEMO_J15", 0x81)  #trigger from FPGA
+        tp_phase = 0.25
+        daqd.setTestPulsePLL(8, 6400, tp_phase, False)
+
+
+if not args.fileNamePrefix:
+        with open('/data/TOFPET2/last_run') as f:
+                run = [int(x) for x in next(f).split()]
+        os.remove('/data/TOFPET2/last_run')
+        with open('/data/TOFPET2/last_run','w+') as f:
+                f.write(str(run[0]+1))
+        args.fileNamePrefix = "/data/TOFPET2/raw/run%04d" % (run[0]+1)
+daqd.openRawAcquisition(args.fileNamePrefix)
+
+
+asicsConfig = daqd.getAsicsConfig()
+for ac in asicsConfig.values():
+	gc = ac.globalConfig
+        val = gc.getValue('disc_lsb_t1')
+        print "disc_lsb_t1: %d" % int(val)
+        val = gc.getValue('disc_lsb_t2')
+        print "disc_lsb_t2: %d" % int(val) 
+        val = gc.getValue('disc_lsb_e')
+        print "disc_lsb_e:  %d" % int(val) 
+        
+activeAsics = daqd.getActiveAsics()
+activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(64) for portID, slaveID, chipID in activeAsics ]
+
+
+# Set reference channel to TDCA mode
+if args.trigger == "ext":
+        targetAsic = (0, 0, 3)
+        targetChannel = 63
+        targetChannelConfig = asicsConfig[targetAsic].channelConfig[targetChannel]
+        targetChannelConfig.setValue("trigger_mode_1", 0b01)
+        daqd.setAsicsConfig(asicsConfig)
+        #daqd.write_config_register_tgr(8, 0x0214, 0x01)
+
+
+        
+for vth1 in vth1_list:
+        for vth2 in vth2_list:
+                for vthe in vthe_list:
+                        for ov in ov_list:
+                                
+                                
+                                for portID, slaveID, chipID, channelID in activeChannels:                                        
+                                        cc = asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID]
+                                        dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t1", int(vth1))
+                                        cc.setValue("vth_t1", dac_setting)
+                                        dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_t2", int(vth2))
+                                        cc.setValue("vth_t2", dac_setting)
+                                        dac_setting = systemConfig.mapAsicChannelThresholdToDAC((portID, slaveID, chipID, channelID), "vth_e", int(vthe))
+                                        cc.setValue("vth_e", dac_setting)
+                                
+                                biasVoltageConfig = daqd.get_hvdac_config()
+                                for key in daqd.getActiveBiasChannels():
+                                        offset, prebd, bd, over__ = systemConfig.getBiasChannelDefaultSettings(key)
+                                        vset = offset + bd + float(ov)
+                                        dac_setting = systemConfig.mapBiasChannelVoltageToDAC(key, vset)
+                                        biasVoltageConfig[key] = dac_setting
+                                        daqd.set_hvdac_config(biasVoltageConfig)
+                                
+                                daqd.setAsicsConfig(asicsConfig)
+                                print "ov: %3.1f,   vth1: %2d,   vth2: %2d,   vthe: %2d" % (float(ov), int(vth1), int(vth2), int(vthe))
+                                daqd.acquire(args.time, float(ov), 10000*(int(vth1)+1)+100*(int(vth2)+1)+int(vthe)+1)
+                                
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)

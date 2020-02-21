@@ -6,7 +6,6 @@
 #include <CoarseSorter.hpp>
 #include <ProcessHit.hpp>
 #include <SimpleGrouper.hpp>
-#include <CoincidenceGrouper.hpp>
 
 #include <boost/lexical_cast.hpp>
 
@@ -25,6 +24,8 @@ private:
 	int hitLimitToWrite;
 	int eventFractionToWrite;
 	long long eventCounter;
+        
+        int refChannel;
 
 	FILE *dataFile;
 	FILE *indexFile;
@@ -39,43 +40,39 @@ private:
 	long long 	brStepBegin;
 	long long 	brStepEnd;
 
-	unsigned short	br1N, 		br2N;
-	unsigned short	br1J,		br2J;
-	long long	br1Time,	br2Time;
-	unsigned int	br1ChannelID,	br2ChannelID;
-	float		br1ToT,		br2ToT;
-	float		br1QFine, 	br2QFine;
-	float		br1Energy, 	br2Energy;
-	unsigned short	br1TacID,	br2TacID;
-	int		br1Xi,		br2Xi;
-	int		br1Yi,		br2Yi;
-	float		br1X,		br2X;
-	float 		br1Y,		br2Y;
-	float 		br1Z,		br2Z;
+	unsigned short	brN;
+	unsigned short	brJ[256];
+	long long	brTime[256];
+	long long	brTimeDelta[256];
+	unsigned int	brChannelID[256];
+	unsigned int    brChannelCount[256];
+	float		brToT[256];
+	float		brQFine[256];
+	float		brEnergy[256];
+	unsigned short	brTacID[256];
+	int		brXi[256];
+	int		brYi[256];
+	float		brX[256];
+	float 		brY[256];
+	float 		brZ[256];
 	
 	struct Event {
-		uint8_t mh_n1; 
-		uint8_t mh_j1;
-		long long time1;
-		float e1;
-		int id1;
-
-		
-		uint8_t mh_n2; 
-		uint8_t mh_j2;
-		long long time2;
-		float e2;
-		int id2;
+		uint8_t mh_n; 
+		uint8_t mh_j;
+		long long time;
+		float e;
+		int id;
 	} __attribute__((__packed__));
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite) {
+  DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, bool coincidence, int refChannel) {
 		this->frequency = frequency;
 		this->fileType = fileType;
 		this->hitLimitToWrite = hitLimitToWrite;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
-
+                this->refChannel = refChannel;
+                
 		stepBegin = 0;
 		
 		if (fileType == FILE_ROOT){
@@ -86,33 +83,21 @@ public:
 			hData->Branch("step1", &brStep1, bs);
 			hData->Branch("step2", &brStep2, bs);
 			
-			hData->Branch("mh_n1", &br1N, bs);
-			hData->Branch("mh_j1", &br1J, bs);
-			hData->Branch("tot1", &br1ToT, bs);
-			hData->Branch("time1", &br1Time, bs);
-			hData->Branch("channelID1", &br1ChannelID, bs);
-			hData->Branch("qfine1", &br1QFine, bs);
-			hData->Branch("energy1", &br1Energy, bs);
-			hData->Branch("tacID1", &br1TacID, bs);
-			hData->Branch("xi1", &br1Xi, bs);
-			hData->Branch("yi1", &br1Yi, bs);
-			hData->Branch("x1", &br1X, bs);
-			hData->Branch("y1", &br1Y, bs);
-			hData->Branch("z1", &br1Z, bs);
-			hData->Branch("mh_n2", &br2N, bs);
-			hData->Branch("mh_j2", &br2J, bs);
-			hData->Branch("time2", &br2Time, bs);
-			hData->Branch("channelID2", &br2ChannelID, bs);
-			hData->Branch("tot2", &br2ToT, bs);
-			hData->Branch("qfine2", &br2QFine, bs);
-			hData->Branch("energy2", &br2Energy, bs);
-			hData->Branch("tacID2", &br2TacID, bs);
-			hData->Branch("xi2", &br2Xi, bs);
-			hData->Branch("yi2", &br2Yi, bs);
-			hData->Branch("x2", &br2X, bs);
-			hData->Branch("y2", &br2Y, bs);
-			hData->Branch("z2", &br2Z, bs);
-			
+			hData->Branch("mh_n", &brN, bs);
+			hData->Branch("mh_j", brJ, "mh_j[256]/s");
+			hData->Branch("tot", brToT, "tot[256]/F");
+			hData->Branch("qfine", brQFine, "qfine[256]/F");
+			hData->Branch("time", brTime, "time[256]/L");
+			hData->Branch("timeDelta", brTimeDelta, "timeDelta[256]/L");
+			hData->Branch("channelID", brChannelID, "channelID[256]/i");
+			hData->Branch("channelCount", brChannelCount, "channelCount[256]/i");
+			hData->Branch("energy", brEnergy, "energy[256]/F");
+			hData->Branch("tacID", brTacID, "tacID[256]/s");
+			hData->Branch("xi", brXi, "xi[256]/I");
+			hData->Branch("yi", brYi, "yi[256]/I");
+			hData->Branch("x", brX, "x[256]/F");
+			hData->Branch("y", brY, "y[256]/F");
+			hData->Branch("z", brZ, "z[256]/F");
 			hIndex = new TTree("index", "Step Index", 2);
 			hIndex->Branch("step1", &brStep1, bs);
 			hIndex->Branch("step2", &brStep2, bs);
@@ -168,122 +153,120 @@ public:
 		}
 	};
 	
-	void addEvents(float step1, float step2,EventBuffer<Coincidence> *buffer) {
+  void addEvents(float step1, float step2,EventBuffer<GammaPhoton> *buffer, bool coincidence, int refChannel) {
 		bool writeMultipleHits = false;
 
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
 	
-
 		long long tMin = buffer->getTMin() * (long long)Tps;
-		
+                
+                // std::cout << "frequency: " << frequency << "   Tps: " << Tps << "   Tns: " << Tns << "   tMin: " << tMin << " (ps)" << std::endl;
 		int N = buffer->getSize();
 		for (int i = 0; i < N; i++) {
 			long long tmpCounter = eventCounter;
 			eventCounter += 1;
 			if((tmpCounter % 1024) >= eventFractionToWrite) continue;
 
-			Coincidence &e = buffer->get(i);
-			if(!e.valid) continue;
-			if(e.nPhotons != 2) continue;
+			GammaPhoton &p = buffer->get(i);
 			
-			GammaPhoton &p1 = *e.photons[0];
-			GammaPhoton &p2 = *e.photons[1];
-			
-			int limit1 = (hitLimitToWrite < p1.nHits) ? hitLimitToWrite : p1.nHits;
-			int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
-			for(int m = 0; m < limit1; m++) for(int n = 0; n < limit2; n++) {
-				if(m != 0 && n != 0) continue;
-				Hit &h1 = *p1.hits[m];
-				Hit &h2 = *p2.hits[n];
-				
-				float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
-				float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
+                        for(unsigned int m = 0; m < 256; ++m){
+                            brJ[m] = 0;
+                            brTime[m] = 0;
+                            brTimeDelta[m] = 0;
+                            brChannelID[m] = 0;
+                            brChannelCount[m] = 0;
+                            brToT[m] = 0;
+                            brQFine[m] = 0;
+                            brEnergy[m] = 0;
+                            brTacID[m] = 0;
+                            brX[m] = 0;
+                            brY[m] = 0;
+                            brZ[m] = 0;
+                            brXi[m] = 0;
+                            brYi[m] = 0;
+                        }
+                        
+			if(!p.valid) continue;
+			Hit &h0 = *p.hits[0];
+			int limit = (hitLimitToWrite < p.nHits) ? hitLimitToWrite : p.nHits;
+                        bool hasRefChannel = false;
+			for(int m = 0; m < limit; m++) {
+				Hit &h = *p.hits[m];
+				float Eunit = h.raw->qdcMode ? 1.0 : Tns;
 
+                                if( h.raw->channelID == refChannel ) hasRefChannel = true;
+                                
 				if (fileType == FILE_ROOT){
 					brStep1 = step1;
 					brStep2 = step2;
-
-					br1N  = p1.nHits;
-					br1J = m;
-					br1Time = ((long long)(h1.time * Tps)) + tMin;
-					br1ChannelID = h1.raw->channelID;
-					br1ToT = (h1.timeEnd - h1.time) * Tps;
-					br1QFine = h1.qfine;
-					br1Energy = h1.energy * Eunit1;
-					br1TacID = h1.raw->tacID;
-					br1X = h1.x;
-					br1Y = h1.y;
-					br1Z = h1.z;
-					br1Xi = h1.xi;
-					br1Yi = h1.yi;
-					
-					br2N  = p2.nHits;
-					br2J = n;
-					br2Time = ((long long)(h2.time * Tps)) + tMin;
-					br2ChannelID = h2.raw->channelID;
-					br2ToT = (h2.timeEnd - h2.time) * Tps;
-					br2QFine = h2.qfine;
-					br2Energy = h2.energy * Eunit2;
-					br2TacID = h2.raw->tacID;
-					br2X = h2.x;
-					br2Y = h2.y;
-					br2Z = h2.z;
-					br2Xi = h2.xi;
-					br2Yi = h2.yi;
-					
-					hData->Fill();
+                                        
+					if( brChannelCount[h.raw->channelID] == 0 )
+                                        {
+                                          brN  = p.nHits;
+                                          brJ[h.raw->channelID] = m;
+                                          brTime[h.raw->channelID] = ((long long)(h.time * Tps)) + tMin;
+                                          brTimeDelta[h.raw->channelID] = (long long)(h.time - h0.time) * Tps;
+                                          brChannelID[h.raw->channelID] = h.raw->channelID;
+                                          brChannelCount[h.raw->channelID] += 1;
+                                          brToT[h.raw->channelID] = (h.timeEnd - h.time) * Tps;
+                                          brQFine[h.raw->channelID] = h.qfine;
+                                          brEnergy[h.raw->channelID] = h.energy * Eunit;
+                                          brTacID[h.raw->channelID] = h.raw->tacID;
+                                          brX[h.raw->channelID] = h.x;
+                                          brY[h.raw->channelID] = h.y;
+                                          brZ[h.raw->channelID] = h.z;
+                                          brXi[h.raw->channelID] = h.xi;
+                                          brYi[h.raw->channelID] = h.yi;
+                                        }
+                                        else
+                                        {
+                                          brChannelCount[h.raw->channelID] += 1;                                        
+                                        }
 				}
 				else if(fileType == FILE_BINARY) {
 					Event eo = { 
-						(uint8_t)p1.nHits, (uint8_t)m,
-						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit1,
-						(int)h1.raw->channelID,
-						
-						
-						(uint8_t)p2.nHits, (uint8_t)n,
-						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit2,
-						(int)h2.raw->channelID
-						
+						(uint8_t)p.nHits, (uint8_t)m,
+						((long long)(h.time * Tps)) + tMin,
+						h.energy * Eunit,
+						(int)h.raw->channelID
 					};
 					fwrite(&eo, sizeof(eo), 1, dataFile);
 				}
 				else {
-					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
-						p1.nHits, m,
-						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit1,
-						h1.raw->channelID,
-						
-						p2.nHits, n,
-						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit2,
-						h2.raw->channelID
+					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
+						p.nHits, m,
+						((long long)(h.time * Tps)) + tMin,
+						h.energy * Eunit,
+						h.raw->channelID
 					);
 				}
 			}
+                        
+                        if( !coincidence || (coincidence && limit > 1 && ( hasRefChannel || refChannel == -1) ) )
+                          hData->Fill();
 		}
 		
 	};
 	
 };
 
-class WriteHelper : public OverlappedEventHandler<Coincidence, Coincidence> {
+class WriteHelper : public OverlappedEventHandler<GammaPhoton, GammaPhoton> {
 private: 
 	DataFileWriter *dataFileWriter;
 	float step1;
 	float step2;
+        bool coincidence;
+        int refChannel;
 public:
-	WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, EventSink<Coincidence> *sink) :
-		OverlappedEventHandler<Coincidence, Coincidence>(sink, true),
-		dataFileWriter(dataFileWriter), step1(step1), step2(step2)
+        WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, bool coincidence, int refChannel, EventSink<GammaPhoton> *sink) :
+		OverlappedEventHandler<GammaPhoton, GammaPhoton>(sink, true),
+		dataFileWriter(dataFileWriter), step1(step1), step2(step2), coincidence(coincidence), refChannel(refChannel)
 	{
 	};
 	
-	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
-		dataFileWriter->addEvents(step1, step2, buffer);
+	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
+          dataFileWriter->addEvents(step1, step2, buffer, coincidence, refChannel);
 		return buffer;
 	};
 };
@@ -300,6 +283,8 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
 	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
+        fprintf(stderr,  "  --coincidence \t Only save coincidences\n");
+        fprintf(stderr,  "  --refChannel \t Reference channel\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -316,9 +301,10 @@ int main(int argc, char *argv[])
         char *inputFilePrefix = NULL;
         char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
-	int hitLimitToWrite = 1;
+	int hitLimitToWrite = 256;
 	long long eventFractionToWrite = 1024;
-
+        bool coincidence = false;
+        int refChannel = -1;
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
@@ -326,8 +312,9 @@ int main(int argc, char *argv[])
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeMultipleHits", required_argument, 0, 0},
-		{ "writeFraction", required_argument }
-
+		{ "writeFraction", required_argument },
+		{ "coincidence", no_argument, 0, 0 },
+		{ "refChannel", required_argument, 0, 0 },
         };
 
         while(true) {
@@ -351,6 +338,8 @@ int main(int argc, char *argv[])
 			case 3:		fileType = FILE_ROOT; break;
 			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
 			case 5:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+                        case 6:         coincidence = true; break;
+                        case 7:         refChannel = boost::lexical_cast<int>(optarg); break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -376,15 +365,14 @@ int main(int argc, char *argv[])
 
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
-	// If data was taken in full ToT mode, do not attempt to load these files
-	unsigned long long mask = SystemConfig::LOAD_ALL;	
-	if(reader->isTOT()){ 
+	// If data was taken in ToT mode, do not attempt to load these files
+	unsigned long long mask = SystemConfig::LOAD_ALL;
+	if(reader->isTOT()) {
 		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
 	}
-
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite, coincidence, refChannel);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
@@ -395,10 +383,9 @@ int main(int argc, char *argv[])
 				new CoarseSorter(
 				new ProcessHit(config, reader,
 				new SimpleGrouper(config,
-				new CoincidenceGrouper(config,
-				new WriteHelper(dataFileWriter, step1, step2,
-				new NullSink<Coincidence>()
-				))))));
+                                new WriteHelper(dataFileWriter, step1, step2, coincidence, refChannel,
+				new NullSink<GammaPhoton>()
+				)))));
 		
 		dataFileWriter->closeStep(step1, step2);
 	}

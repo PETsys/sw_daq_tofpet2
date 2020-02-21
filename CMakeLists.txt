@@ -48,6 +48,7 @@ configure_file("src/petsys_util/process_threshold_calibration" "process_threshol
 configure_file("src/petsys_util/acquire_qdc_calibration" "acquire_qdc_calibration" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data" "acquire_sipm_data" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data_basic" "acquire_sipm_data_basic" COPYONLY)
+configure_file("src/petsys_util/acquire_sipm_data_scan" "acquire_sipm_data_scan" COPYONLY)
 configure_file("src/petsys_util/make_bias_calibration_table" "make_bias_calibration_table" COPYONLY)
 configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bias_settings_table" COPYONLY)
 configure_file("src/petsys_util/make_simple_channel_map" "make_simple_channel_map" COPYONLY)
@@ -64,6 +65,7 @@ configure_file("src/petsys_util/change_calibration_topology" "change_calibration
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
 configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
+configure_file("src/petsys_util/convert.sh" "convert.sh" COPYONLY)
 configure_file("src/gui/start_gui" "start_gui" COPYONLY)
 configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade")
 
@@ -95,6 +97,9 @@ target_link_libraries("convert_raw_to_group" common)
 
 add_executable("convert_raw_to_coincidence" "src/petsys_util/convert_raw_to_coincidence.cpp" )
 target_link_libraries("convert_raw_to_coincidence" common)
+
+add_executable("convert_raw_to_trigger" "src/petsys_util/convert_raw_to_trigger.cpp" )
+target_link_libraries("convert_raw_to_trigger" common)
 
 add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" )
 target_link_libraries("convert_raw_to_singles" common)
