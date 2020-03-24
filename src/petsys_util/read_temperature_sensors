@@ -8,7 +8,7 @@ import sys
 
 
 def main(argv):
-	parser = argparse.ArgumentParser(description='Set FEM powe ON/OFF')
+	parser = argparse.ArgumentParser(description='Measure temperature from all connected sensors')
 	parser.add_argument("--time", type=float, required=False, default=0, help="Acquisition time (in seconds)")
 	parser.add_argument("--interval", type=float, required=False, default=10, help="Measurement interval (in seconds)")
 	parser.add_argument("-o", type=str, dest="fileName", required=False, default="/dev/null", help="Data filename")
@@ -19,38 +19,43 @@ def main(argv):
 	for portID, slaveID in connection.getActiveFEBDs():
 		femTypeList[(portID, slaveID)] = connection.read_config_register(portID, slaveID, 16, 0x0002)
 	
-	dataFile = open(args.fileName, "w")
-	
-	# Write acquisition start time in UNIX time
-	dataFile.write("%f\n" % connection.getAcquisitionStartTime())
+         
+	dataFile = open(args.fileName, "w")                        
 
 	tEnd = time.time() + args.time
+
+        isFirst = True
+
 	while True:
 		tNextRead = time.time() + args.interval
-
+                measures = {}
+                isModulePresent = {}
 		# Get current system time tag _in clock cycles_
 		timestamp = connection.getCurrentTimeTag()
-
+             
 		for (portID, slaveID), femType in femTypeList.items():
-			print "FEB/D (%2d, %2d)" % (portID, slaveID)
-
+			#print "FEB/D (%2d, %2d)" % (portID, slaveID)
+                        
 			if femType == 0x0000:
 				# TOFPET 2 TB with TMP104 sensors
 				nSensors = connection.fe_temp_enumerate_tmp104(portID, slaveID)
 				tmp104Readings = connection.fe_temp_read_tmp104(portID, slaveID, nSensors)
 				for i, value in enumerate(tmp104Readings):
-					print "\tSensor %2d: %2d ºC" % (i, value) 
+					print "FEB/D (%2d, %2d)\t\tSensor %2d: %2d ºC" % (portID, slaveID, i, value) 
 					dataFile.write("%(timestamp)d\t%(portID)d\t%(slaveID)d\t%(i)d\t0\t%(value)d\n" % locals())
-
+                                
+                                        
 			elif femType == 0x0001:
 				# FEM-128 with MAX111xx ADC
 				nSensors = 0
 				for i in range(8):
 					if not connection.fe_temp_check_max1111xx(portID, slaveID, i):
-						print "Module %d: not present" % i
+						#print "Module %d: not present" % i
+                                                isModulePresent[(portID,slaveID,i)]=False
 					else:
 						nSensors += 1
-						print "Module %d" % i
+                                                isModulePresent[(portID,slaveID,i)]=True
+						#print "Module %d" % i
 						for j in range(4):
 							u = connection.fe_temp_read_max111xx(portID, slaveID, i, j)
 							v = u*2.5/4.096
@@ -62,14 +67,51 @@ def main(argv):
 								# LMT70
 								T = 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
 								tmpType = "FEB/S"
+                                                        measures[(portID,slaveID,i,j)]=T
 
-							print "  Channel %d (%s): %7.2f ºC (%5d ADC or %5.1f mV)" % (j, tmpType, T, u, v)
-							dataFile.write("%(timestamp)d\t%(portID)d\t%(slaveID)d\t%(i)d\t%(j)d\t%(T)f\n" % locals())
+							#print "  Channel %d (%s): %7.2f ºC (%5d ADC or %5.1f mV)" % (j, tmpType, T, u, v)
+							#dataFile.write("%(timestamp)d\t%(portID)d\t%(slaveID)d\t%(i)d\t%(j)d\t%(T)f\n" % locals())
 
 				if nSensors == 0:
 					print "WARNING: No sensors found in FEB/D (%2d, %2d). Check if FEM are connected and FEM power is enabled." % (portID, slaveID)
-				
-		
+
+		print "----------------------------------------------- "+time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())) +" --------------------------------------------------" 
+                print "portID\tslaveID\tmodule ID\tFEB/A(J1) Sensor\tFEB/A(J2) Sensor\tFEB/S(J1) Sensor\tFEB/S(J2) Sensor"
+                
+                if isFirst:
+                       
+                        dataFile.write("# Absolute Sensor ID format : portID_slaveID_moduleID_SensorID\n")
+                        dataFile.write("# Sensor ID is:\n")
+                        dataFile.write("# A1 - Sensor on FEB/A connected to port J1 of the FEB/I\n")
+                        dataFile.write("# A2 - Sensor on FEB/A connected to port J2 of the FEB/I\n")
+                        dataFile.write("# S1 - Sensor on FEB/S connected to port J1 of the FEB/I\n")
+                        dataFile.write("# S2 - Sensor on FEB/S connected to port J2 of the FEB/I\n")
+        
+                       
+                
+                        dataFile.write("#\n#DAQ timestamp\tSystem time")
+                        for (portID, slaveID), femType in femTypeList.items():
+                                for i in range(8):
+                                        if isModulePresent[(portID,slaveID,i)]:
+                                                dataFile.write("\t%d_%d_%d_A1" % (portID,slaveID,i))
+                                                dataFile.write("\t%d_%d_%d_A2" % (portID,slaveID,i))
+                                                dataFile.write("\t%d_%d_%d_S1" % (portID,slaveID,i))
+                                                dataFile.write("\t%d_%d_%d_S2" % (portID,slaveID,i))
+                        dataFile.write("\n")
+
+                dataFile.write("%d\t%d" %(timestamp, time.time()))        
+                for (portID, slaveID), femType in femTypeList.items():
+                        for i in range(8):
+                                if isModulePresent[(portID,slaveID,i)]:
+                                        print "     %d\t\t     %d\t\t      %d\t\t    %7.2f ºC\t\t    %7.2f ºC\t\t    %7.2f ºC\t\t    %7.2f ºC" % (portID, slaveID, i, measures[(portID,slaveID,i,0)],  measures[(portID,slaveID,i,3)],  measures[(portID,slaveID,i,1)], measures[(portID,slaveID,i,2)] )
+                                        dataFile.write("\t%.2f\t%.2f\t%.2f\t%.2f" % (measures[(portID,slaveID,i,0)],  measures[(portID,slaveID,i,3)],  measures[(portID,slaveID,i,1)], measures[(portID,slaveID,i,2)]))
+        
+		print "-------------------------------------------------------------------------------------------------------------------------\n" 
+		dataFile.write("\n")
+                dataFile.flush()
+                                
+                isFirst = False
+
 		if tNextRead > tEnd:
 			break
 			

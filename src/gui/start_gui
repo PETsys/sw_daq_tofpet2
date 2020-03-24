@@ -29,12 +29,17 @@ class GUI:
 
         self.processWindow = self.builder.get_object("executeWindow")
         
+        self.readTempWindow = self.builder.get_object("readTempWindow")
+
         self.builder.connect_signals(self)
         
         self.__daqd_switch_handle_set = False
        
         self.__daqdPid = None
         self.__process = None
+        self.__temperatureProcess = None
+  
+
         self.__terminalPid = None
        
         self.__workingFolder = None
@@ -47,7 +52,10 @@ class GUI:
 
         self.__scroll = True
         self.__usedStopButton = False
-        
+     
+        self.__usedTempStopButton = False
+        self.__tempLogFileName = None
+
     def on_executeStopButton_clicked(self, button):
         if self.__process is not None:
             if self.show_confirmation_dialog("","Stop the process?",  self.processWindow):
@@ -77,7 +85,7 @@ class GUI:
         # turn off sensitive property of all widgets that are not on the execute process window
         for widget in self.builder.get_objects():
             if widget.find_property("sensitive") is not None:
-                if "execute" in  Gtk.Buildable.get_name(widget):
+                if ("execute" in  Gtk.Buildable.get_name(widget)) or ("readTemp" in  Gtk.Buildable.get_name(widget)):
                     widget.set_sensitive(True)
                 else:
                     widget.set_sensitive(False)
@@ -101,7 +109,40 @@ class GUI:
         data = [processName, message1, message2]
             
         self.timeout_id = GLib.timeout_add(1000, self.check_if_finished, data)
+
+
+        
+
+
     
+    def read_temperature(self,command, processName ="", message1="", message2=""):
+        
+        self.__usedTempStopButton = False
+        self.__temperatureProcess = subprocess.Popen(command, shell=True, bufsize=0, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+
+        flags = fcntl(self.__temperatureProcess.stdout, F_GETFL) # get current p.stdout flags
+        fcntl(self.__temperatureProcess.stdout, F_SETFL, flags | O_NONBLOCK)
+        
+        flags = fcntl(self.__temperatureProcess.stderr, F_GETFL) # get current p.stdout flags
+        fcntl(self.__temperatureProcess.stderr, F_SETFL, flags | O_NONBLOCK)
+
+
+        self.readTempWindow.set_title("Read Temperature Sensors (running)")
+        #self.readTempWindow.show()
+        self.builder.get_object("readTempSpinner").start()
+
+        GLib.io_add_watch(self.__temperatureProcess.stdout, # file descriptor
+                          GLib.IO_IN,  # condition
+                          self.write_to_textview_temp ) # callback
+
+        
+        GLib.io_add_watch(self.__temperatureProcess.stderr, # file descriptor
+                          GLib.IO_IN,  # condition
+                          self.write_to_textview_temp ) # callback
+
+        data = [processName, message1, message2]
+            
+        self.timeout_id = GLib.timeout_add(1000, self.check_if_temp_finished, data)
     
 
     def check_if_finished(self, data):
@@ -110,7 +151,7 @@ class GUI:
         if self.__process is None:
             return True
         if self.__process.poll() is not None:
-            self.builder.get_object("executeSpinner").stop()
+            self.builder.get_object("readTempSpinner").stop()
             GLib.source_remove(self.timeout_id)
             # Make all widgets sensitive again...
             for widget in self.builder.get_objects():
@@ -136,6 +177,31 @@ class GUI:
                 self.show_info_dialog(message1, message2, self.processWindow)
         
         return True
+        
+    def check_if_temp_finished(self, data):
+        message1 = data[1]
+        message2 = data[2]
+        if self.__temperatureProcess is None:
+            return True
+        if self.__temperatureProcess.poll() is not None:
+            self.builder.get_object("readTempSpinner").stop()
+        
+            if not self.__usedTempStopButton:
+                self.readTempWindow.set_title("%s (finished)" % data[0])
+            else:
+                self.readTempWindow.set_title("%s (stopped by user)" % data[0])
+        
+
+            textView = self.builder.get_object("readTempTextView")
+            self.scroll_to_end(textView)
+            buf = textView.get_buffer()
+            buf.insert_at_cursor("\n\n")
+            self.__temperatureProcess = None
+            if message1 != "" and not self.__usedTempStopButton:
+                self.show_info_dialog(message1, message2, self.processWindow)
+        
+        return True
+
 
  
     def write_to_textview(self, fd, condition):
@@ -159,6 +225,33 @@ class GUI:
             return True 
         else:
             return False 
+
+
+    
+    def write_to_textview_temp(self, fd, condition):
+        if condition == GLib.IO_IN: 
+            char = fd.read() 
+            tview = self.builder.get_object("readTempTextView")
+            buf = self.builder.get_object("readTempTextView").get_buffer()
+        
+            if "Python:: Acquired" in char:
+                if "\r" in char:
+                    char = char[:-1]
+                nLines =  buf.get_line_count()
+                lineIterStart = buf.get_iter_at_line_index(nLines-1,0)
+                lineIterEnd = buf.get_end_iter()
+                buf.delete(lineIterStart, lineIterEnd)
+                buf.place_cursor(buf.get_end_iter())
+            buf.insert_at_cursor(char)
+                
+            if self.__scroll:
+                self.scroll_to_end(self.builder.get_object("readTempTextView"))
+            return True 
+        else:
+            return False 
+    
+
+
 
     def scroll_to_end(self,textview):
         i = textview.props.buffer.get_end_iter()
@@ -188,6 +281,19 @@ class GUI:
             if self.show_confirmation_dialog("","Close window?", self.processWindow):
                 window.hide()
         return True
+
+    def on_readTempWindow_delete_event(self, window, data): 
+        if self.__temperatureProcess is not None:
+            if self.show_confirmation_dialog("Closing window will stop temperature monitoring. Proceed?", "", self.readTempWindow):
+                os.killpg(os.getpgid(self.__temperatureProcess.pid), signal.SIGTERM)
+                window.hide()
+        else:
+            if self.show_confirmation_dialog("","Close window?", self.readTempWindow):
+                window.hide()
+        return True
+        
+    
+
 
         # Main menu handler functions       
     def on_menuFileQuit_activate(self, menuFileQuit): # quit with Quit button
@@ -853,9 +959,64 @@ class GUI:
         if not self.is_daqd_running():    
             self.show_error_dialog("daqd communication server is not running.")
             return
-
-        self.execute("python -u ./read_temperature_sensors", "Read Temperature Sensors")
         
+        self.readTempWindow.show()
+        return
+
+    def on_readTempLogToggleButton_clicked(self, button):  
+        if self.builder.get_object("readTempLogToggleButton").get_active():
+              
+            fileChooser = self.builder.get_object("tempLogFileChooser")
+            fileChooser.set_transient_for(self.readTempWindow)
+            if self.__workingFolder != None:
+                fileChooser.set_current_folder(self.__workingFolder)
+
+            filter_file = Gtk.FileFilter()
+            filter_file.set_name("Temperature Log data")
+            filter_file.add_pattern("*.tlog")
+            fileChooser.add_filter(filter_file)
+
+            response = fileChooser.run()
+            if response == Gtk.ResponseType.OK:
+                fileName = fileChooser.get_filename()
+                if not fileName.endswith('.tlog'):
+                    fileName = fileChooser.get_filename() + '.tlog'
+                self.__tempLogFileName = fileName
+               
+
+            fileChooser.hide()
+        else:
+             self.__tempLogfileName = None
+        
+
+
+    def on_readTempStartButton_clicked(self, button):
+        
+        if self.__temperatureProcess is not None:
+            return True
+
+        interval = self.builder.get_object("readTempIntervalSpinButton").get_value()
+        
+        
+        if self.__tempLogFileName != None:
+            command = "python -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval )
+        else:
+            command = "python -u ./read_temperature_sensors --interval %s --time 259200" %  interval 
+        
+
+        self.read_temperature(command, "Read Temperature Sensors")
+
+    def on_readTempStopButton_clicked(self, button):
+        if self.__temperatureProcess is not None:
+            if self.show_confirmation_dialog("","Stop temperature monitoring?",  self.readTempWindow):
+                self.__usedTempStopButton = True
+                os.killpg(os.getpgid(self.__temperatureProcess.pid), signal.SIGTERM)
+        return True
+        
+
+    
+
+
     def on_femOnOffSwitch_state_set(self, switch, isOn):
         if not self.is_daqd_running(): 
             if not self.__fem_switch_handle_set: 
