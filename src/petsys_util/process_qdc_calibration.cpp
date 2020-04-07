@@ -376,36 +376,63 @@ void calibrateAsic(
 		
 		float yMin = pFine->GetMinimum(2);
 		int bMin = pFine->FindFirstBinAbove(yMin);
+		bMin = (bMin > 1) ? bMin : 1;
 		float xMin = pFine->GetBinLowEdge(bMin);
 
 		float yMax = pFine->GetMaximum();
 		int bMax = pFine->FindFirstBinAbove(0.97 * yMax);
+		bMax = (bMax < nBins) ? bMax : nBins;
 		float xMax = pFine->GetBinLowEdge(bMax+1);
-
-		pFine->Fit("pol9", "Q", "", xMin, xMax);
-		TF1 *polN = pFine->GetFunction("pol9");
-		if(polN == NULL) {
-			fprintf(stderr, "WARNING: Could not make a fit. Skipping TAC (%02u %02d %02d %02d %u)\n",
-				portID, slaveID, chipID, channelID, tacID);
-			continue;
-		}
 		
+		// Clear entry 
 		CalibrationEntry &entry = calibrationTable[gid];
-		entry.p0 = polN->GetParameter(0);
-		entry.p1 = polN->GetParameter(1);
-		entry.p2 = polN->GetParameter(2);
-		entry.p3 = polN->GetParameter(3);
-		entry.p4 = polN->GetParameter(4);
-		entry.p5 = polN->GetParameter(5);
-		entry.p6 = polN->GetParameter(6);
-		entry.p7 = polN->GetParameter(7);
-		entry.p8 = polN->GetParameter(8);
-		entry.p9 = polN->GetParameter(9);
+		entry.p0 = 0;
+		entry.p1 = 0;
+		entry.p2 = 0;
+		entry.p3 = 0;
+		entry.p4 = 0;
+		entry.p5 = 0;
+		entry.p6 = 0;
+		entry.p7 = 0;
+		entry.p8 = 0;
+		entry.p9 = 0;
 
 		entry.xMin = xMin;
 		entry.xMax = xMax;
-		entry.valid = true;
+		entry.valid = false;
+
 		
+		// Attempt to fit 9th order polynomial but fall back down to 3rd order if needed
+		for(int order = 9; (order > 3) && !entry.valid; order--) {
+			char functionName[16];
+			sprintf(functionName, "pol%d", order);
+
+			pFine->Fit(functionName, "Q", "", xMin, xMax);
+			TF1 *polN = pFine->GetFunction(functionName);
+			if(polN == NULL) // No fit
+				continue;
+
+			float chi2 = polN->GetChisquare();
+			if(chi2 == 0) // Chi² == 0 is a bad fit
+				continue;
+
+			if(order >= 0) entry.p0 = polN->GetParameter(0);
+			if(order >= 1) entry.p1 = polN->GetParameter(1);
+			if(order >= 2) entry.p2 = polN->GetParameter(2);
+			if(order >= 3) entry.p3 = polN->GetParameter(3);
+			if(order >= 4) entry.p4 = polN->GetParameter(4);
+			if(order >= 5) entry.p5 = polN->GetParameter(5);
+			if(order >= 6) entry.p6 = polN->GetParameter(6);
+			if(order >= 7) entry.p7 = polN->GetParameter(7);
+			if(order >= 8) entry.p8 = polN->GetParameter(8);
+			if(order >= 9) entry.p9 = polN->GetParameter(9);
+			entry.valid = true;
+		}
+
+		if(!entry.valid) {
+			fprintf(stderr, "WARNING: Could not make a fit. Skipping TAC (%02u %02d %02d %02d %u)\n",
+				portID, slaveID, chipID, channelID, tacID);
+		}
 		
 	}
 	

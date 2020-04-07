@@ -20,10 +20,11 @@ systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="q
 daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 
 nPhases = 3
-nLengths = 200
+nLengths = 360
+lengthStep = 2
 if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileNamePrefix, "/dev/null"):
 	f = open(args.fileNamePrefix + '.bins', 'w')
-	f.write("%d\t%f\t%f\n" % (nPhases*nLengths, 0, nLengths))
+	f.write("%d\t%f\t%f\n" % (nPhases*nLengths/lengthStep, 0, nLengths))
 	f.close()
 
 asicsConfig = daqd.getAsicsConfig()
@@ -65,7 +66,7 @@ for firstChannel in range(0, channelStep):
 	daqd.setAsicsConfig(cfg)
 
 	for phase in [float(x)/nPhases for x in range(nPhases)]:
-		for integrationTime in range(0, nLengths):
+		for integrationTime in range(0, nLengths, lengthStep):
 			t_start = time.time()
 			daqd.set_test_pulse_febds(integrationTime, 1024, phase, False)
 			daqd.acquire(0.02, integrationTime, phase)
