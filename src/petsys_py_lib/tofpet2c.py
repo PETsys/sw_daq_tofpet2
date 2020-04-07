@@ -201,7 +201,7 @@ class AsicChannelConfig(bitarray):
 			"vth_t1"		: [ n for n in nrange(63, 69) ],
 			"vth_t2"		: [ n for n in nrange(69, 75) ],
 			"vth_e"			: [ n for n in nrange(75, 81) ],
-			"baseline_e"		: [ n for n in nrange(81, 84) ],
+			"baseline_e"		: [ 82, 83, 81 ],
 			"fe_delay"		: [84, 88, 87, 85, 86],#[ n for n in nrange(84, 89) ],
 			"postamp_gain_t"	: [ n for n in range(89, 91) ],
 			"postamp_gain_e"	: [ n for n in range(91, 93) ],
