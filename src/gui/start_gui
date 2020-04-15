@@ -19,6 +19,15 @@ import csv
 from petsys import daqd
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
+from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
+#from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
+#import matplotlib
+#matplotlib.use('GTK3Cairo') 
+#import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+
+import numpy as np
+
 
 class GUI:
     def __init__ (self):
@@ -30,7 +39,7 @@ class GUI:
         self.processWindow = self.builder.get_object("executeWindow")
         
         self.readTempWindow = self.builder.get_object("readTempWindow")
-
+        self.readTempPlotWindow = self.builder.get_object("readTempPlotWindow")
         self.builder.connect_signals(self)
         
         self.__daqd_switch_handle_set = False
@@ -39,7 +48,8 @@ class GUI:
         self.__process = None
         self.__temperatureProcess = None
   
-
+        self.tempPlot = None
+        self.canvas = None
         self.__terminalPid = None
        
         self.__workingFolder = None
@@ -55,6 +65,9 @@ class GUI:
      
         self.__usedTempStopButton = False
         self.__tempLogFileName = None
+        self.__initialiseTempPlot = False
+
+        self.hasSensorInfo = False
 
     def on_executeStopButton_clicked(self, button):
         if self.__process is not None:
@@ -959,9 +972,29 @@ class GUI:
         if not self.is_daqd_running():    
             self.show_error_dialog("daqd communication server is not running.")
             return
-        
-        self.readTempWindow.show()
-        return
+    
+        if not self.__initialiseTempPlot:
+            self.fig = Figure(figsize=(50, 1), dpi=100)
+            self.ax = self.fig.add_subplot(111)
+            
+            self.canvas = FigureCanvas(self.fig)  # a Gtk.DrawingArea
+            self.canvas.set_size_request(300, 300)
+            
+            self.ax.plot()
+            self.ax.set_xlabel('Time [seconds]',fontsize=10)
+            self.ax.set_ylabel('Temperature [degrees Celsius]',fontsize=10)
+            self.ax.tick_params(labelsize=10)
+
+            self.readTempPlotWindow.add_with_viewport(self.canvas)
+            self.__initialiseTempPlot = True
+
+        self.readTempWindow.show_all()
+       
+        return True
+
+
+    
+
 
     def on_readTempLogToggleButton_clicked(self, button):  
         if self.builder.get_object("readTempLogToggleButton").get_active():
@@ -997,25 +1030,106 @@ class GUI:
 
         interval = self.builder.get_object("readTempIntervalSpinButton").get_value()
         
-        
-        if self.__tempLogFileName != None:
-            command = "python -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval )
-        else:
-            command = "python -u ./read_temperature_sensors --interval %s --time 259200" %  interval 
-        
-
+        if self.__tempLogFileName is None:
+            self.__tempLogFileName = "/tmp/log"
+            
+        command = "python -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval ) 
+  
+        self.timeout_id = GObject.timeout_add(300, self.update_graph)
+       
         self.read_temperature(command, "Read Temperature Sensors")
+    
+        return True   
+
+    def update_graph(self):
+
+        sensor_list = []
+        time_list = []
+        temp_values = {}
+        with open(self.__tempLogFileName,'r') as f:
+            reader = csv.reader(f, dialect = 'excel-tab')
+            for row in reader:
+
+                if row[0] == '#DAQ timestamp':
+                    for item in row[2:]:
+                        sensor_list.append(item)
+                        temp_values[item] = []
+                elif row[0][0] != '#':
+                    for i, key in enumerate(sensor_list):
+                        temp_values[key].append(float(row[2+i]))
+                    time_list.append(float(row[1]))
+
+        
+        if not self.hasSensorInfo: 
+            self.sensorCheckButtonList = [0 for x in sensor_list]     
+            for i, sensor in enumerate(sensor_list):
+                row = Gtk.ListBoxRow()
+                hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing = 20)
+                row.add(hbox)
+                label = Gtk.Label(sensor,xalign=0)
+                self.sensorCheckButtonList[i] = Gtk.CheckButton()
+                self.sensorCheckButtonList[i].set_active(True)
+                hbox.pack_start(label,True,True,0)
+                hbox.add(self.sensorCheckButtonList[i])
+                self.builder.get_object("readTempSensorListBox").add(row)
+                #listbox.add(row)
+                self.hasSensorInfo = True
+
+        self.ax.cla()
+        time_list = [time - time_list[0] for time in time_list]
+        requestedSensors =[]
+        requestedPlots = []
+        for i, sensor in enumerate(sensor_list):
+            if self.sensorCheckButtonList[i].get_active():
+                plot, = self.ax.plot(time_list, temp_values[sensor], label = sensor)
+                requestedPlots.append(plot,)
+                requestedSensors.append(sensor)
+
+        self.ax.set_xlabel('Time [seconds]',fontsize=10)
+        self.ax.set_ylabel('Temperature [degrees Celsius]',fontsize=10)
+
+        y_limits = self.ax.get_ylim()
+        y_min = y_limits[0]
+        y_max = y_limits[1]
+        if y_min<0:
+            y_min = 0
+        if y_max>100:
+            y_max = 100
+        if y_max-y_min<1:
+            y_max += 0.5
+            y_min -= 0.5
+        
+        self.ax.set_ylim([y_min,y_max])
+
+        self.ax.tick_params(labelsize=10)
+    
+        legend = self.ax.legend(requestedPlots, requestedSensors, fontsize = 'x-small', loc = 'upper right', ncol=2)
+        legend.get_frame().set_alpha(0.5)
+        self.canvas.draw()
+
+        if  self.__usedTempStopButton:
+            return False
+        else:
+            return True
+    
+    def on_readTempSelectSensorsButton_clicked(self, button):
+        if(self.hasSensorInfo):
+            self.builder.get_object("readTempSensorPopup").show_all()
+            self.builder.get_object("readTempSensorPopup").popup()
+            
 
     def on_readTempStopButton_clicked(self, button):
         if self.__temperatureProcess is not None:
             if self.show_confirmation_dialog("","Stop temperature monitoring?",  self.readTempWindow):
                 self.__usedTempStopButton = True
                 os.killpg(os.getpgid(self.__temperatureProcess.pid), signal.SIGTERM)
+                self.ax.cla()
+                self.ax.plot()
+                self.canvas.draw()
+                
+                #GObject.source_remove(self.timeout_id)
         return True
         
-
-    
-
 
     def on_femOnOffSwitch_state_set(self, switch, isOn):
         if not self.is_daqd_running(): 
