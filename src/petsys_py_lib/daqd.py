@@ -1027,7 +1027,11 @@ class Connection:
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
                 
                 asicsConfig = self.getAsicsConfig()
-                modeFile = open(fileNamePrefix + ".modf", "w")
+		if fileNamePrefix != "/dev/null":
+                	modeFile = open(fileNamePrefix + ".modf", "w")
+		else:
+			modeFile = open("/dev/null", "w")
+
                 modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
                 modeList = [] 
                 for portID, slaveID, chipID in asicsConfig.keys():
