@@ -101,6 +101,9 @@ target_link_libraries("convert_raw_to_coincidence" common)
 add_executable("convert_raw_to_trigger" "src/petsys_util/convert_raw_to_trigger.cpp" )
 target_link_libraries("convert_raw_to_trigger" common)
 
+add_executable("convert_raw_to_trigger_dynamic" "src/petsys_util/convert_raw_to_trigger_dynamic.cpp" )
+target_link_libraries("convert_raw_to_trigger_dynamic" common)
+
 add_executable("convert_raw_to_singles" "src/petsys_util/convert_raw_to_singles.cpp" )
 target_link_libraries("convert_raw_to_singles" common)
 
