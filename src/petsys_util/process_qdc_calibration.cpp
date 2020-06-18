@@ -31,6 +31,7 @@
 #include <TGraphErrors.h>
 #include <TFile.h>
 #include <TCanvas.h>
+#include <TStyle.h>
 
 using namespace PETSYS;
 
@@ -48,6 +49,7 @@ struct CalibrationData{
 	unsigned short ecoarse;
 	unsigned short qfine;	
 	int freq;
+	bool saturation;
 	
 	float getTime (SystemConfig *config){
 		float time, q_T;
@@ -85,6 +87,7 @@ struct CalibrationEntry {
         float p9;
         float xMin;
 	float xMax;
+	float xMax100;
 	bool valid;
 };
 
@@ -272,6 +275,7 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 			calData.tfine = eWord.getTFine();
 			calData.qfine = eWord.getEFine();			
 			calData.freq = tmpRawCalDataBlock[i].freq;       	
+			calData.saturation = (step1 == -1);
 			fwrite(&calData, sizeof(CalibrationData), 1, f);	
 		}
 		delete[] tmpRawCalDataBlock; 
@@ -313,8 +317,10 @@ void calibrateAsic(
 
 	// Build the histograms
 	TH2S **hFine2_list = new TH2S *[nQAC];
+	unsigned short *maxADC = new unsigned short[nQAC];
 	for(int n = 0; n < nQAC; n++) {
 		hFine2_list[n] = NULL;
+		maxADC[n] = 0;
 	}
 	
 	for(unsigned gid = gidStart; gid < gidEnd; gid++) {
@@ -342,6 +348,9 @@ void calibrateAsic(
 			CalibrationData &calData = calDataBuffer[i];
 			
 			assert(hFine2_list[calData.gid-gidStart] != NULL);
+			maxADC[calData.gid-gidStart] = (maxADC[calData.gid-gidStart] > calData.qfine) ? maxADC[calData.gid-gidStart] : calData.qfine;
+			if(calData.saturation) continue;
+
 			if((calData.ecoarse - calData.tcoarse) < -256) calData.ecoarse += 1024;  
 			float ti = calData.ecoarse - calData.getTime(config);
 		
@@ -379,11 +388,20 @@ void calibrateAsic(
 		bMin = (bMin > 1) ? bMin : 1;
 		float xMin = pFine->GetBinLowEdge(bMin);
 
-		float yMax = pFine->GetMaximum();
-		int bMax = pFine->FindFirstBinAbove(0.97 * yMax);
-		bMax = (bMax < nBins) ? bMax : nBins;
+		float yMax = pFine->GetMaximum() * 0.97;
+		int bMax = pFine->FindFirstBinAbove(yMax);
+		bMax = (bMax < (nBins-1)) ? bMax : (nBins-1);
 		float xMax = pFine->GetBinLowEdge(bMax+1);
 		
+		// Integration limit with 100 counts remaining
+		float yMax100 = maxADC[gid-gidStart] - 100;
+		int bMax100 = pFine->FindFirstBinAbove(yMax100);
+		if(bMax100 == -1) bMax100 = nBins;
+		bMax100 = (bMax100 > 1) ? bMax100 : 1;
+		bMax100 = (bMax100 < (nBins-1)) ? bMax100 : (nBins-1);
+		fprintf(stderr, "limits %d %d %d\n", bMin, bMax, bMax100);
+		float xMax100 = pFine->GetBinLowEdge(bMax100+1);
+
 		// Clear entry 
 		CalibrationEntry &entry = calibrationTable[gid];
 		entry.p0 = 0;
@@ -399,6 +417,7 @@ void calibrateAsic(
 
 		entry.xMin = xMin;
 		entry.xMax = xMax;
+		entry.xMax100 = xMax100;
 		entry.valid = false;
 
 		
@@ -471,6 +490,7 @@ void calibrateAsic(
 			CalibrationData &calData = calDataBuffer[i];
 			assert(calData.gid >= gidStart);
 			assert(calData.gid < gidEnd);
+			if(calData.saturation) continue;
 
 			CalibrationEntry &entry = calibrationTable[calData.gid];
 			if(!entry.valid) continue;
@@ -518,6 +538,9 @@ void calibrateAsic(
 	gResolution->SetName("gResolution");
 	int gResolutionNPoints = 0;
 	
+	TH1F *hMinIntegrationTime = new TH1F("hMinIntegrationTime", "Integration time", 128, 0, 430);
+	TH1F *hMax100Time = new TH1F("hMax100Time", "Integration time", 128, 0, 430);
+
 	TCanvas *tmp1 = new TCanvas();
 	for(unsigned long channelID = 0; channelID < 64; channelID++) {
 		for(unsigned long tacID = 0; tacID < 4; tacID++) {
@@ -541,6 +564,9 @@ void calibrateAsic(
 			hResolution->Fill(sigma);
 			
 			gResolutionNPoints += 1;
+
+			hMinIntegrationTime->Fill(entry.xMin);
+			hMax100Time->Fill(entry.xMax100);
 		}
 	}
 	delete tmp1;
@@ -565,6 +591,15 @@ void calibrateAsic(
 	hResolution->GetXaxis()->SetTitle("TDC resolution (ADC RMS)");
 	hResolution->Draw("HIST");
 	
+	gStyle->SetOptStat(0);
+	gStyle->SetTitle(0);
+	c->cd(4)->UseCurrentStyle();
+	hMinIntegrationTime->SetLineColor(kBlue);
+	hMinIntegrationTime->GetXaxis()->SetTitle("Integration time (clk)");
+	hMinIntegrationTime->Draw("HISTO");
+	hMax100Time->SetLineColor(kRed);
+	hMax100Time->Draw("HISTO,SAME");
+
 	sprintf(fName, "%s.pdf", summaryFilePrefix);
 	c->SaveAs(fName);
 
@@ -575,6 +610,7 @@ void calibrateAsic(
 	rootFile->Write();
 	delete rootFile;
 
+	delete [] maxADC;
 	delete tmp0;	
 }
 

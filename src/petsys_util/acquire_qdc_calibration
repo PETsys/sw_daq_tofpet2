@@ -20,7 +20,7 @@ systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF, qdc_mode="q
 daqd.openRawAcquisition(args.fileNamePrefix, calMode=True)
 
 nPhases = 3
-nLengths = 360
+nLengths = 430
 lengthStep = 2
 if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileNamePrefix, "/dev/null"):
 	f = open(args.fileNamePrefix + '.bins', 'w')
@@ -54,6 +54,28 @@ simultaneousChannels = min([simultaneousChannels, 126/16, 1024/80])
 simultaneousChannels = 1
 
 channelStep = int(math.ceil(64.0/simultaneousChannels))
+
+# Take some data while saturating the range
+for firstChannel in range(0, channelStep):
+	activeChannels = [ channel for channel in range(firstChannel, 64, channelStep) ]
+	activeChannels_string = (", ").join([ "%d" % channel for channel in activeChannels ])
+
+	# Enable triggering for active channels
+	cfg = deepcopy(asicsConfig)
+	for ac in cfg.values():
+		ac.globalConfig.setValue("imirror_bias_top", 23)
+		for channel in activeChannels:
+			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
+	daqd.setAsicsConfig(cfg)
+
+	for phase in [float(x)/nPhases for x in range(nPhases)]:
+		t_start = time.time()
+		daqd.set_test_pulse_febds(nLengths, 1024, phase, False)
+		daqd.acquire(0.02, -1, phase)
+		t_finish = time.time()
+		print "Channel(s): %s Phase: %4.3f (saturation) in %3.2f seconds " % (activeChannels_string, phase, t_finish - t_start)
+
+# Main data acquisition
 for firstChannel in range(0, channelStep):
 	activeChannels = [ channel for channel in range(firstChannel, 64, channelStep) ]
 	activeChannels_string = (", ").join([ "%d" % channel for channel in activeChannels ])
