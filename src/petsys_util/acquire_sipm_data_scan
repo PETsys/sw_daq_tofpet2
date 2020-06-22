@@ -19,10 +19,15 @@ parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true"
 parser.add_argument("--vth1", type=str, dest="vth1", required=True, help="comma separated values for vth1")
 parser.add_argument("--vth2", type=str, dest="vth2", required=True, help="comma separated values for vth2")
 parser.add_argument("--vthe", type=str, dest="vthe", required=True, help="comma separated values for vthe")
-parser.add_argument("--ov",   type=str, dest="ov",   required=True, help="comma separated values for ov")
+parser.add_argument("--ov", type=str, dest="ov",   required=True, help="comma separated values for ov")
 parser.add_argument("--trigger", type=str, dest="trigger", required=True, help="trigger type (none, ext, int)")
+parser.add_argument("--freq", type=float, dest="freq", required=False, help="internal trigger frequency (in kHz)")
+parser.add_argument("--phase", type=float, dest="phase", required=False, help="trigger phase (in clk)")
+parser.add_argument("--pedestals", dest="pedestals", action="store_true", help="Enable the acquisition of pedestals")
 
 args = parser.parse_args()
+
+
 
 vth1_list = args.vth1.split(',')
 vth2_list = args.vth2.split(',')
@@ -37,20 +42,19 @@ systemConfig = config.ConfigFromFile(args.config, loadMask=mask)
 
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
 
-if args.trigger == "none":
-        daqd.setAuxIO("LEMO_J15", 0x00) #clock
 if args.trigger == "ext":
-        daqd.setAuxIO("LEMO_J15", 0x01) #external trigger + gate
-        daqd.write_config_register_tgr(1, 0x0202, 0b1)
-        daqd.write_config_register_tgr(1, 0x0298, 0b1)
-        daqd.write_config_register_tgr(10, 0x0294, 5000)
-        #daqd.enableEventGate(0)
+        #daqd.write_config_register_tgr(1, 0x0298, 0b0)   # enable time tagging of gate signal
+        #daqd.write_config_register_tgr(1, 0x0202, 0b0)   # enable event gating
+        #daqd.write_config_register_tgr(10,0x0294, -400+512)     # set delay
+        #daqd.write_config_register_febds(10, 0x0604, 0)  # set threshold
+        daqd.write_config_register_tgr(8, 0x021A, 0x01)
+        daqd.write_config_register_febds(8, 0x021A, 0x01)
+        #daqd.enableEventGate(0+512)
 if args.trigger == "int":
-        daqd.setAuxIO("LEMO_J15", 0x81)  #trigger from FPGA
-        tp_phase = 0.25
-        daqd.setTestPulsePLL(8, 6400, tp_phase, False)
+        daqd.write_config_register_tgr(8, 0x021A, 0x81)
+        #daqd.setAuxIO("LEMO_J15", 0x81)  #trigger from FPGA
+        daqd.setTestPulsePLL(8, int(1./(args.freq*5e-06)), args.phase, False)
 
 
 if not args.fileNamePrefix:
@@ -60,9 +64,17 @@ if not args.fileNamePrefix:
         with open('/data/TOFPET2/last_run','w+') as f:
                 f.write(str(run[0]+1))
         args.fileNamePrefix = "/data/TOFPET2/raw/run%04d" % (run[0]+1)
+
+if args.pedestals:
+        print("INFO: acquiring pedestals")
+        command = "./acquire_qdc_calibration_fixed  --config ../config/config.ini -o "+args.fileNamePrefix+"_ped1"
+        os.system(command)
+
+
+
+systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
 daqd.openRawAcquisition(args.fileNamePrefix)
-
-
+        
 asicsConfig = daqd.getAsicsConfig()
 for ac in asicsConfig.values():
 	gc = ac.globalConfig
@@ -84,7 +96,6 @@ if args.trigger == "ext":
         targetChannelConfig = asicsConfig[targetAsic].channelConfig[targetChannel]
         targetChannelConfig.setValue("trigger_mode_1", 0b01)
         daqd.setAsicsConfig(asicsConfig)
-        #daqd.write_config_register_tgr(8, 0x0214, 0x01)
 
 
         
@@ -116,3 +127,10 @@ for vth1 in vth1_list:
                                 daqd.acquire(args.time, float(ov), 10000*(int(vth1)+1)+100*(int(vth2)+1)+int(vthe)+1)
                                 
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+
+
+
+if args.pedestals:
+        print("INFO: acquiring pedestals")
+        command = "./acquire_qdc_calibration_fixed  --config ../config/config.ini -o "+args.fileNamePrefix+"_ped2"
+        os.system(command)

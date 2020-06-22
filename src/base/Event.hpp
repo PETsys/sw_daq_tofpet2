@@ -31,9 +31,8 @@ namespace PETSYS {
 		RawHit *raw;
 		double time;
 		double timeEnd;
-                float qfine;
 		float energy;
-                
+
 		short region;
 		short xi;
 		short yi;

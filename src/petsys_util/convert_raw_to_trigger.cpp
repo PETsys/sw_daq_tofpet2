@@ -11,6 +11,7 @@
 
 #include <TFile.h>
 #include <TNtuple.h>
+#include <TProfile.h>
 
 using namespace PETSYS;
 
@@ -26,7 +27,10 @@ private:
 	long long eventCounter;
         
         int refChannel;
-
+        
+        TFile* pedestalFile;
+        std::map<int,std::map<int,int> > pedValues;
+  
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
@@ -47,6 +51,9 @@ private:
 	unsigned int	brChannelID[256];
 	unsigned int    brChannelCount[256];
 	float		brToT[256];
+	float		brTCoarse[256];
+	float		brTFine[256];
+	float		brQCoarse[256];
 	float		brQFine[256];
 	float		brEnergy[256];
 	unsigned short	brTacID[256];
@@ -65,13 +72,27 @@ private:
 	} __attribute__((__packed__));
 	
 public:
-  DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, bool coincidence, int refChannel) {
+  DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, bool coincidence, int refChannel, TFile* pedestalFile) {
 		this->frequency = frequency;
 		this->fileType = fileType;
 		this->hitLimitToWrite = hitLimitToWrite;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
                 this->refChannel = refChannel;
+                this->pedestalFile = pedestalFile;
+                
+                
+                if( pedestalFile != NULL )
+                {
+                  std::cout << "pedestals!" << std::endl;
+                  for(int ch = 0; ch < 256; ++ch)
+                  {
+                    TProfile* prof = (TProfile*)( pedestalFile->Get(Form("p_qfine_ch%d_2",ch)) );
+                    for(int jj = 0; jj < 4; ++jj)
+                      (pedValues[ch])[jj] = prof->GetBinContent(jj+1);
+                  }
+                }
+                
                 
 		stepBegin = 0;
 		
@@ -86,6 +107,9 @@ public:
 			hData->Branch("mh_n", &brN, bs);
 			hData->Branch("mh_j", brJ, "mh_j[256]/s");
 			hData->Branch("tot", brToT, "tot[256]/F");
+			hData->Branch("tcoarse", brTCoarse, "tcoarse[256]/F");
+			hData->Branch("tfine", brTFine, "tfine[256]/F");
+			hData->Branch("qcoarse", brQCoarse, "qcoarse[256]/F");
 			hData->Branch("qfine", brQFine, "qfine[256]/F");
 			hData->Branch("time", brTime, "time[256]/L");
 			hData->Branch("timeDelta", brTimeDelta, "timeDelta[256]/L");
@@ -153,13 +177,14 @@ public:
 		}
 	};
 	
-  void addEvents(float step1, float step2,EventBuffer<GammaPhoton> *buffer, bool coincidence, int refChannel) {
+  void addEvents(float step1, float step2,EventBuffer<GammaPhoton> *buffer, bool coincidence, int refChannel, bool pedestals) {
 		bool writeMultipleHits = false;
-
+                
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
-	
+                
 		long long tMin = buffer->getTMin() * (long long)Tps;
+                
                 
                 // std::cout << "frequency: " << frequency << "   Tps: " << Tps << "   Tns: " << Tns << "   tMin: " << tMin << " (ps)" << std::endl;
 		int N = buffer->getSize();
@@ -177,6 +202,9 @@ public:
                             brChannelID[m] = 0;
                             brChannelCount[m] = 0;
                             brToT[m] = 0;
+                            brTCoarse[m] = 0;
+                            brTFine[m] = 0;
+                            brQCoarse[m] = 0;
                             brQFine[m] = 0;
                             brEnergy[m] = 0;
                             brTacID[m] = 0;
@@ -210,8 +238,12 @@ public:
                                           brChannelID[h.raw->channelID] = h.raw->channelID;
                                           brChannelCount[h.raw->channelID] += 1;
                                           brToT[h.raw->channelID] = (h.timeEnd - h.time) * Tps;
-                                          brQFine[h.raw->channelID] = h.qfine;
-                                          brEnergy[h.raw->channelID] = h.energy * Eunit;
+                                          brTCoarse[h.raw->channelID] = h.raw->tcoarse;
+                                          brTFine[h.raw->channelID] = h.raw->tfine;
+                                          brQCoarse[h.raw->channelID] = h.raw->ecoarse;
+                                          brQFine[h.raw->channelID] = h.raw->efine;
+                                          if( !pedestals ) brEnergy[h.raw->channelID] = h.energy * Eunit;
+                                          else brEnergy[h.raw->channelID] = h.raw->efine -(pedValues[h.raw->channelID])[h.raw->tacID];
                                           brTacID[h.raw->channelID] = h.raw->tacID;
                                           brX[h.raw->channelID] = h.x;
                                           brY[h.raw->channelID] = h.y;
@@ -258,15 +290,16 @@ private:
 	float step2;
         bool coincidence;
         int refChannel;
+        bool pedestals;
 public:
-        WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, bool coincidence, int refChannel, EventSink<GammaPhoton> *sink) :
+         WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, bool coincidence, int refChannel, bool pedestals, EventSink<GammaPhoton> *sink) :
 		OverlappedEventHandler<GammaPhoton, GammaPhoton>(sink, true),
-		dataFileWriter(dataFileWriter), step1(step1), step2(step2), coincidence(coincidence), refChannel(refChannel)
+		dataFileWriter(dataFileWriter), step1(step1), step2(step2), coincidence(coincidence), refChannel(refChannel), pedestals(pedestals)
 	{
 	};
 	
 	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
-          dataFileWriter->addEvents(step1, step2, buffer, coincidence, refChannel);
+          dataFileWriter->addEvents(step1, step2, buffer, coincidence, refChannel, pedestals);
 		return buffer;
 	};
 };
@@ -285,6 +318,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
         fprintf(stderr,  "  --coincidence \t Only save coincidences\n");
         fprintf(stderr,  "  --refChannel \t Reference channel\n");
+        fprintf(stderr,  "  --pedestals \t Use pedestals in energy reconstruction\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -305,6 +339,7 @@ int main(int argc, char *argv[])
 	long long eventFractionToWrite = 1024;
         bool coincidence = false;
         int refChannel = -1;
+        bool pedestals;
 
         static struct option longOptions[] = {
                 { "help", no_argument, 0, 0 },
@@ -315,6 +350,7 @@ int main(int argc, char *argv[])
 		{ "writeFraction", required_argument },
 		{ "coincidence", no_argument, 0, 0 },
 		{ "refChannel", required_argument, 0, 0 },
+		{ "pedestals", no_argument, 0, 0 }
         };
 
         while(true) {
@@ -340,6 +376,7 @@ int main(int argc, char *argv[])
 			case 5:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
                         case 6:         coincidence = true; break;
                         case 7:         refChannel = boost::lexical_cast<int>(optarg); break;
+                        case 8:         pedestals = true; break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -362,7 +399,15 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "-o must be specified\n");
 		exit(1);
 	}
-
+        
+        TFile* pedestalFile = NULL;
+        if(pedestals){
+          std::string pedestalFileName(Form("%s_pedestals.root",inputFilePrefix));
+          size_t pos = pedestalFileName.find("raw");
+          pedestalFileName.replace(pos,3,"reco");
+          pedestalFile = TFile::Open(pedestalFileName.c_str(),"READ");
+        }
+        
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
 	// If data was taken in ToT mode, do not attempt to load these files
@@ -372,7 +417,7 @@ int main(int argc, char *argv[])
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite, coincidence, refChannel);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite, coincidence, refChannel, pedestalFile);
 	
 	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
 		float step1, step2;
@@ -383,7 +428,7 @@ int main(int argc, char *argv[])
 				new CoarseSorter(
 				new ProcessHit(config, reader,
 				new SimpleGrouper(config,
-                                new WriteHelper(dataFileWriter, step1, step2, coincidence, refChannel,
+                                new WriteHelper(dataFileWriter, step1, step2, coincidence, refChannel, pedestals,
 				new NullSink<GammaPhoton>()
 				)))));
 		

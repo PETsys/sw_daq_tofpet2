@@ -48,7 +48,10 @@ private:
         std::map<int,int>               brChannelCount;
         std::vector<unsigned int>*      brChannelID;
         std::vector<float>*             brToT;
-        std::vector<float>*             brQfine;
+        std::vector<float>*             brTCoarse;
+        std::vector<float>*             brTFine;
+        std::vector<float>*             brQCoarse;
+        std::vector<float>*             brQFine;
         std::vector<float>*             brEnergy;
         std::vector<unsigned short>*    brTacID;
         std::vector<int>*               brXi;
@@ -81,7 +84,10 @@ public:
                 brTimeDelta = new std::vector<long long>;
                 brChannelID = new std::vector<unsigned int>;
                 brToT = new std::vector<float>;
-                brQfine = new std::vector<float>;
+                brTCoarse = new std::vector<float>;
+                brTFine = new std::vector<float>;
+                brQCoarse = new std::vector<float>;
+                brQFine = new std::vector<float>;
                 brEnergy = new std::vector<float>;
                 brTacID = new std::vector<unsigned short>;
                 brXi = new std::vector<int>;
@@ -110,7 +116,10 @@ public:
                         }
                         
                         hData->Branch("channelID", &brChannelID, bs);
-                        hData->Branch("qfine", &brQfine, bs);
+                        hData->Branch("tcoarse", &brTCoarse, bs);
+                        hData->Branch("tfine", &brTFine, bs);
+                        hData->Branch("qcoarse", &brQCoarse, bs);
+                        hData->Branch("qfine", &brQFine, bs);
                         hData->Branch("energy", &brEnergy, bs);
                         hData->Branch("tacID", &brTacID, bs);
                         hData->Branch("xi", &brXi, bs);
@@ -197,7 +206,10 @@ public:
                         brTimeDelta -> clear();
                         brChannelID -> clear();
                         brToT -> clear();
-                        brQfine -> clear();
+                        brTCoarse -> clear();
+                        brTFine -> clear();
+                        brQCoarse -> clear();
+                        brQFine -> clear();
                         brEnergy -> clear();
                         brTacID -> clear();
                         brXi -> clear();
@@ -236,7 +248,10 @@ public:
                                           brChannelCount[h.raw->channelID] += 1;
                                           brChannelID->push_back(h.raw->channelID);
                                           brToT->push_back((h.timeEnd - h.time) * Tps);
-                                          brQfine->push_back(h.qfine);
+                                          brTCoarse->push_back(h.raw->tcoarse);
+                                          brTFine->push_back(h.raw->tfine);
+                                          brQCoarse->push_back(h.raw->ecoarse);
+                                          brQFine->push_back(h.raw->efine);
                                           brEnergy->push_back(h.energy * Eunit);
                                           brTacID->push_back(h.raw->tacID);
                                           brXi->push_back(h.xi);

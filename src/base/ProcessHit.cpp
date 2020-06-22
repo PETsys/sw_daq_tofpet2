@@ -48,7 +48,6 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			out.time = in.time;
 			out.time -= (in.tfine - 27) * 0.25;
 			out.timeEnd = out.time;
-                        out.qfine = in.efine;
 			out.energy = (in.efine == 28) ? 1 : -1;
 			out.region = -1;
 			out.x = out.y = out.z = 0.0;
@@ -76,13 +75,11 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					out.timeEnd = in.timeEnd - q_E - ce.t0;
 					if(ce.a1 == 0) eventFlags |= 0x2;
 				}
-                                out.qfine = -1.;
 				out.energy = out.timeEnd - out.time;
 			}
 			else {
 				
 				out.timeEnd = in.timeEnd;
-                                out.qfine = in.efine;
 				out.energy = in.efine;
 			
 				if(useQDC) {

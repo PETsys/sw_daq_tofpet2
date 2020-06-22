@@ -40,6 +40,9 @@ private:
 	long long	brTime;
 	unsigned int	brChannelID;
 	float		brToT;
+	float		brTCoarse;
+	float		brTFine;
+	float		brQCoarse;
 	float		brQFine;
 	float		brEnergy;
 	unsigned short	brTacID;
@@ -77,6 +80,9 @@ public:
 			hData->Branch("time", &brTime, bs);
 			hData->Branch("channelID", &brChannelID, bs);
 			hData->Branch("tot", &brToT, bs);
+			hData->Branch("tcoarse", &brTCoarse, bs);
+			hData->Branch("tfine", &brTFine, bs);
+			hData->Branch("qcoarse", &brQCoarse, bs);
 			hData->Branch("qfine", &brQFine, bs);
 			hData->Branch("energy", &brEnergy, bs);
 			hData->Branch("tacID", &brTacID, bs);
@@ -167,7 +173,10 @@ public:
 				brTime = ((long long)(hit.time * Tps)) + tMin;
 				brChannelID = hit.raw->channelID;
 				brToT = (hit.timeEnd - hit.time) * Tps;
-				brQFine = hit.qfine;
+				brTCoarse = hit.raw->tcoarse;
+				brTFine = hit.raw->tfine;
+				brQCoarse = hit.raw->ecoarse;
+				brQFine = hit.raw->efine;
 				brEnergy = hit.energy * Eunit;
 				brTacID = hit.raw->tacID;
 				brTQT = hit.raw->time - hit.time;

@@ -104,7 +104,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			// Stop searching for more hits for this photon
 			if((hit2.time - hit.time) > (overlap + timeWindow1)) break;
 			
-			if(!systemConfig->isMultiHitAllowed(hit2.region, hit.region)) continue;
+			// if(!systemConfig->isMultiHitAllowed(hit2.region, hit.region)) continue;
 			if(fabs(hit.time - hit2.time) > timeWindow1) continue;
 
 			float u = hit.x - hit2.x;

@@ -44,6 +44,9 @@ private:
 	long long	br1Time,	br2Time;
 	unsigned int	br1ChannelID,	br2ChannelID;
 	float		br1ToT,		br2ToT;
+	float		br1TCoarse, 	br2TCoarse;
+	float		br1TFine, 	br2TFine;
+	float		br1QCoarse, 	br2QCoarse;
 	float		br1QFine, 	br2QFine;
 	float		br1Energy, 	br2Energy;
 	unsigned short	br1TacID,	br2TacID;
@@ -91,6 +94,9 @@ public:
 			hData->Branch("tot1", &br1ToT, bs);
 			hData->Branch("time1", &br1Time, bs);
 			hData->Branch("channelID1", &br1ChannelID, bs);
+			hData->Branch("tcoarse1", &br1TCoarse, bs);
+			hData->Branch("tfine1", &br1TFine, bs);
+			hData->Branch("qcoarse1", &br1QCoarse, bs);
 			hData->Branch("qfine1", &br1QFine, bs);
 			hData->Branch("energy1", &br1Energy, bs);
 			hData->Branch("tacID1", &br1TacID, bs);
@@ -104,6 +110,9 @@ public:
 			hData->Branch("time2", &br2Time, bs);
 			hData->Branch("channelID2", &br2ChannelID, bs);
 			hData->Branch("tot2", &br2ToT, bs);
+			hData->Branch("tcoarse2", &br2TCoarse, bs);
+			hData->Branch("tfine2", &br2TFine, bs);
+			hData->Branch("qcoarse2", &br2QCoarse, bs);
 			hData->Branch("qfine2", &br2QFine, bs);
 			hData->Branch("energy2", &br2Energy, bs);
 			hData->Branch("tacID2", &br2TacID, bs);
@@ -209,7 +218,10 @@ public:
 					br1Time = ((long long)(h1.time * Tps)) + tMin;
 					br1ChannelID = h1.raw->channelID;
 					br1ToT = (h1.timeEnd - h1.time) * Tps;
-					br1QFine = h1.qfine;
+					br1TCoarse = h1.raw->tcoarse;
+					br1TFine = h1.raw->tfine;
+					br1QCoarse = h1.raw->ecoarse;
+					br1QFine = h1.raw->efine;
 					br1Energy = h1.energy * Eunit1;
 					br1TacID = h1.raw->tacID;
 					br1X = h1.x;
@@ -223,7 +235,10 @@ public:
 					br2Time = ((long long)(h2.time * Tps)) + tMin;
 					br2ChannelID = h2.raw->channelID;
 					br2ToT = (h2.timeEnd - h2.time) * Tps;
-					br2QFine = h2.qfine;
+					br2TCoarse = h2.raw->tcoarse;
+					br2TFine = h2.raw->tfine;
+					br2QCoarse = h2.raw->ecoarse;
+					br2QFine = h2.raw->efine;
 					br2Energy = h2.energy * Eunit2;
 					br2TacID = h2.raw->tacID;
 					br2X = h2.x;
