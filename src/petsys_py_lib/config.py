@@ -177,7 +177,7 @@ class Config:
                                 else:
                                         channel_qdc_mode =  self.getAsicChannelQDCMode((portID, slaveID, chipID, channelID))
                                                                
-                                if channel_qdc_mode is "tot":
+                                if channel_qdc_mode == "tot":
                                         cc.setValue("qdc_mode", 0)
                                         cc.setValue("intg_en", 0)
                                         cc.setValue("intg_signal_en", 0)
