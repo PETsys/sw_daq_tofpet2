@@ -8,16 +8,6 @@
 #include "boost/date_time/posix_time/posix_time.hpp"
 #include "DAQFrameServer.hpp"
 
-extern "C" {
-//#define LINUX
-#include <pfp_api_monitor.h>
-}
-#ifdef LINUX
-	#include <fcntl.h>
-	#include <errno.h>
-#else
-	#include <conio.h>
-#endif
 
 namespace PETSYS {
 class PFP_KX7 : public AbstractDAQCard {
@@ -25,8 +15,6 @@ public:
 	  PFP_KX7();
 	  ~PFP_KX7();
 	  int getWords(uint64_t *buffer, int count);
-	  void stopWorker();
-	  void startWorker();
 	bool cardOK();
 	void clearReplyQueue();
 	int sendCommand(uint64_t *packetBuffer, int packetBufferSize);
@@ -43,55 +31,58 @@ public:
 	  static const int ENOCARD = -10000;
 
 private:
-	static const int BaseAddrReg		= 0x00280000;
-	static const int DMACptSizeReg		= 256;
-	static const int ConfigReg		= 288;
-	static const int txWrPointerReg		= 320;
-	static const int DMAConfigReg		= 352;
-	static const int txRdPointerReg		= 384;
-	static const int rxWrPointerReg		= 448;
-	static const int rxRdPointerReg		= 512;
-	static const int ThresholdReg		= 544;
-	static const int acqStatusPointerReg	= 576;
-	static const int CoincWindowReg		= 608;
-	static const int CoincMasksReg		= 609;
-	static const int statusReg		= 640;
-	static const int GateEnableReg		= 577;
+	static const int base_addr0		= 0x00280000;
+	static const int DMACptSizeReg		= 256;	//BRAM addr 0x100
+	static const int ConfigReg		= 288;	//BRAM addr 0x120
+	static const int txWrPointerReg		= 320;	//BRAM addr 0x140
+	static const int DMAConfigReg		= 352;	//BRAM addr 0x160
+	static const int txRdPointerReg		= 384;	//BRAM addr 0x180
+	static const int rxWrPointerReg		= 448;	//BRAM addr 0x1C0
+	static const int rxRdPointerReg		= 512;	//BRAM addr 0x200
+	static const int ThresholdReg		= 544;	//BRAM addr 0x220
+	static const int acqStatusPointerReg	= 576;	//BRAM addr 0x240
+	static const int CoincWindowReg		= 608;	//BRAM addr 0x260
+	static const int CoincMasksReg		= 609;	//BRAM addr 0x261
+	static const int statusReg		= 640;	//BRAM addr 0x280
+	static const int GateEnableReg		= 577;	//BRAM addr 0x241
 
-	WDC_DEVICE_HANDLE Card;
-	static const unsigned NB = 2;
-	WD_DMA *DMA_Point[NB];
-	PVOID DMA_Buffer[NB];
-	unsigned dmaBufferRdPtr;
-	unsigned dmaBufferWrPtr;
-	bool dmaBufferQueueIsEmpty();
-	bool dmaBufferQueueIsFull();
-	int wordBufferUsed[NB];
-	int wordBufferStatus[NB];
-	uint64_t *wordBuffer[NB];
+	static const int base_addr1		= 0x100000;
+	static const int ExtClk0		= 0x20000;
+	static const int ExtClk1		= 0x20004;
+	static const int ExtClk2		= 0x20008;
+	static const int ExtClk3		= 0x2000C;
+	static const int Osc0			= 0x200;
+	static const int Osc1			= 0x204;
+	static const int Osc2			= 0x208;
+
 	
-	int getWords_(uint64_t *buffer, int count);
+	int fd;
+	int dma_fd;
+	void *map_base;
+	
+	
+	uint64_t *bufferSet;
+	unsigned bufferSetWrPtr;
+	unsigned bufferSetRdPtr;
+	pthread_mutex_t bufferSetMutex;
+	pthread_cond_t bufferSetCondFilled;
+	pthread_cond_t bufferSetCondConsumed;
+
+	pthread_t bufferSetThread;
+	bool bufferSetThreadValid;
+	bool bufferSetThreadStop;
+	static void * bufferSetThreadRoutine(void * arg);
+
+	uint64_t *currentBuffer;
+	unsigned currentBufferConsumed;
+
+	int WriteWithoutCheck(int reg, uint32_t *data, int count);
 	int WriteAndCheck(int reg, uint32_t *data, int count);
 	int ReadAndCheck(int reg, uint32_t *data, int count);
 	int ReadWithoutCheck(int reg, uint32_t *data, int count);
 
 	uint32_t txWrPointer;
 	uint32_t rxRdPointer;
-
-
-	pthread_t worker;
-	pthread_mutex_t lock;
-	pthread_cond_t condCleanBuffer;
-	pthread_cond_t condDirtyBuffer;
-
-	volatile bool die;
-	volatile bool hasWorker;
-	static void *runWorker(void *arg);
-
-	pthread_mutex_t hwLock;
-	uint32_t lastCommandIdleCount;
-	void setLastCommandTimeIdleCount();
-	uint32_t getLastCommandTimeIdleCount();
 
 };
 }

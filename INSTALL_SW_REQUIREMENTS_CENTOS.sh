@@ -21,7 +21,7 @@ cmake \
 iniparser-devel \
 python2-bitarray.x86_64 \
 xterm \
-python-pandas
+python-pandas \
+dkms
 
-
-
+sh INSTALL_DRIVERS.sh

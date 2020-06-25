@@ -20,13 +20,7 @@
 #include "Protocol.hpp"
 #include "Client.hpp"
 
-#ifdef __DTFLY__
-#include "DtFlyP.hpp"
-#endif
-
-#ifdef __PFP_KX7__
 #include "PFP_KX7.hpp"
-#endif
 
 using namespace PETSYS;
 
@@ -104,24 +98,9 @@ int main(int argc, char *argv[])
 				daqType = 0;
 				feTypeHasBeenSet = true;
 			}
-			else if (strcmp((char *)optarg, "DTFLY") == 0) {
-#ifdef __DTFLY__
-				daqType = 1;
-#else
-				fprintf(stderr, "ERROR: This was built without DTFLY support.\n");
-				fprintf(stderr, "Recompile, adding DTFLY=1 to make command to enable DTFLY support\n");
-				return -1;
-#endif 
-			}
 			else if (strcmp((char *)optarg, "PFP_KX7") == 0) {
-#ifdef __PFP_KX7__
 				daqType = 2;
 				feTypeHasBeenSet = 1;
-#else
-				fprintf(stderr, "ERROR: This was built without PFP_KX7 support.\n");
-				fprintf(stderr, "Recompile, adding PFP_KX7=1 to make command to enable PFP_KX7 support\n");
-				return -1;
-#endif 
 			}
 			else {
 				fprintf(stderr, "ERROR: '%s' is not a valid DAQ type\n", (char *)optarg);
@@ -166,17 +145,9 @@ int main(int argc, char *argv[])
 	if (daqType == 0) {
 		globalFrameServer = new UDPFrameServer(debugLevel);
 	}
-#ifdef __DTFLY__ 
-	else if (daqType == 1) {		
-		globalFrameServer = new DAQFrameServer(new DtFlyP(), 5, feType, debugLevel);
-	}
-#endif
-#ifdef __PFP_KX7__
 	else if (daqType == 2) {		
 		globalFrameServer = new DAQFrameServer(new PFP_KX7(), 0, NULL, debugLevel);
 	}
-#endif
-	
 
 	pollSocket(listeningSocket, globalFrameServer);	
 	close(listeningSocket);	

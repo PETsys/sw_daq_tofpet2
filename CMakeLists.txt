@@ -18,17 +18,9 @@ set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
 set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
 endif()
 
-check_include_files( "pfp_api.h" HAVE_PFP_KX7 )
+set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp"  "src/raw_data/shm_raw.cpp" )
 
-set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/raw_data/shm_raw.cpp" )
-if(HAVE_PFP_KX7)
-	set( DAQD_SOURCES ${DAQD_SOURCES} "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp" )
-	set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -D__PFP_KX7__" )
-endif()
 add_executable("daqd" ${DAQD_SOURCES})
-if(HAVE_PFP_KX7)
-	target_link_libraries (daqd -lpfp_kx7_api -lwdapi1160 )
-endif()
 add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp")
 
 execute_process(COMMAND root-config --incdir OUTPUT_VARIABLE ROOT_INCDIR)

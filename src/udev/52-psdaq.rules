@@ -1,0 +1,2 @@
+KERNEL=="psdaq*", MODE="0666"
+
