@@ -21,8 +21,6 @@
 
 #include "psdaq.h"
 
-// https://github.com/subrahhmanya/pci-chardev/blob/master/pci-char.c
-
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ricardo Bugalho rbugalho at petsyselectronics dot com");
 MODULE_DESCRIPTION("PETsys DAQ driver");
