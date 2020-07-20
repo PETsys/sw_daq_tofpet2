@@ -59,6 +59,8 @@ daqd.openRawAcquisition(args.fileNamePrefix)
 activeAsics = daqd.getActiveAsics()
 activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(64) for portID, slaveID, chipID in activeAsics ]
 
+asicsConfig = daqd.getAsicsConfig()
+
 if args.paramTable is None:
         daqd.acquire(args.time, 0, 0)
 else:
