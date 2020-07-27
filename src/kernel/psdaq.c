@@ -24,8 +24,6 @@
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ricardo Bugalho rbugalho at petsyselectronics dot com");
 MODULE_DESCRIPTION("PETsys DAQ driver");
-// module_param(i_foo, int, 0444);                   // Module parameter, unused
-// MODULE_PARM_DESC(i_foo, "foo frequency");         // unused
 
 
 const static struct
@@ -120,7 +118,6 @@ static int __init psdaq_init(void)
 		err = PTR_ERR(psdaq_dev_class);
 		return err;
 	}
-//	psdaq_dev_class->devnode = psdaq_dev_t_devnode;
 	psdaq_dev_class->dev_uevent = psdaq_dev_uevent;
 
 	err = pci_register_driver(&psdaq_driver);
@@ -141,36 +138,12 @@ static void __exit psdaq_exit(void)
 
 
 #define WRITE_BAR0_REG(reg, val) writel(val, psdaq_dev->bar[0].addr + 4*reg)
-static void psdaq_initcard(struct psdaq_dev_t *psdaq_dev)
+static void psdaq_initcard(struct pci_dev *pdev, struct psdaq_dev_t *psdaq_dev)
 { 
-	u32 tmpreg;
-
-	psdaq_dev->tlp_size = 128; // Minimum TLP size
 	psdaq_dev->tlp_count = MAX_TLP_COUNT;
+	psdaq_dev->tlp_size = pcie_get_mps(pdev);
 	
-	tmpreg = READ_BAR0_REG(16);
- 	switch (tmpreg>>16) {
- 		case 1:	psdaq_dev->tlp_size = 256;
-	 		break;
-
- 		case 2:	psdaq_dev->tlp_size = 512;
-	 		break;
-
- 		case 3:	psdaq_dev->tlp_size = 1024;
- 			break;
-
- 		case 4:	psdaq_dev->tlp_size = 2048;
-	 		break;
-
- 		case 5:	psdaq_dev->tlp_size = 4096;
-	 		break;
-
- 		default:break;
- 	}
-	// Limit TLP size to tested values
 	if(psdaq_dev->tlp_size > MAX_TLP_SIZE) psdaq_dev->tlp_size = MAX_TLP_SIZE;	
- 	printk("DLTRSSTAT returned %x, setting TLP size to %uB and TLP count to %u\n", tmpreg, (unsigned)(psdaq_dev->tlp_size), (unsigned)(psdaq_dev->tlp_count));
-	
 
 	WRITE_BAR0_REG(0, 1);                   // Write: DCSR (offset 0) with value of 1 (Reset Device)
 	WRITE_BAR0_REG(0, 0);                   // Write: DCSR (offset 0) with value of 0 (Make Active)
@@ -246,7 +219,7 @@ static int psdaq_dev_probe( struct pci_dev *pdev,  const struct pci_device_id *i
 	psdaq_dev->dma_fill = 0;
 	psdaq_dev->dma_used = 0;
 
-	psdaq_initcard(psdaq_dev);
+	psdaq_initcard(pdev, psdaq_dev);
 
 	/* Get device number range */
 	err = alloc_chrdev_region(&psdaq_dev->dev, psdaq_dev->dev_index, 1, "psdaq");
