@@ -42,6 +42,7 @@ using namespace PETSYS;
 
 static const unsigned DMA_TRANS_BYTE_SIZE = 262144;  // max for USER_FIFO_THRESHOLD 262128
 static const unsigned BUFFER_SIZE = DMA_TRANS_BYTE_SIZE / 8;
+static const unsigned N_BUFFER = 8;
 
 PFP_KX7::PFP_KX7()
 {
@@ -106,7 +107,12 @@ PFP_KX7::PFP_KX7()
  	ReadAndCheck(base_addr0 + rxWrPointerReg * 4 , &rxRdPointer, 1);
  	WriteAndCheck(base_addr0 + rxRdPointerReg * 4 , &rxRdPointer, 1);
 
-	bufferSet = new uint64_t[2*BUFFER_SIZE]; 
+	bufferSet = new dma_buffer_t[N_BUFFER];
+	for(unsigned k = 0; k < N_BUFFER; k++) {
+		bufferSet[k].data = new uint64_t[BUFFER_SIZE];
+		bufferSet[k].consumed = bufferSet[k].filled = 0;
+	}
+
 	pthread_mutex_init(&bufferSetMutex, NULL);
 	pthread_cond_init(&bufferSetCondFilled, NULL);
 	pthread_cond_init(&bufferSetCondConsumed, NULL);
@@ -117,6 +123,9 @@ PFP_KX7::PFP_KX7()
 PFP_KX7::~PFP_KX7()
 {
 	setAcquistionOnOff(false);
+	for(unsigned k = 0; k < N_BUFFER; k++) {
+		delete [] bufferSet[k].data ;
+	}
 	delete [] bufferSet;
 	close(fd);
 }
@@ -147,28 +156,28 @@ int PFP_KX7::getWords(uint64_t *buffer, int count)
 				continue;
 			}
 			
-			unsigned index = bufferSetRdPtr & 0x1;
+			unsigned index = bufferSetRdPtr % N_BUFFER;
 			pthread_mutex_unlock(&bufferSetMutex);
-			currentBuffer = bufferSet + (index * BUFFER_SIZE) ;
-			currentBufferConsumed = 0;
-		} 
-		else if(currentBufferConsumed == BUFFER_SIZE) {
+			currentBuffer = bufferSet + index;
+		}
+		else if(currentBuffer->consumed == currentBuffer->filled) {
 			// We have a buffer but it's exausted
 			
 			currentBuffer = NULL;
 			
 			pthread_mutex_lock(&bufferSetMutex);
-			bufferSetRdPtr = (bufferSetRdPtr + 1) & 0x3;
+			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
 			pthread_mutex_unlock(&bufferSetMutex);
 			pthread_cond_signal(&bufferSetCondConsumed);
 			continue;
 			
 		}
 		
-		unsigned index = bufferSetRdPtr & 0x1;
-		int c2 = ((count - r)  < (BUFFER_SIZE - currentBufferConsumed)) ? (count - r) : (BUFFER_SIZE - currentBufferConsumed);
-		memcpy((buffer + r), currentBuffer + currentBufferConsumed, c2 * sizeof(uint64_t));
-		currentBufferConsumed += c2;
+		ssize_t missing = count - r;
+		ssize_t available = currentBuffer->filled - currentBuffer->consumed;
+		int c2 = (missing  < available) ? missing : available;
+		memcpy((buffer + r), currentBuffer->data + currentBuffer->consumed, c2 * sizeof(uint64_t));
+		currentBuffer->consumed += c2;
 		r += c2;
 	}
 	return r;
@@ -283,9 +292,8 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 			fprintf(stderr,"worker terminated...\n");
 			return NULL;
 		}
-		
-		
-		bool full = ((p->bufferSetWrPtr & 0x1) == (p->bufferSetRdPtr & 0x1)) && ((p->bufferSetWrPtr & 0x2) != (p->bufferSetRdPtr & 0x2));
+
+		bool full = ((p->bufferSetWrPtr % N_BUFFER) == (p->bufferSetRdPtr % N_BUFFER)) && (p->bufferSetWrPtr != p->bufferSetRdPtr);
 		if(full) {
 			// We're full, wait for signal and then re-check
 			pthread_cond_wait(&p->bufferSetCondConsumed, &p->bufferSetMutex);
@@ -293,19 +301,17 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 			continue;
 		}
 		
-		unsigned index = p->bufferSetWrPtr & 0x1;
-		uint64_t *buffer = p->bufferSet + (BUFFER_SIZE*index);
-		
+		unsigned index = p->bufferSetWrPtr % N_BUFFER;
+		dma_buffer_t *buffer = p->bufferSet + index;
+
 		pthread_mutex_unlock(&p->bufferSetMutex);
-		int c = 0;
-		while(c < BUFFER_SIZE) {
-			int r = read(p->fd, buffer, (BUFFER_SIZE - c) * sizeof(uint64_t));
-			assert(r >= 0);
-			c += r / sizeof(uint64_t);
-		}
-		
+		int r = read(p->fd, buffer->data, BUFFER_SIZE * sizeof(uint64_t));
+		assert(r >= 0);
+		buffer->filled = r / sizeof(uint64_t);
+		buffer->consumed = 0;
+
 		pthread_mutex_lock(&p->bufferSetMutex);
-		p->bufferSetWrPtr = (p->bufferSetWrPtr + 1) & 0x3;
+		p->bufferSetWrPtr = (p->bufferSetWrPtr + 1) % (2*N_BUFFER);
 		pthread_mutex_unlock(&p->bufferSetMutex);
 		pthread_cond_signal(&p->bufferSetCondFilled);
 	}
@@ -329,7 +335,10 @@ int PFP_KX7::setAcquistionOnOff(bool enable)
 		if(!bufferSetThreadValid) {
 			bufferSetWrPtr = 0;
 			bufferSetRdPtr = 0;
-			currentBufferConsumed = BUFFER_SIZE;
+			currentBuffer = NULL;
+			for(unsigned k = 0; k < N_BUFFER; k++) {
+				bufferSet[k].consumed = bufferSet[k].filled = 0;
+			}
 			bufferSetThreadStop = false;
 			pthread_create(&bufferSetThread, NULL, bufferSetThreadRoutine, (void *)this);
 			bufferSetThreadValid = true;

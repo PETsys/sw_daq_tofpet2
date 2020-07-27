@@ -60,8 +60,13 @@ private:
 	int dma_fd;
 	void *map_base;
 	
+	struct dma_buffer_t {
+		uint64_t *data;
+		ssize_t filled;
+		ssize_t consumed;
+	};
 	
-	uint64_t *bufferSet;
+	dma_buffer_t *bufferSet;
 	unsigned bufferSetWrPtr;
 	unsigned bufferSetRdPtr;
 	pthread_mutex_t bufferSetMutex;
@@ -73,8 +78,7 @@ private:
 	bool bufferSetThreadStop;
 	static void * bufferSetThreadRoutine(void * arg);
 
-	uint64_t *currentBuffer;
-	unsigned currentBufferConsumed;
+	dma_buffer_t *currentBuffer;
 
 	int WriteWithoutCheck(int reg, uint32_t *data, int count);
 	int WriteAndCheck(int reg, uint32_t *data, int count);
