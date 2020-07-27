@@ -124,6 +124,15 @@ PFP_KX7::~PFP_KX7()
 
 int PFP_KX7::getWords(uint64_t *buffer, int count)
 {
+	if(!bufferSetThreadValid) {
+		// TODO:
+		// DAQFrameServer tries to read data even before the acquisiton has been started
+		// In such case, sleep a bit and then return 0 words
+		// But this should be fixed in DAQFrameServer later
+		usleep(100000);
+		return 0;
+	}
+	
 	int r = 0;
 	while(r < count) {
 		if(currentBuffer == NULL) {
@@ -271,6 +280,7 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 		if (p->bufferSetThreadStop) {
 			// Time to quit
 			pthread_mutex_unlock(&p->bufferSetMutex);
+			fprintf(stderr,"worker terminated...\n");
 			return NULL;
 		}
 		
@@ -299,7 +309,7 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 		pthread_mutex_unlock(&p->bufferSetMutex);
 		pthread_cond_signal(&p->bufferSetCondFilled);
 	}
-	
+	fprintf(stderr,"worker terminated...\n");
 	return NULL;
 }
 
