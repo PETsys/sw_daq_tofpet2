@@ -65,6 +65,7 @@ configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
 configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 configure_file("src/gui/start_gui" "start_gui" COPYONLY)
+configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade")
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})

@@ -32,7 +32,7 @@ import numpy as np
 class GUI:
     def __init__ (self):
         self.builder = Gtk.Builder()
-        self.builder.add_from_file('src/gui/gui_layout.glade')
+        self.builder.add_from_file('gui/gui_layout.glade')
         
         self.MainWindow = self.builder.get_object("MainWindow")
 
