@@ -79,9 +79,8 @@ struct bar_t {
 	void __iomem *addr;
 };
 
-#define MAX_TLP_COUNT 512
-#define MAX_TLP_SIZE 128
-#define BUF_SIZE (MAX_TLP_COUNT * MAX_TLP_SIZE)
+#define MAX_TLP_SIZE 256
+#define BUF_SIZE 262144
 
 /* Private structure */
 struct psdaq_dev_t {
@@ -140,10 +139,11 @@ static void __exit psdaq_exit(void)
 #define WRITE_BAR0_REG(reg, val) writel(val, psdaq_dev->bar[0].addr + 4*reg)
 static void psdaq_initcard(struct pci_dev *pdev, struct psdaq_dev_t *psdaq_dev)
 { 
-	psdaq_dev->tlp_count = MAX_TLP_COUNT;
 	psdaq_dev->tlp_size = pcie_get_mps(pdev);
-	
+	// Cap TLP size to tested values
 	if(psdaq_dev->tlp_size > MAX_TLP_SIZE) psdaq_dev->tlp_size = MAX_TLP_SIZE;	
+
+	psdaq_dev->tlp_count = BUF_SIZE / psdaq_dev->tlp_size;
 
 	WRITE_BAR0_REG(0, 1);                   // Write: DCSR (offset 0) with value of 1 (Reset Device)
 	WRITE_BAR0_REG(0, 0);                   // Write: DCSR (offset 0) with value of 0 (Make Active)
@@ -321,32 +321,28 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 	struct psdaq_dev_t *psdaq_dev = file->private_data;
 
 	int err;
-	size_t rc = 0;
 	size_t available, n;
-	while(rc < count) {
-		if (psdaq_dev->dma_used == psdaq_dev->dma_fill) {
-			WRITE_BAR0_REG(0, 1);            // Write: DCSR (offset 0) with value of 1 (Reset Device)
-			WRITE_BAR0_REG(0, 0);            // Write: DCSR (offset 0) with value of 0 (Make Active)
-			WRITE_BAR0_REG(1, 0x00000001);   // Start DMA
-		
-			do {
-				udelay(2);
-			} while((READ_BAR0_REG(1) & 0x100) == 0);
+	if (psdaq_dev->dma_used == psdaq_dev->dma_fill) {
+		WRITE_BAR0_REG(0, 1);            // Write: DCSR (offset 0) with value of 1 (Reset Device)
+		WRITE_BAR0_REG(0, 0);            // Write: DCSR (offset 0) with value of 0 (Make Active)
+		WRITE_BAR0_REG(1, 0x00000001);   // Start DMA
+	
+		do {
+			udelay(2);
+		} while((READ_BAR0_REG(1) & 0x100) == 0);
 
-			psdaq_dev->dma_used = 0;
-			psdaq_dev->dma_fill = psdaq_dev->tlp_count * psdaq_dev->tlp_size;
-		}
-
-
-
-		available = psdaq_dev->dma_fill - psdaq_dev->dma_used;
-		n = (count - rc) < available ? (count - rc) : available;
-		err = copy_to_user(buf+rc, (psdaq_dev->dma_buf)+(psdaq_dev->dma_used), n);
-		if(err) return -EFAULT;
-		psdaq_dev->dma_used += n;
-		rc += n;
+		psdaq_dev->dma_used = 0;
+		psdaq_dev->dma_fill = psdaq_dev->tlp_count * psdaq_dev->tlp_size;
 	}
-	return rc;
+
+
+
+	available = psdaq_dev->dma_fill - psdaq_dev->dma_used;
+	n = (count  < available) ? count : available;
+	err = copy_to_user(buf, (psdaq_dev->dma_buf)+(psdaq_dev->dma_used), n);
+	if(err) return -EFAULT;
+	psdaq_dev->dma_used += n;
+	return n;
 }
 
 static ssize_t psdaq_file_write (struct file *file, __user const char *buf, size_t count, loff_t *off)
