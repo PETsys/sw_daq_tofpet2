@@ -5,7 +5,6 @@ from petsys import daqd, config
 from copy import deepcopy
 import argparse
 from time import sleep, time
-import ROOT
 from sys import stdout
 
 parser = argparse.ArgumentParser(description='Acquire data for threshold calibration')
