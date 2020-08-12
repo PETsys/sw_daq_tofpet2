@@ -1,8 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-from petsys import daqd, config
-from petsys.config import normalizeAndSplit
 
 from copy import deepcopy
 import argparse
@@ -10,7 +7,7 @@ from time import sleep
 import ROOT
 from sys import stdout, argv
 from math import sqrt
-
+import re
 
 # Create the S-Curve function
 fSigmoid = ROOT.TF1("fSigmoid","[0]*ROOT::Math::normal_cdf(x,[1],[2])",0,64);
@@ -19,6 +16,15 @@ fSigmoid.SetParName(1, "#sigma")
 fSigmoid.SetParName(2, "x0")
 fSigmoid.SetNpx(64)
 
+def normalizeAndSplit(l):
+	l = re.sub("\s*#.*", "", l)	# Remove comments
+	l = re.sub('^\s*', '', l)	# Remove leading white space
+	l = re.sub('\s*$', '', l)	# Remove trailing whitespace
+	l = re.sub('\s+', '\t', l)	# Normalize whitespace to tabs
+	l = re.sub('\r', '', l)		# Remove \r
+	l = re.sub('\n', '', l)		# Remove \l
+	l = l.split('\t')
+	return l
 
 def getBaselineAndNoise(profile):
 	low = profile.GetBinCenter(profile.FindFirstBinAbove(0.1)) - 0.5
@@ -39,7 +45,7 @@ def getBaselineAndNoise(profile):
 			zero= f.GetParameter(2)
 			noise = f.GetParameter(1)
 	else:
-		print "WARNING: No fit for %s" % profile.GetName()
+		print("WARNING: No fit for %s" % profile.GetName())
 		zero = (low+high)/2.0
 		noise = 0.05
 
@@ -80,7 +86,7 @@ def main(argv):
 
 	baselineSettings = {}
 	activeChannels = set()
-        activeChips = set()
+	activeChips = set()
 	inputFile = open(args.inputFilePrefix + "_baseline.tsv")
 	for line in inputFile:
 		line = normalizeAndSplit(line)
@@ -88,16 +94,16 @@ def main(argv):
 		portID, slaveID, chipID, channelID, baseline_T, baseline_E = [ int(v) for v in line ]
 		baselineSettings[(portID, slaveID, chipID, channelID)] = (baseline_T, baseline_E)
 		activeChannels.add((portID, slaveID, chipID, channelID))
-                activeChips.add((portID, slaveID, chipID))
+		activeChips.add((portID, slaveID, chipID))
 	inputFile.close()
 
 	activeChannels = [ x for x in activeChannels ] # Convert to list
 	activeChannels.sort() # and sort the list
 
-        activeChips = [ x for x in activeChips ] # Convert to list
+	activeChips = [ x for x in activeChips ] # Convert to list
 	activeChips.sort() # and sort the list
-        
-        print activeChips
+
+	print(activeChips)
 
 	noiseProfiles = {}
 	for portID, slaveID, chipID, channelID in activeChannels:
@@ -146,7 +152,7 @@ def main(argv):
 	fields += [ "zero_T1", "zero_T2", "zero_E" ]
 	fields += [ "noise_T1", "noise_T2", "noise_E" ]
 	
-	print outFile.write("# " + ('\t').join(fields) + '\n')
+	print(outFile.write("# " + ('\t').join(fields) + '\n'))
 	
 	
 	gbaseline_T = {} 
@@ -162,14 +168,14 @@ def main(argv):
 
 	nPoints = {}
 	for portID, slaveID, chipID in activeChips:
-                gbaseline_T[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gbaseline_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gzero_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gzero_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gzero_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gnoise_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gnoise_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
-                gnoise_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gbaseline_T[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gbaseline_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gzero_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gzero_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gzero_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gnoise_T1[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gnoise_T2[(portID, slaveID, chipID)] = ROOT.TGraph(64)
+		gnoise_E[(portID, slaveID, chipID)] = ROOT.TGraph(64)
 		nPoints[(portID, slaveID, chipID)] = 0
 	
 
@@ -177,8 +183,8 @@ def main(argv):
 	for portID, slaveID, chipID, channelID in activeChannels:
 
 		baseline_T, baseline_E = baselineSettings[(portID, slaveID, chipID, channelID)] 
-		print "**** A", (portID, slaveID, chipID), gbaseline_T[(portID, slaveID, chipID)]
-		print "**** B", nPoints[(portID, slaveID, chipID)]
+		print("**** A", (portID, slaveID, chipID), gbaseline_T[(portID, slaveID, chipID)])
+		print("**** B", nPoints[(portID, slaveID, chipID)])
 		gbaseline_T[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, baseline_T)
 		gbaseline_E[(portID, slaveID, chipID)].SetPoint(nPoints[(portID, slaveID, chipID)],channelID, baseline_E)
 		
@@ -215,102 +221,102 @@ def main(argv):
 		gnoise_T2[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
 		gnoise_E[(portID, slaveID, chipID)].Set(nPoints[(portID, slaveID, chipID)])
 	
-        for portID, slaveID, chipID in activeChips:
-                c1 = ROOT.TCanvas()
-                multi1 = ROOT.TMultiGraph()
-                multi2 = ROOT.TMultiGraph()
-                multi3 = ROOT.TMultiGraph()
-                c1.Divide(2,2)
+	for portID, slaveID, chipID in activeChips:
+		c1 = ROOT.TCanvas()
+		multi1 = ROOT.TMultiGraph()
+		multi2 = ROOT.TMultiGraph()
+		multi3 = ROOT.TMultiGraph()
+		c1.Divide(2,2)
 
 
-                c1.cd(1)
-                gbaseline_T[(portID, slaveID, chipID)].SetMarkerColor(1)
-                gbaseline_T[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gbaseline_T[(portID, slaveID, chipID)].SetMarkerStyle(2)
-          
-                
-                gbaseline_E[(portID, slaveID, chipID)].SetMarkerColor(2)
-                gbaseline_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gbaseline_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
-          
-                multi1.SetMaximum(64)
-                multi1.SetMinimum(0)
-                multi1.SetTitle("Baseline")
-                multi1.Add(gbaseline_T[(portID, slaveID, chipID)])
-                multi1.Add(gbaseline_E[(portID, slaveID, chipID)])
-                multi1.Draw("AP")
-                multi1.GetXaxis().SetTitle("Channel")
-                multi1.GetYaxis().SetTitle("DAC Units")
+		c1.cd(1)
+		gbaseline_T[(portID, slaveID, chipID)].SetMarkerColor(1)
+		gbaseline_T[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gbaseline_T[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
-                leg1 = ROOT.TLegend(0.75,0.45,0.89,0.55)
-                leg1.AddEntry(gbaseline_T[(portID, slaveID, chipID)],"t1 and t2","p");
-                leg1.AddEntry(gbaseline_E[(portID, slaveID, chipID)],"E","p");                
-                leg1.Draw()
 
-                c1.cd(2)
-                gzero_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
-                gzero_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gzero_T1[(portID, slaveID, chipID)].SetMarkerStyle(2)
+		gbaseline_E[(portID, slaveID, chipID)].SetMarkerColor(2)
+		gbaseline_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gbaseline_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
+
+		multi1.SetMaximum(64)
+		multi1.SetMinimum(0)
+		multi1.SetTitle("Baseline")
+		multi1.Add(gbaseline_T[(portID, slaveID, chipID)])
+		multi1.Add(gbaseline_E[(portID, slaveID, chipID)])
+		multi1.Draw("AP")
+		multi1.GetXaxis().SetTitle("Channel")
+		multi1.GetYaxis().SetTitle("DAC Units")
+
+		leg1 = ROOT.TLegend(0.75,0.45,0.89,0.55)
+		leg1.AddEntry(gbaseline_T[(portID, slaveID, chipID)],"t1 and t2","p");
+		leg1.AddEntry(gbaseline_E[(portID, slaveID, chipID)],"E","p");
+		leg1.Draw()
+
+		c1.cd(2)
+		gzero_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
+		gzero_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gzero_T1[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
 		gzero_T2[(portID, slaveID, chipID)].SetMarkerColor(4)
-                gzero_T2[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gzero_T2[(portID, slaveID, chipID)].SetMarkerStyle(2)
+		gzero_T2[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gzero_T2[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
 		gzero_E[(portID, slaveID, chipID)].SetMarkerColor(2)
-                gzero_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gzero_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
-                 
-             
-                
-                multi2.Add(gzero_T1[(portID, slaveID, chipID)])
-                multi2.Add(gzero_T2[(portID, slaveID, chipID)])
-                multi2.Add(gzero_E[(portID, slaveID, chipID)])
-                multi2.SetMaximum(64)
-                multi2.SetMinimum(0)
-                multi2.SetTitle("Zero")
+		gzero_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gzero_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
+			
 
-                multi2.Draw("AP")
-                multi2.GetXaxis().SetTitle("Channel")
-                multi2.GetYaxis().SetTitle("DAC Units")
 
-                leg2 = ROOT.TLegend(0.75,0.425,0.89,0.575)
-                leg2.AddEntry(gzero_T1[(portID, slaveID, chipID)],"t1","p");
-                leg2.AddEntry(gzero_T2[(portID, slaveID, chipID)],"t2","p");
-                leg2.AddEntry(gzero_E[(portID, slaveID, chipID)],"E","p");
-                leg2.Draw()
-                
-                c1.cd(3)
-                gnoise_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
-                gnoise_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gnoise_T1[(portID, slaveID, chipID)].SetMarkerStyle(2)
+		multi2.Add(gzero_T1[(portID, slaveID, chipID)])
+		multi2.Add(gzero_T2[(portID, slaveID, chipID)])
+		multi2.Add(gzero_E[(portID, slaveID, chipID)])
+		multi2.SetMaximum(64)
+		multi2.SetMinimum(0)
+		multi2.SetTitle("Zero")
+
+		multi2.Draw("AP")
+		multi2.GetXaxis().SetTitle("Channel")
+		multi2.GetYaxis().SetTitle("DAC Units")
+
+		leg2 = ROOT.TLegend(0.75,0.425,0.89,0.575)
+		leg2.AddEntry(gzero_T1[(portID, slaveID, chipID)],"t1","p");
+		leg2.AddEntry(gzero_T2[(portID, slaveID, chipID)],"t2","p");
+		leg2.AddEntry(gzero_E[(portID, slaveID, chipID)],"E","p");
+		leg2.Draw()
+
+		c1.cd(3)
+		gnoise_T1[(portID, slaveID, chipID)].SetMarkerColor(1)
+		gnoise_T1[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gnoise_T1[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
 		gnoise_T2[(portID, slaveID, chipID)].SetMarkerColor(4)
-                gnoise_T2[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gnoise_T2[(portID, slaveID, chipID)].SetMarkerStyle(2)
+		gnoise_T2[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gnoise_T2[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
 		gnoise_E[(portID, slaveID, chipID)].SetMarkerColor(2)
-                gnoise_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
-                gnoise_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
-               
-                multi3.Add(gnoise_T1[(portID, slaveID, chipID)])
-                multi3.Add(gnoise_T2[(portID, slaveID, chipID)])
-                multi3.Add(gnoise_E[(portID, slaveID, chipID)])
-                multi3.SetMaximum(4)
-                multi3.SetMinimum(0)
-                multi3.SetTitle("Noise")
-                multi3.Draw("AP")
-                multi3.GetYaxis().SetTitle("DAC Units")
-                multi3.GetXaxis().SetTitle("Channel")
+		gnoise_E[(portID, slaveID, chipID)].SetMarkerSize(0.6)
+		gnoise_E[(portID, slaveID, chipID)].SetMarkerStyle(2)
 
-                leg3 = ROOT.TLegend(0.75,0.74,0.89,0.89)
-                leg3.AddEntry(gnoise_T1[(portID, slaveID, chipID)],"t1","p");
-                leg3.AddEntry(gnoise_T2[(portID, slaveID, chipID)],"t2","p");
-                leg3.AddEntry(gnoise_E[(portID, slaveID, chipID)],"E","p");
-                leg3.Draw()
-               
-                plotName = "%s_%02d_%02d_%02d.pdf" % (args.inputFilePrefix, portID, slaveID, chipID)
-        
-                c1.SaveAs(plotName)
+		multi3.Add(gnoise_T1[(portID, slaveID, chipID)])
+		multi3.Add(gnoise_T2[(portID, slaveID, chipID)])
+		multi3.Add(gnoise_E[(portID, slaveID, chipID)])
+		multi3.SetMaximum(4)
+		multi3.SetMinimum(0)
+		multi3.SetTitle("Noise")
+		multi3.Draw("AP")
+		multi3.GetYaxis().SetTitle("DAC Units")
+		multi3.GetXaxis().SetTitle("Channel")
+
+		leg3 = ROOT.TLegend(0.75,0.74,0.89,0.89)
+		leg3.AddEntry(gnoise_T1[(portID, slaveID, chipID)],"t1","p");
+		leg3.AddEntry(gnoise_T2[(portID, slaveID, chipID)],"t2","p");
+		leg3.AddEntry(gnoise_E[(portID, slaveID, chipID)],"E","p");
+		leg3.Draw()
+
+		plotName = "%s_%02d_%02d_%02d.pdf" % (args.inputFilePrefix, portID, slaveID, chipID)
+
+		c1.SaveAs(plotName)
 
 
 
