@@ -399,7 +399,6 @@ void calibrateAsic(
 		if(bMax100 == -1) bMax100 = nBins;
 		bMax100 = (bMax100 > 1) ? bMax100 : 1;
 		bMax100 = (bMax100 < (nBins-1)) ? bMax100 : (nBins-1);
-		fprintf(stderr, "limits %d %d %d\n", bMin, bMax, bMax100);
 		float xMax100 = pFine->GetBinLowEdge(bMax100+1);
 
 		// Clear entry 
