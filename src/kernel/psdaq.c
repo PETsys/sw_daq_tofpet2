@@ -325,7 +325,7 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 	if (psdaq_dev->dma_used == psdaq_dev->dma_fill) {
 		WRITE_BAR0_REG(0, 1);            // Write: DCSR (offset 0) with value of 1 (Reset Device)
 		WRITE_BAR0_REG(0, 0);            // Write: DCSR (offset 0) with value of 0 (Make Active)
-		WRITE_BAR0_REG(1, 0x00000001);   // Start DMA
+		WRITE_BAR0_REG(1, 0x00800080 | 0x00000001);   // Start DMA
 	
 		do {
 			udelay(2);
