@@ -62,7 +62,6 @@ configure_file("src/petsys_util/read_communication_counters" "read_communication
 configure_file("src/petsys_util/check_asic_links" "check_asic_links" COPYONLY)
 configure_file("src/petsys_util/change_calibration_topology" "change_calibration_topology" COPYONLY)
 configure_file("src/petsys_util/acquire_fetp_scan" "acquire_fetp_scan" COPYONLY)
-configure_file("src/petsys_util/quick_asic_scan" "quick_asic_scan" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 configure_file("src/gui/start_gui" "start_gui" COPYONLY)
 configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade")
@@ -105,5 +104,3 @@ target_link_libraries("print_raw" common)
 add_executable("merge_raw" "src/petsys_util/merge_raw.cpp" )
 target_link_libraries("merge_raw" common)
 
-add_executable("analyze_asic_quick_scan" "src/petsys_util/analyze_asic_quick_scan.cpp" )
-target_link_libraries("analyze_asic_quick_scan" common)
