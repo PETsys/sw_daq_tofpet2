@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
@@ -9,7 +9,7 @@ import sys
 
 def add_calibration_from_rom(connection, portID, slaveID, outputFile):
 	data = connection.read_hv_m95256(portID, slaveID, 0x0000, 8)
-	if data != "PETSYS  ":
+	if data != b"PETSYS  ":
 		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) PROM does  not contain a calibration table\n" % (portID, slaveID))
 		exit(1)
 	
@@ -84,7 +84,7 @@ def main():
 		if connection.getBiasType(portID, slaveID) == 1:
 			continue
 
-		print "FEB/D (%2d, %2d) has calibration PROM" % (portID, slaveID)
+		print("FEB/D (%2d, %2d) has calibration PROM" % (portID, slaveID))
 		add_calibration_from_rom(connection, portID, slaveID, outputFile)
 		febd_calibration_type[(portID, slaveID)] = "ROM"
 		
@@ -93,23 +93,23 @@ def main():
 	for i in range(len(args.filename)):
 		portID = args.port[i]
 		slaveID = args.slave[i]
-		if (portID, slaveID) not in febd_calibration_type.keys():
+		if (portID, slaveID) not in list(febd_calibration_type.keys()):
 			sys.stderr.write("WARNING: Loading calibration table for FEB/D (%2d, %2d) which is not present in the system.\n" % (portID, slaveID))
 			
 		elif febd_calibration_type[(portID, slaveID)] == "ROM":
 			sys.stderr.write("ERROR: Calibration file specified for FEB/D (%2d, %2d) but this FEB/D has a calibration ROM.\n" % (portID, slaveID))
 			exit(1)
 			
-		print 'Reading calibration table "%s" for FEB/D (%d, %d)' % (args.filename[i], portID, slaveID)
+		print('Reading calibration table "%s" for FEB/D (%d, %d)' % (args.filename[i], portID, slaveID))
 		table = config.readBiasCalibrationTable_table(args.filename[i])
 		
-		for (_port, _slave, channelID), data in table.items():
+		for (_port, _slave, channelID), data in list(table.items()):
 			for dac_set, v_meas, adc_meas in data:
 				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, channelID, dac_set, v_meas, 0))
 		
 		febd_calibration_type[(portID, slaveID)] = "FILE"
 	
-	for portID, slaveID in febd_calibration_type.keys():
+	for portID, slaveID in list(febd_calibration_type.keys()):
 		if febd_calibration_type[(portID, slaveID)] == "NONE":
 			sys.stderr.write("ERROR: FEB/D (%2d, %2d) is present but no calibration file has been specified.\n" % (portID, slaveID))
 			exit(1)

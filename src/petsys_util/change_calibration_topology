@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
 from copy import deepcopy
 import argparse
-import ConfigParser
+import configparser
 import os.path
 import os.path
 import subprocess
@@ -22,24 +22,24 @@ args = parser.parse_args()
 topology1 = config.readTopologyMap(args.topology1)
 topology2 = config.readTopologyMap(args.topology2)
 
-configParser1 = ConfigParser.RawConfigParser()
+configParser1 = configparser.RawConfigParser()
 configParser1.read(args.config1)
 cdir1 = os.path.dirname(args.config1)
 
 if args.action == "merge" and args.config2 == None:
-    print "Error: config2 needs to be defined for merging. Exiting..."
+    print("Error: config2 needs to be defined for merging. Exiting...")
     exit(1)
 
 
 if args.action == "merge":
-    configParser2 = ConfigParser.RawConfigParser()
+    configParser2 = configparser.RawConfigParser()
     configParser2.read(args.config2)
     cdir2 = os.path.dirname(args.config2)
 
 
 
 if not os.path.exists(args.output_directory):
-    print "Error: Output directory doesn't exit. Exiting..."
+    print("Error: Output directory doesn't exit. Exiting...")
     exit(1)
 
 
@@ -47,16 +47,16 @@ subprocess.call("cp %s %s " % (args.config1,args.output_directory), shell=True)
 
 if args.action == "reorder":
     for portID2, slaveID2, chipID2 in topology2:
-        prev_position = [pos for pos,serialID in topology1.iteritems() if serialID == topology2[(portID2, slaveID2, chipID2)] ]
+        prev_position = [pos for pos,serialID in topology1.items() if serialID == topology2[(portID2, slaveID2, chipID2)] ]
         if  prev_position == []:
-            print "Error: FEB/A #%s not present in previous calibration topology. Impossible to reorder. Exiting..." %  topology2[(portID2, slaveID2, chipID2)][0]
+            print("Error: FEB/A #%s not present in previous calibration topology. Impossible to reorder. Exiting..." %  topology2[(portID2, slaveID2, chipID2)][0])
             exit(1)
 
     
 if args.action == "merge":
     for portID1, slaveID1, chipID1 in topology1:
             if (portID1, slaveID1, chipID1) in topology2: 
-                print "Error: Repeated position (%d %d %d) in both topology lists. Impossible to merge. Exiting..." % (portID1, slaveID1, chipID1) 
+                print("Error: Repeated position (%d %d %d) in both topology lists. Impossible to merge. Exiting..." % (portID1, slaveID1, chipID1)) 
                 exit(1)
 
 
@@ -65,7 +65,7 @@ for config_type in ["disc_calibration_table", "tdc_calibration_table", "qdc_cali
     fn1 = config.replace_variables(fn1, cdir1)
     fileName = os.path.basename(fn1)
     if not os.path.exists(fn1):
-        print "Warning: %d not found, skipping this calibration file..."
+        print("Warning: %d not found, skipping this calibration file...")
     file1 = open(fn1)
     file3 = open(args.output_directory + "/" + fileName, "w")
     file3.write(file1.readline())

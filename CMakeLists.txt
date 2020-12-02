@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 project(sw_daq_tofpet2)
-find_package(PythonLibs 2.6 REQUIRED)
-find_package(Boost REQUIRED python regex)
+find_package(PythonLibs 3.6 REQUIRED)
+find_package(Boost REQUIRED python3 regex)
 include(CheckIncludeFiles)
 
 include_directories(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})

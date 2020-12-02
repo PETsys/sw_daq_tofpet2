@@ -3,15 +3,15 @@
 ## @package daqd
 # Handles interaction with the system via daqd
 
-import shm_raw
-import tofpet2b
-import tofpet2c
+from . import shm_raw
+from . import tofpet2b
+from . import tofpet2c
 import socket
 from random import randrange
 import struct
 from time import sleep, time
 from bitarray import bitarray
-import bitarray_utils
+from . import bitarray_utils
 import math
 import subprocess
 from sys import stdout
@@ -23,7 +23,7 @@ MAX_CHIPS = 64
 
 # Handles interaction with the system via daqd
 class Connection:
-        ## Constructor
+	## Constructor
 	def __init__(self):
 		socketPath = "/tmp/d.sock"
 		self.__systemFrequency = 200E6
@@ -166,11 +166,11 @@ class Connection:
 	def setTestPulsePLL(self, length, interval, finePhase, invert=False):
 		self.set_test_pulse_febds(length, interval, finePhase, invert)
 
-        ## Sets the properties of the internal FPGA pulse generator
-        # @param length Sets the length of the test pulse, from 1 to 1023 clock cycles. 0 disables the test pulse.
-        # @param interval Sets the interval between test pulses in clock cycles.
-        # @param finePhase Defines the delay of the test pulse in clock cycles.
-        # @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
+	## Sets the properties of the internal FPGA pulse generator
+	# @param length Sets the length of the test pulse, from 1 to 1023 clock cycles. 0 disables the test pulse.
+	# @param interval Sets the interval between test pulses in clock cycles.
+	# @param finePhase Defines the delay of the test pulse in clock cycles.
+	# @param invert Sets the polarity of the test pulse: active low when ``True'' and active high when ``False''
 	def set_test_pulse_febds(self, length, interval, finePhase, invert=False):
 		self.__set_test_pulse(self.getActiveFEBDs(), length, interval, finePhase, invert)
 		
@@ -186,7 +186,7 @@ class Connection:
 		for tacRefreshPeriod_1, tacRefreshPeriod_2 in self.__asicConfigCache_TAC_Refresh:
 			tacRefreshPeriod = 64 * (tacRefreshPeriod_1 + 1) * (tacRefreshPeriod_2 + 1)
 			if interval % tacRefreshPeriod == 0:
-				print "WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d) in some ASICs." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2)
+				print("WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d) in some ASICs." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2))
 		
 		finePhase = int(round(finePhase * 6*56))	# WARNING: This should be firmware dependent..
 	
@@ -259,13 +259,13 @@ class Connection:
 
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
-        # @param maxTries The maximum number of attempts to read a valid dataframe after uploading configuration 
+	# @param maxTries The maximum number of attempts to read a valid dataframe after uploading configuration 
 	def initializeSystem(self, maxTries = 5):
 		# Stop the acquisition, if the system was still acquiring
 		self.__setAcquisitionMode(0)
 
 		activePorts = self.getActivePorts()
-		print "INFO: active units on ports: ", (", ").join([str(x) for x in self.getActivePorts()])
+		print("INFO: active units on ports: ", (", ").join([str(x) for x in self.getActivePorts()]))
 
 		# Disable everything
 		self.setTestPulseNone()
@@ -365,7 +365,7 @@ class Connection:
 			# (b) a distributed trigger
 			# Generate sync in the unit responsible for CLK and TGR
 			portID, slaveID = self.getTriggerUnit()
-			print "INFO: TGR unit is (%2d, %2d)" % (portID, slaveID)
+			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
 			portID, slaveID = self.__triggerUnit
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
@@ -436,8 +436,8 @@ class Connection:
 		for gID in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS):
 			statusTripplet = (asicConfigOK[gID], deserializerStatus[gID], decoderStatus[gID])
 			chipID = gID % MAX_CHIPS
-			slaveID = (gID / MAX_CHIPS) % MAX_SLAVES
-			portID = gID / (MAX_CHIPS * MAX_SLAVES)
+			slaveID = (gID // MAX_CHIPS) % MAX_SLAVES
+			portID = gID // (MAX_CHIPS * MAX_SLAVES)
 
 			if statusTripplet == (True, True, True):
 				# All OK, ASIC is present and OK
@@ -450,7 +450,7 @@ class Connection:
 				inconsistentStateAsics.append(((portID, slaveID, chipID), statusTripplet))
 
 		if inconsistentStateAsics != []:
-			print "WARNING: ASICs with inconsistent presence detection results"
+			print("WARNING: ASICs with inconsistent presence detection results")
 			for portID, slaveID in self.getActiveFEBDs():
 				lst = []
 				for (lPortID, lSlaveID, lChipID), statusTripplet in inconsistentStateAsics:
@@ -458,16 +458,16 @@ class Connection:
 					lst.append((lChipID, statusTripplet))
 				
 				if lst != []:
-					print " FEB/D (%2d, %2d)" % (portID, slaveID)
+					print(" FEB/D (%2d, %2d)" % (portID, slaveID))
 					for chipID, statusTripplet in lst:
 						a, b, c = statusTripplet
 						a = a and "OK" or "FAIL"
 						b = b and "OK" or "FAIL"
 						c = c and "OK" or "FAIL"						
-						print "  ASIC %2d: config link: %4s data link pattern: %4s data word: %4s" % (chipID, a, b, c)
+						print("  ASIC %2d: config link: %4s data link pattern: %4s data word: %4s" % (chipID, a, b, c))
 			
 			if maxTries > 1: 
-				print "Retrying..."
+				print("Retrying...")
 				return self.initializeSystem(maxTries - 1)
 			else:
 				raise ErrorAsicPresenceInconsistent(inconsistentStateAsics)
@@ -490,9 +490,9 @@ class Connection:
 				n = len(lst)
 				lst.sort()
 				lst = (", ").join([str(lChipID) for lChipID in lst])
-				print "INFO: FEB/D (%2d, %2d) has %2d active ASICs: %s" % (portID, slaveID, n, lst)
+				print("INFO: FEB/D (%2d, %2d) has %2d active ASICs: %s" % (portID, slaveID, n, lst))
 			else:
-				print "INFO: FEB/D (%2d, %2d) has 0 active ASICs." % (portID, slaveID)
+				print("INFO: FEB/D (%2d, %2d) has 0 active ASICs." % (portID, slaveID))
 
 		self.__synchronizeDataToConfig()
 		return None
@@ -544,7 +544,7 @@ class Connection:
 	def read_mem_ctrl(self, portID, slaveID, ctrl_id, word_width, base_address, n_words):
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))
 		
-		command = bytearray([ 0x00 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ])
+		command = bytes([ 0x00 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ])
 		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
 
 		assert len(reply) == 2 + (n_words * n_bytes_per_word)
@@ -566,7 +566,7 @@ class Connection:
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))		
 		data_bytes = [ (data[j] >> (8*i)) & 0xFF for i in range(n_bytes_per_word) for j in range(n_words) ]
 		
-		command = bytearray([ 0x01 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ] + data_bytes)
+		command = bytes([ 0x01 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ] + data_bytes)
 		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
 		
 		assert len(reply) == 1
@@ -614,7 +614,7 @@ class Connection:
 			miso_off & 0xFF, (miso_off >> 8) & 0xFF 
 			] + mosi_data
 		
-		return self.sendCommand(portID, slaveID, cfgFunctionID, bytearray(command))
+		return self.sendCommand(portID, slaveID, cfgFunctionID, bytes(command))
 			
 	def __write_hv_ad5535(self, portID, slaveID, channelID, value):
 		chipID = channelID / 32
@@ -723,12 +723,11 @@ class Connection:
 		
 	def read_hv_m95256(self, portID, slaveID, address, n_bytes):
 		# Break down reads into 4 byte chunks due to DAQ
-		rr = ''
+		rr = bytes()
 		for a in range(address, address + n_bytes, 4):
 			count = min([4, address + n_bytes - a])
 			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
 			r = r[1:-1]
-			r = ('').join([chr(x) for x in r ])
 			rr += r
 		return rr
 	
@@ -762,9 +761,9 @@ class Connection:
 	## Sends a command to the FEB/D
 	# @param portID  DAQ port ID where the FEB/D is connected
 	# @param slaveID Slave ID on the FEB/D chain
-        # @param cfgFunctionID Information for the FPGA firmware regarding the type of command being transmitted
+	# @param cfgFunctionID Information for the FPGA firmware regarding the type of command being transmitted
 	# @param payload The actual command to be transmitted
-        # @param maxTries The maximum number of attempts to send the command without obtaining a valid reply   	
+	# @param maxTries The maximum number of attempts to send the command without obtaining a valid reply   	
 	def sendCommand(self, portID, slaveID, cfgFunctionID, payload, maxTries=10):
 		nTries = 0;
 		reply = None
@@ -773,13 +772,13 @@ class Connection:
 			doOnce = False
 
 			nTries = nTries + 1
-			if nTries > 5: print "Timeout sending command. Retry %d of %d" % (nTries, maxTries)
+			if nTries > 5: print("Timeout sending command. Retry %d of %d" % (nTries, maxTries))
 
 			sn = self.__lastSN
 			self.__lastSN = (sn + 1) & 0x7FFF
 
-			rawFrame = bytearray([ portID & 0xFF, slaveID & 0xFF] + [ (sn >> (8*n)) & 0xFF for n in range(16) ] + [ cfgFunctionID]) + payload
-			rawFrame = str(rawFrame)
+			rawFrame = bytes([ portID & 0xFF, slaveID & 0xFF] + [ (sn >> (8*n)) & 0xFF for n in range(16) ] + [ cfgFunctionID]) + payload
+			#rawFrame = str(rawFrame)
 
 			#print [ hex(ord(x)) for x in rawFrame ]
 
@@ -798,11 +797,11 @@ class Connection:
 				continue
 			data = self.__socket.recv(nn)
 			data = data[17:]
-			reply = bytearray(data)
+			reply = bytes(data)
 			
 
 		if reply == None:
-			print reply
+			print(reply)
 			raise CommandErrorTimeout(portID, slaveID)
 
 		return reply	
@@ -811,16 +810,16 @@ class Connection:
 	# @param regNum Identification of the register to be written
 	# @param regValue The value to be written
 	def setSI53xxRegister(self, regNum, regValue):
-		reply = self.sendCommand(0, 0, 0x02, bytearray([0b00000000, regNum]))	
-		reply = self.sendCommand(0, 0, 0x02, bytearray([0b01000000, regValue]))
-		reply = self.sendCommand(0, 0, 0x02, bytearray([0b10000000]))
+		reply = self.sendCommand(0, 0, 0x02, bytes([0b00000000, regNum]))	
+		reply = self.sendCommand(0, 0, 0x02, bytes([0b01000000, regValue]))
+		reply = self.sendCommand(0, 0, 0x02, bytes([0b10000000]))
 		return None
 
 	## Defines all possible commands structure that can be sent to the ASIC and calls for sendCommand to actually transmit the command
-        # @param asicID Identification of the ASIC that will receive the command
+	# @param asicID Identification of the ASIC that will receive the command
 	# @param command Command type to be sent. The list of possible keys for this parameter is hardcoded in this function
-        # @param value The actual value to be transmitted to the ASIC if it applies to the command type   
-        # @param channel If the command is destined to a specific channel, this parameter sets its ID. 	  
+	# @param value The actual value to be transmitted to the ASIC if it applies to the command type   
+	# @param channel If the command is destined to a specific channel, this parameter sets its ID. 	  
 	def __doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None):
 		nTry = 0
 		while True:
@@ -855,7 +854,7 @@ class Connection:
 
 		nBytes = int(math.ceil(len(ccBits) / 8.0))
 		paddedValue = ccBits + bitarray([ False for x in range((nBytes * 8) - dataLength) ])
-		byteX = [ ord(x) for x in paddedValue.tobytes() ]		
+		byteX = paddedValue.tobytes()
 		
 		if isRead:
 			bitsToRead = dataLength
@@ -863,8 +862,7 @@ class Connection:
 			bitsToRead = 0
 
 		nBitsToWrite= len(ccBits)
-		cmd = [ chipID, nBitsToWrite, bitsToRead] + byteX
-		cmd = bytearray(cmd)
+		cmd = bytes([ chipID, nBitsToWrite, bitsToRead]) + byteX
 
 		reply = self.sendCommand(portID, slaveID, 0x01, cmd)
 		if len(reply) < 1: raise tofpet2b.ConfigurationErrorBadReply(1, len(reply))
@@ -881,11 +879,11 @@ class Connection:
 			raise tofpet2b.ConfigurationErrorGeneric(portID, slaveID, chipID , status)
 
 		if isRead:
-			expectedBytes = math.ceil(dataLength/8)
+			expectedBytes = math.ceil(dataLength//8)
 			if len(reply) < (1+expectedBytes): 
-				print len(reply), (1+expectedBytes)
+				print(len(reply), (1+expectedBytes))
 				raise tofpet2b.ConfigurationErrorBadReply(2+expectedBytes, len(reply))
-			reply = str(reply[1:])
+			reply = reply[1:]
 			data = bitarray()
 			data.frombytes(reply)
 			value = data[0:dataLength]
@@ -1020,37 +1018,37 @@ class Connection:
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
 		for portID, slaveID, channelID in self.getActiveBiasChannels():
-                        value = config[(portID, slaveID, channelID)]
+			value = config[(portID, slaveID, channelID)]
 			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
 		
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
-                
-                asicsConfig = self.getAsicsConfig()
+		
+		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
-                	modeFile = open(fileNamePrefix + ".modf", "w")
+			modeFile = open(fileNamePrefix + ".modf", "w")
 		else:
 			modeFile = open("/dev/null", "w")
 
-                modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
-                modeList = [] 
-                for portID, slaveID, chipID in asicsConfig.keys():
-                        ac = asicsConfig[(portID, slaveID, chipID)]
-                        for channelID in range(64):
-                                cc = ac.channelConfig[channelID]
-                                mode = cc.getValue("qdc_mode") and "qdc" or "tot"
-                                modeList.append(mode)
-                                modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
-                                
-                if(len(set(modeList))!=1):
-                        qdcMode = "mixed"
-                elif(modeList[0] == "tot"):
-                        qdcMode = "tot" 
-                else:
-                        qdcMode = "qdc" 
+		modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
+		modeList = [] 
+		for portID, slaveID, chipID in list(asicsConfig.keys()):
+			ac = asicsConfig[(portID, slaveID, chipID)]
+			for channelID in range(64):
+				cc = ac.channelConfig[channelID]
+				mode = cc.getValue("qdc_mode") and "qdc" or "tot"
+				modeList.append(mode)
+				modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
+				
+		if(len(set(modeList))!=1):
+			qdcMode = "mixed"
+		elif(modeList[0] == "tot"):
+			qdcMode = "tot" 
+		else:
+			qdcMode = "qdc" 
 
-                modeFile.close() 
-        
+		modeFile.close() 
+	
 		triggerID = -1
 		trigger = self.getTriggerUnit()
 		if trigger is None:
@@ -1079,10 +1077,10 @@ class Connection:
 		self.__helperPipe = None
 
 
-        ## Acquires data and decodes it, while writting through the acquisition pipeline 
-        # @param step1 Tag to a given variable specific to this acquisition 
-        # @param step2 Tag to a given variable specific to this acquisition
-        # @param acquisitionTime Acquisition time in seconds 
+	## Acquires data and decodes it, while writting through the acquisition pipeline 
+	# @param step1 Tag to a given variable specific to this acquisition 
+	# @param step2 Tag to a given variable specific to this acquisition
+	# @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
 		(pin, pout) = (self.__helperPipe.stdin, self.__helperPipe.stdout)
 		frameLength = 1024.0 / self.__systemFrequency
@@ -1093,7 +1091,7 @@ class Connection:
 		n1 = struct.calcsize(template1)
 		n2 = struct.calcsize(template2)
 
- 		self.__synchronizeDataToConfig()
+		self.__synchronizeDataToConfig()
 		wrPointer, rdPointer = (0, 0)
 		while wrPointer == rdPointer:
 			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
@@ -1103,7 +1101,7 @@ class Connection:
 		startFrame = self.__shm.getFrameID(index)
 		stopFrame = startFrame + nRequiredFrames
 
-                t0 = time()
+		t0 = time()
 		nBlocks = 0
 		currentFrame = startFrame
 		nFrames = 0
@@ -1117,20 +1115,20 @@ class Connection:
 			if nFramesInBlock > bs:
 				nFramesInBlock = 2*bs - nFramesInBlock
 
-                        # Don't use more frames than needed
-                        framesToTarget = stopFrame - currentFrame
-                        if nFramesInBlock > framesToTarget:
-                                nFramesInBlock = framesToTarget
+			# Don't use more frames than needed
+			framesToTarget = stopFrame - currentFrame
+			if nFramesInBlock > framesToTarget:
+				nFramesInBlock = framesToTarget
 
 
 			# Do not feed more than bs/2 frame blocks to writeRaw in a single call
 			# Because the entire frame block won't be freed until writeRaw is done, we can end up in a situation
 			# where writeRaw owns all frames and daqd has no buffer space, even if writeRaw has already processed 
 			# some/most of the frame block
-			if nFramesInBlock > bs/2:
-                                nFramesInBlock = bs/2
+			if nFramesInBlock > bs//2:
+				nFramesInBlock = bs//2
 
-                        wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
+			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
 			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
 			pin.write(data); pin.flush()
@@ -1151,7 +1149,7 @@ class Connection:
 				stdout.flush()
 				lastUpdateFrame = currentFrame
 		t1 = time()
-		print "Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength)
+		print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
 
 		data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
 		pin.write(data); pin.flush()
@@ -1178,7 +1176,7 @@ class Connection:
 				if (asic_bad_rx & (1 << n)) != 0:
 					a = (asic_deserializer_vector >> n) & 1
 					b = (asic_decoder_vector >> n) & 1
-					print "ASIC (%2d, %2d, %2d) RX links are down (0b%d%d)" % (portID, slaveID, n, b, a)
+					print("ASIC (%2d, %2d, %2d) RX links are down (0b%d%d)" % (portID, slaveID, n, b, a))
 					bad_rx_found = True
 					
 		if bad_rx_found:
@@ -1212,7 +1210,7 @@ class Connection:
 
 		return None
 		
-        ## Returns a data frame read form the shared memory block
+	## Returns a data frame read form the shared memory block
 	def __getDecodedDataFrame(self, nonEmpty=False):
 		timeout = 0.5
 		t0 = time()
@@ -1259,7 +1257,7 @@ class Connection:
 		self.checkAsicRx()
 
 		while True:	
-			targetFrameID = self.getCurrentTimeTag() / 1024
+			targetFrameID = self.getCurrentTimeTag() // 1024
 			#print "Waiting for frame %1d" % targetFrameID
 			while True:
 				df = self.__getDecodedDataFrame()
@@ -1276,7 +1274,7 @@ class Connection:
 				self.__setDataFrameReadPointer(wrPointer);
 
 			# Do this until we took less than 100 ms to sync
-			currentFrameID = self.getCurrentTimeTag() / 1024
+			currentFrameID = self.getCurrentTimeTag() // 1024
 			if (currentFrameID - targetFrameID) * frameLength < 0.100:
 				break
 
@@ -1328,9 +1326,9 @@ class Connection:
 		m_config3 = 0x00009000  # unipolar convertion for channels (0/1 -> 14/15)
 		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
 
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config1 >> 8) & 0xFF, m_config1 & 0xFF])
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config2 >> 8) & 0xFF, m_config2 & 0xFF])
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config3 >> 8) & 0xFF, m_config3 & 0xFF])
@@ -1341,7 +1339,7 @@ class Connection:
 		if not (reply[1] == 0x88 and reply[2] == 0x0): 
 			return False
 
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_control >> 8) & 0xFF, m_control & 0xFF])
 		if not(reply[1] == 0x90 and reply[2] == 0x0): 
 			return False
@@ -1353,8 +1351,8 @@ class Connection:
 		m_repeat = 0x00000000
 		
 		command = m_control + (channelID << 7)
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (command >> 8) & 0xFF, command & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytearray([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (command >> 8) & 0xFF, command & 0xFF]))
+		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(command >> 8) & 0xFF, command & 0xFF])
 		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_repeat >> 8) & 0xFF, m_repeat & 0xFF])
 		v = reply[1] * 256 + reply[2]
@@ -1367,7 +1365,7 @@ class Connection:
 	# Return the number of active sensors found in FEB/As
 	def fe_temp_enumerate_tmp104(self, portID, slaveID):
 		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
-		din = bytearray(din)
+		din = bytes(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
 
 		if len(dout) < 4:
@@ -1381,13 +1379,13 @@ class Connection:
 		nSensors = dout[3] & 0x0F
 	
 		din = [ 3, 0x55, 0b11110010, 0b01100011]
-		din = bytearray(din)
+		din = bytes(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
 		if len(dout) < 4:
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
 
 		din = [ 2 + nSensors, 0x55, 0b11110011 ]
-		din = bytearray(din)
+		din = bytes(din)
 		dout = self.sendCommand(portID, slaveID, 0x04, din)
 		if len(dout) < (3 + nSensors):
 			raise TMP104CommunicationError(portID, slaveID, din, dout)
@@ -1400,7 +1398,7 @@ class Connection:
 	# @param nSensors Number of sensors to read
 	def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
 			din = [ 2 + nSensors, 0x55, 0b11110001 ]
-			din = bytearray(din)
+			din = bytes(din)
 			dout = self.sendCommand(portID, slaveID, 0x04, din)
 			if len(dout) < (3 + nSensors):
 				raise TMP104CommunicationError(portID, slaveID, din, dout)

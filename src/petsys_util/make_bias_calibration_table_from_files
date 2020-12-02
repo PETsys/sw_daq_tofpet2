@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
@@ -19,10 +19,10 @@ def main():
 	outputFile = open(args.o, "w")
 
 	for i in range(len(args.filename)):
-		print 'Reading "%s" for (%d, %d)' % (args.filename[i], args.port[i], args.slave[i])
+		print('Reading "%s" for (%d, %d)' % (args.filename[i], args.port[i], args.slave[i]))
 		table = config.readBiasCalibrationTable_table(args.filename[i])
 		
-		for (_port, _slave, channelID), data in table.items():
+		for (_port, _slave, channelID), data in list(table.items()):
 			for dac_set, v_meas, adc_meas in data:
 				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (args.port[i], args.slave[i], channelID, dac_set, v_meas, 0))
 		

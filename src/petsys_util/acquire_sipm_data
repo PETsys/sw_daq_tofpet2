@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
@@ -24,13 +24,13 @@ validParams = ["OV","vth_t1","vth_t2","vth_e","disc_lsb_t1"]
 
 if args.paramTable is not None:
         if not os.path.exists(args.paramTable):
-                print "Error: no such file - %s" % args.paramTable
+                print("Error: no such file - %s" % args.paramTable)
                 exit(1)
         table = pandas.read_table(args.paramTable)
         parNames = list(table)
         for name in parNames:
                 if name not in validParams:
-                        print ("Error: Invalid parameter - %s" % name)
+                        print(("Error: Invalid parameter - %s" % name))
                         exit(1)
                         
         step1Values = list(table[parNames[0]])
@@ -40,7 +40,7 @@ if args.paramTable is not None:
                 step2Values = [0]
                 parNames.append("none")
         else:
-                print "Error: only two parameters can be scanned at the same time" 
+                print("Error: only two parameters can be scanned at the same time") 
                 exit(1)
  
     
@@ -111,9 +111,9 @@ else:
                                 daqd.set_hvdac_config(biasVoltageConfig)
                 
                         if parNames[1] == "none":
-                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) 
+                                print("Python:: Acquiring data for: " + parNames[0] + " = " + str(step1)) 
                         else:
-                                print "Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) + " ; " + parNames[1] + " = " + str(step2)  
+                                print("Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) + " ; " + parNames[1] + " = " + str(step2))  
                         daqd.setAsicsConfig(asicsConfig)
                         daqd.acquire(args.time, float(step1), float(step2))   
                     

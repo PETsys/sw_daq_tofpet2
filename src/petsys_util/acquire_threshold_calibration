@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
@@ -36,7 +36,7 @@ activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(6
 
 # Adjust baseline
 
-for (portID, slaveID, chipID), ac in asicsConfig.items():
+for (portID, slaveID, chipID), ac in list(asicsConfig.items()):
 	if not ac: continue
 	gc = ac.globalConfig
 	
@@ -45,7 +45,7 @@ for (portID, slaveID, chipID), ac in asicsConfig.items():
 	else:
 		COUNTER_SETTING = 0b110
 
-	print portID, slaveID, chipID, COUNTER_SETTING
+	print(portID, slaveID, chipID, COUNTER_SETTING)
 	
 	gc.setValue("counter_en", 0b1)
 	gc.setValue("counter_period", COUNTER_SETTING)
@@ -56,21 +56,21 @@ for (portID, slaveID, chipID), ac in asicsConfig.items():
 		
 
 counter_sharing = 1
-asicSubTypes = set([ daqd.getAsicSubtype(portID, slaveID, chipID) for portID, slaveID, chipID in asicsConfig.keys() ])
+asicSubTypes = set([ daqd.getAsicSubtype(portID, slaveID, chipID) for portID, slaveID, chipID in list(asicsConfig.keys()) ])
 if "2B" in asicSubTypes:
 	counter_sharing = 8
 	
-print "counter_sharing  = %(counter_sharing)d" % locals()
+print("counter_sharing  = %(counter_sharing)d" % locals())
 
-print "Adjusting baseline"
+print("Adjusting baseline")
 for thresholdIndex, thresholdName, baselineName in thresholdList:
-	print thresholdIndex, thresholdName, baselineName
+	print(thresholdIndex, thresholdName, baselineName)
 
 	N_ITERATIONS = 0
 	while N_ITERATIONS < 20:
-		print baselineName, "ITERATION %d" % N_ITERATIONS
+		print(baselineName, "ITERATION %d" % N_ITERATIONS)
 
-		for ac in asicsConfig.values():
+		for ac in list(asicsConfig.values()):
 			for cc in ac.channelConfig:
 				cc.setValue("vth_t1", 0)
 				cc.setValue("vth_t2", 0)
@@ -107,7 +107,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 			asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].setValue(baselineName, new_b)
 
 			if not channelOK:
-				print "Channel (%2d %2d %2d %2d) | %6.1f%% active | %2d -> %2d" % (portID, slaveID, chipID, channelID, 100.0*count_high[(portID, slaveID, chipID, channelID)], b, new_b)
+				print("Channel (%2d %2d %2d %2d) | %6.1f%% active | %2d -> %2d" % (portID, slaveID, chipID, channelID, 100.0*count_high[(portID, slaveID, chipID, channelID)], b, new_b))
 
 
 		N_ITERATIONS += 1
@@ -129,13 +129,13 @@ outFile.close()
 # Measure noise/baseline
 # 
 outFile = open(args.outFilePrefix + "_noise.tsv", "w")
-print "Scanning threshold for noise"
+print("Scanning threshold for noise")
 noiseProfiles = {}
 for thresholdIndex, thresholdName, baselineName in thresholdList:
 	stdout.write("%6s " % thresholdName); stdout.flush()
 
 	for thresholdValue in range(0,64):
-		for ac in asicsConfig.values():
+		for ac in list(asicsConfig.values()):
 			for cc in ac.channelConfig:
 				cc.setValue("vth_t1", 0)
 				cc.setValue("vth_t2", 0)
@@ -166,7 +166,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 # Measure dark counts
 #
 outFile = open(args.outFilePrefix + "_dark.tsv", "w")
-for ac in asicsConfig.values():
+for ac in list(asicsConfig.values()):
 	if not ac: continue
 	gc = ac.globalConfig
 	for cc in ac.channelConfig:
@@ -177,11 +177,11 @@ for ac in asicsConfig.values():
 
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
 darkProfiles = {}
-print "Scanning threshold for dark counts"
+print("Scanning threshold for dark counts")
 for thresholdIndex, thresholdName, baselineName in thresholdList:
 	stdout.write("%6s " % thresholdName); stdout.flush()
 	for thresholdValue in range(64):
-		for ac in asicsConfig.values():
+		for ac in list(asicsConfig.values()):
 			for cc in ac.channelConfig:
 				cc.setValue("vth_t1", 0)
 				cc.setValue("vth_t2", 0)

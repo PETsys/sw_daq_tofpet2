@@ -1,9 +1,9 @@
 #!/bin/sh
 yum -y install epel-release
 
-yum -y install gcc \
+yum -y  install \
+gcc \
 gcc-c++ \
-boost-devel \
 root \
 root-gui-fitpanel \
 root-spectrum \
@@ -11,18 +11,20 @@ root-spectrum-painter \
 root-minuit2 \
 root-physics \
 root-multiproc \
-python \
-python-devel \
-root-python \
-python-pip \
+python3 \
+python3-devel \
+python3-pip \
+python3-root \
+python3-devel \
+boost-devel \
+boost-python3-devel \
 kernel kernel-devel \
-python-devel \
 cmake \
 iniparser-devel \
-python2-bitarray.x86_64 \
-python3-root \
 xterm \
-python-pandas \
 dkms
+
+pip3 install pandas
+pip3 install bitarray
 
 sh INSTALL_DRIVERS.sh

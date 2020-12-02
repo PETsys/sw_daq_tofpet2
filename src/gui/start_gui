@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -219,7 +219,7 @@ class GUI:
  
     def write_to_textview(self, fd, condition):
         if condition == GLib.IO_IN: 
-            char = fd.read() 
+            char = fd.read().decode() 
             tview = self.builder.get_object("executeTextView")
             buf = self.builder.get_object("executeTextView").get_buffer()
         
@@ -243,7 +243,7 @@ class GUI:
     
     def write_to_textview_temp(self, fd, condition):
         if condition == GLib.IO_IN: 
-            char = fd.read() 
+            char = fd.read().decode() 
             tview = self.builder.get_object("readTempTextView")
             buf = self.builder.get_object("readTempTextView").get_buffer()
         
@@ -921,16 +921,16 @@ class GUI:
         
         command = ""
         if do_cal[0]:
-            command += "python -u ./acquire_threshold_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"disc_calibration;"
+            command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"disc_calibration;"
             command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
-            command += "python -u ./make_simple_disc_settings_table --config " + self.__workingFolder+"config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
+            command += "python3 -u ./make_simple_disc_settings_table --config " + self.__workingFolder+"config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
             
         if do_cal[1]:
-            command += "python -u ./acquire_tdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"tdc_calibration;"
+            command += "python3 -u ./acquire_tdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"tdc_calibration;"
             command += "./process_tdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"tdc_calibration -o "+ self.__workingFolder+"tdc_calibration;"
 
         if do_cal[2]:
-            command += "python -u ./acquire_qdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"qdc_calibration;"
+            command += "python3 -u ./acquire_qdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"qdc_calibration;"
             command += "./process_qdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"qdc_calibration -o "+ self.__workingFolder+"qdc_calibration;"
        
         
@@ -954,7 +954,7 @@ class GUI:
             self.show_error_dialog("daqd communication server is not running.")
             return
            
-        self.execute("python -u ./startup", "Check for temperature stability")
+        self.execute("python3 -u ./startup", "Check for temperature stability")
             
         #if success:
         #    self.show_info_dialog("Temperature is stable","ASIC(s) temperatures stable over the last minute. System ready to acquire.")
@@ -1033,7 +1033,7 @@ class GUI:
         if self.__tempLogFileName is None:
             self.__tempLogFileName = "/tmp/log"
             
-        command = "python -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval ) 
+        command = "python3 -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval ) 
   
         self.timeout_id = GObject.timeout_add(300, self.update_graph)
        
@@ -1360,7 +1360,7 @@ class GUI:
         else:
             flag = ""
          
-        command = "python -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
        
         #subprocess.call()
         self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
@@ -1632,7 +1632,7 @@ class GUI:
         else:
             flag = ""
          
-        command = "python -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
 
         fileName = self.builder.get_object("processingFileChooseEntry").get_text()
         fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")

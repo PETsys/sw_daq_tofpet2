@@ -276,6 +276,7 @@ void *DAQFrameServer::doWork()
 	}	
 	delete devNull;
 	printf("DAQFrameServer::runWorker exiting...\n");
+	return NULL;
 }
 
 uint64_t DAQFrameServer::getPortUp()

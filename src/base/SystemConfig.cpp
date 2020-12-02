@@ -22,7 +22,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName)
 }
 
 
-static void replace_variables(char *fn, char *entry, char *cdir)
+static void replace_variables(char *fn, const char *entry, char *cdir)
 {
 	std::string tmp(entry);
 	
@@ -47,7 +47,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 
 	config->hasTDCCalibration = false;
 	if((mask & LOAD_TDC_CALIBRATION) != 0) {
-		char *entry = iniparser_getstring(configFile, "main:tdc_calibration_table", NULL);
+		const char *entry = iniparser_getstring(configFile, "main:tdc_calibration_table", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: tdc_calibration_table not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
@@ -60,7 +60,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 	config->hasQDCCalibration = false;
 	config->hasEnergyCalibration = false;
 	if ((mask & LOAD_QDC_CALIBRATION) != 0) {
-		char *entry = iniparser_getstring(configFile, "main:qdc_calibration_table", NULL);
+		const char *entry = iniparser_getstring(configFile, "main:qdc_calibration_table", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: qdc_calibration_table not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
@@ -81,7 +81,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
 
 	config->hasXYZ = false;
 	if((mask & LOAD_MAPPING) != 0) {
-		char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
+		const char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: channel_map not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);

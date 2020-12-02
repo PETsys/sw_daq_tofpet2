@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 from petsys import daqd, config
@@ -34,7 +34,7 @@ if not os.path.exists(args.fileNamePrefix) or not os.path.samefile(args.fileName
 
 asicsConfig = daqd.getAsicsConfig()
 # Prepare all channels for TDCA but disable actual triggering...
-for ac in asicsConfig.values():
+for ac in list(asicsConfig.values()):
 	for cc in ac.channelConfig:
 		## Set simplest trigger_mode_2_* setting
 		cc.setValue("trigger_mode_2_t", 0b00)
@@ -63,7 +63,7 @@ for firstChannel in range(0, channelStep):
 	activeChannels_string = (", ").join([ "%d" % channel for channel in activeChannels ])
 	# Enable triggering for active channels
 	cfg = deepcopy(asicsConfig)
-	for ac in cfg.values():
+	for ac in list(cfg.values()):
 		for channel in activeChannels:
 			ac.channelConfig[channel].setValue("trigger_mode_1", 0b01)
 	daqd.setAsicsConfig(cfg)
@@ -75,7 +75,7 @@ for firstChannel in range(0, channelStep):
 		daqd.set_test_pulse_febds(100, 1024, finePhase, False)
 		daqd.acquire(0.02, finePhase, 0)
 		t_finish = time.time()
-		print "Channel(s): %s Phase: %4.3f clk in %3.2f seconds " % (activeChannels_string, finePhase, t_finish - t_start)
+		print("Channel(s): %s Phase: %4.3f clk in %3.2f seconds " % (activeChannels_string, finePhase, t_finish - t_start))
 
 
 systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
