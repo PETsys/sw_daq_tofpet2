@@ -15,11 +15,12 @@ python3 \
 python3-devel \
 python3-pip \
 python3-root \
-python3-devel \
+python36-cairo \
+python36-gobject.x86_64
 boost-devel \
-boost-python3-devel \
+boost-python36-devel \
 kernel kernel-devel \
-cmake \
+cmake3 \
 iniparser-devel \
 xterm \
 dkms
