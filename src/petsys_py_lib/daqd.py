@@ -617,7 +617,7 @@ class Connection:
 		return self.sendCommand(portID, slaveID, cfgFunctionID, bytes(command))
 			
 	def __write_hv_ad5535(self, portID, slaveID, channelID, value):
-		chipID = channelID / 32
+		chipID = channelID // 32
 		channelID = channelID % 32
 		#chipID = 1 - whichDAC # Wrong decoding in ad5535.vhd
 		
