@@ -732,7 +732,6 @@ class Connection:
 		return rr
 	
 	def write_hv_m95256(self, portID, slaveID, address, data):
-		data = [ ord(x) for x in data ]
 		while True:
 			# Check if Write In Progress is set and if so, sleep and try again
 			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
