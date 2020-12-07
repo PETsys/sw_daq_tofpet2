@@ -16,7 +16,7 @@ python3-devel \
 python3-pip \
 python3-root \
 python36-cairo \
-python36-gobject.x86_64
+python36-gobject.x86_64 \
 boost-devel \
 boost-python36-devel \
 kernel kernel-devel \
