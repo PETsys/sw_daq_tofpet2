@@ -212,7 +212,7 @@ class Config:
 						if (r1,r2) in hw_trigger_regions or (r2,r1) in hw_trigger_regions:
 							region_mask[r2] = 1
 
-					region_data = [ ord(u) for u in region_mask.tobytes() ]
+					region_data = region_mask.tobytes()
 					daqd.write_mem_ctrl(portID, slaveID, 6, 8, r1 * bytes_per_region, region_data)
 				
 				# FEB/D setup
