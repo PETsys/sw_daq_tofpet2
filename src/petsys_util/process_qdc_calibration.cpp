@@ -3,6 +3,7 @@
 #include <math.h>
 #include <errno.h>
 #include <string.h>
+#include <list>
 #include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -33,6 +34,7 @@
 #include <TCanvas.h>
 #include <TStyle.h>
 
+using namespace std;
 using namespace PETSYS;
 
 #define BUFFER_SIZE	4096
@@ -624,18 +626,27 @@ void calibrateAllAsics(SystemConfig *config, CalibrationEntry *calibrationTable,
 	}
 	
 	
-	unsigned long gAsicID;
-	char tmpDataFileName[1024];
-	
+	struct tmp_entry_t {
+		unsigned long asicID;
+		string fileName;
+	};
+
+	list<tmp_entry_t> tmp_list;
+
+	unsigned long asicID;
 	off_t max_tmp_file_size = 0;
 	struct stat tmp_file_stat;
 	rewind(tmpListFile);
-	while(fscanf(tmpListFile, "%lu %[^\n]\n", &gAsicID, tmpDataFileName) == 2) {
-		int r = stat(tmpDataFileName,  &tmp_file_stat);
+	while(fscanf(tmpListFile, "%lu %[^\n]\n", &asicID, fName) == 2) {
+		int r = stat(fName,  &tmp_file_stat);
 		if (r == 0) {
 			if(tmp_file_stat.st_size > max_tmp_file_size) max_tmp_file_size = tmp_file_stat.st_size;
 		}
+
+		tmp_entry_t tmp_entry = { asicID, string(fName) };
+		tmp_list.push_back(tmp_entry);
 	}
+	fclose(tmpListFile);
 
 	int nCPU = sysconf(_SC_NPROCESSORS_ONLN);
 	
@@ -653,16 +664,16 @@ void calibrateAllAsics(SystemConfig *config, CalibrationEntry *calibrationTable,
 	maxWorkers = maxWorkers > 1 ? maxWorkers : 1;
 	
 	int nWorkers = 0;
-	rewind(tmpListFile);
-	while(fscanf(tmpListFile, "%lu %[^\n]\n", &gAsicID, tmpDataFileName) == 2) {
-		int tmpDataFile = open(tmpDataFileName, O_RDONLY);
+	for( auto it = tmp_list.begin(); it != tmp_list.end(); it++) {
+		int tmpDataFile = open(it->fileName.c_str(), O_RDONLY);
 		if(tmpDataFile == -1) {
-			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", it->fileName.c_str(), strerror(errno));
 			exit(1);
 		}
 		
 		if(fork() == 0) {
 			// We are in child
+			unsigned long gAsicID = it->asicID;
 			unsigned long chipID = gAsicID % 64;
 			unsigned long slaveID = (gAsicID >> 6) % 32;
 			unsigned long portID = (gAsicID >> 11) % 32;
