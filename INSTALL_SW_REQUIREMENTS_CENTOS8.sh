@@ -1,7 +1,7 @@
 #!/bin/sh
 dnf -y install epel-release
 
-dnf config-manager --set-enabled PowerTools
+dnf config-manager --set-enabled powertools
 
 dnf -y  install \
 gcc \
