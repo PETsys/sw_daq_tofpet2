@@ -1,4 +1,6 @@
 #!/bin/sh
+
+dnf -y update
 dnf -y install epel-release
 
 dnf config-manager --set-enabled powertools
