@@ -423,7 +423,7 @@ void calibrateAsic(
 
 		
 		// Attempt to fit 9th order polynomial but fall back down to 3rd order if needed
-		for(int order = 9; (order > 3) && !entry.valid; order--) {
+		for(int order = 8; (order > 3) && !entry.valid; order--) {
 			char functionName[16];
 			sprintf(functionName, "pol%d", order);
 
