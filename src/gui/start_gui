@@ -324,7 +324,7 @@ class GUI:
         about = Gtk.AboutDialog.new()
         about.set_transient_for(self.MainWindow)
         about.set_version("v2019.03.07")
-        about.set_logo(GdkPixbuf.Pixbuf.new_from_file("src/gui/logo_PETsys2.png"))
+        about.set_logo(GdkPixbuf.Pixbuf.new_from_file("gui/logo_PETsys2.png"))
         about.set_website("http://www.petsyselectronics.com")
         about.set_website_label("petsyselectronics.com")
         about.set_program_name("TOFPET2 Data Acquisition Software")
@@ -351,7 +351,7 @@ class GUI:
             if not self.__daqd_switch_handle_set:
                 if self.is_daqd_running():
                     daqdPids = subprocess.check_output(["pidof", "daqd"])
-                    pidsToKill = daqdPids.split(" ")
+                    pidsToKill = daqdPids.decode("ascii").split(" ")
 
                     if self.show_confirmation_dialog("There are other instances of daqd running in the system. Kill them and open a new instance?"):
                         for pid in pidsToKill:
@@ -374,7 +374,7 @@ class GUI:
                 # Check if daqd opened successfully and store pids of processes
                 if self.is_daqd_running():
                     daqdPid = subprocess.check_output(["pidof", "daqd"])
-                    self.__daqdPid = daqdPid.split(" ")[0]
+                    self.__daqdPid = daqdPid.decode("ascii").split(" ")[0]
                 else:
                     self.show_error_dialog("daqd server was unable to start correctly. Please check error message in the terminal and retry")
                     self.__daqdPid = None
@@ -384,12 +384,12 @@ class GUI:
                     return True
 
                 terminalPid = subprocess.check_output(["pidof", "xterm"])
-                terminalPids = terminalPid.split(" ")
+                terminalPids = terminalPid.decode("ascii").split(" ")
                 for pid in terminalPids:
                     pid2 = pid.strip('\n')
                     command3 = "ps -o etime= -p \"%s\"" % pid2
                     time =  subprocess.check_output(command3, shell=True ) 
-                    time2 = time.strip('\n')
+                    time2 = time.decode("ascii").strip('\n')
                     if time2.count(':') == 1 and time2.count('-')==0:
                         timeSec = sum(x * int(t) for x, t in zip([60, 1], time2.split(":")))
                     elif time2.count(':') == 2 and time2.count('-') ==0:
@@ -691,7 +691,7 @@ class GUI:
                     
             hBox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
 
-            self.builder.add_objects_from_file("src/gui/gui_layout.glade", ("febdConfigDialog","febdConfigDialogBox",""))
+            self.builder.add_objects_from_file("gui/gui_layout.glade", ("febdConfigDialog","febdConfigDialogBox",""))
 
             febdConfigBox = self.builder.get_object("febdConfigDialogBox")
             grid = Gtk.Grid()
