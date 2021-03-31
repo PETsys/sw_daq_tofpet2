@@ -53,7 +53,6 @@ configure_file("src/petsys_util/make_bias_calibration_table" "make_bias_calibrat
 configure_file("src/petsys_util/make_simple_bias_settings_table" "make_simple_bias_settings_table" COPYONLY)
 configure_file("src/petsys_util/make_simple_channel_map" "make_simple_channel_map" COPYONLY)
 configure_file("src/petsys_util/make_simple_energy_calibration_table" "make_simple_energy_calibration_table" COPYONLY)
-configure_file("src/petsys_util/startup" "startup" COPYONLY)
 configure_file("src/petsys_util/make_simple_disc_settings_table" "make_simple_disc_settings_table" COPYONLY)
 configure_file("src/petsys_util/init_system" "init_system" COPYONLY)
 configure_file("src/petsys_util/set_fem_power" "set_fem_power" COPYONLY)
