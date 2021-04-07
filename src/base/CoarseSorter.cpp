@@ -26,7 +26,7 @@ EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<RawHit> * outBuffer = new EventBuffer<RawHit>(N, inBuffer);
 	u_int32_t lSingleRead = 0;
-
+	
 	vector<SortEntry> sortList;
 	sortList.reserve(N);
 

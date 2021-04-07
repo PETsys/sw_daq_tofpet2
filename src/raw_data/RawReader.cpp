@@ -199,12 +199,12 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 {
 	Step step = steps[n];
 
-	auto pool = new ThreadPool<RawHit>();
-	
-	sink->pushT0(0);
+	auto pool = new ThreadPool<UndecodedHit>();
+	auto mysink = new Decoder(this, sink);
+	mysink->pushT0(0);
 	
 	RawDataFrame *dataFrame = new RawDataFrame;
-	EventBuffer<RawHit> *outBuffer = NULL; 
+	EventBuffer<UndecodedHit> *outBuffer = NULL; 
 	unsigned seqN = 0;
 	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
@@ -241,13 +241,13 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<RawHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			outBuffer = new EventBuffer<UndecodedHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
 			seqN += 1;
 		}
 		else if(outBuffer->getSize() + N > outBlockSize) {
-			pool->queueTask(outBuffer, sink);
+			pool->queueTask(outBuffer, mysink);
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<RawHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			outBuffer = new EventBuffer<UndecodedHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
 			seqN += 1;
 		}
 		
@@ -276,8 +276,9 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		lastFrameWasLost0 = (frameLost && N == 0);
 		lastFrameID = frameID;
 		
+		UndecodedHit *p = outBuffer->getPtr() + outBuffer->getUsed();
 		for(int i = 0; i < N; i++) {
-			RawHit &e = outBuffer->getWriteSlot();
+/*			RawHit &e = outBuffer->getWriteSlot();
 			e.channelID = dataFrame->getChannelID(i);
 			e.qdcMode = isQDC(e.channelID);
 			e.tacID = dataFrame->getTacID(i);
@@ -292,21 +293,24 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 			if((e.timeEnd - e.time) < -256) e.timeEnd += 1024;
 				
 			e.valid = true;
-			
-			outBuffer->pushWriteSlot();
+	*/
+			p->frameID = frameID - currentBufferFirstFrame;
+			p->event = RawEventWord(dataFrame->data[2+i]);
+			p++;
 		}
+		outBuffer->setUsed(outBuffer->getUsed() + N);
 		outBuffer->setTMax((frameID + 1) * 1024);
 	}
 	
 	if(outBuffer != NULL) {
-		pool->queueTask(outBuffer, sink);
+		pool->queueTask(outBuffer, mysink);
 		outBuffer = NULL;
 	}
 	
 	pool->completeQueue();
 	delete pool;
 	
-	sink->finish();
+	mysink->finish();
 	if(verbose) {
 		fprintf(stderr, "RawReader report\n");
 		fprintf(stderr, "step values: %f %f\n", step.step1, step.step2);
@@ -326,4 +330,40 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	
 }
 
+RawReader::Decoder::Decoder(RawReader *reader, EventSink<RawHit> *sink) : 
+	UnorderedEventHandler<RawReader::UndecodedHit, RawHit>(sink), reader(reader)
+{
+}
 
+
+EventBuffer<RawHit> * RawReader::Decoder::handleEvents(EventBuffer<RawReader::UndecodedHit > *inBuffer)
+{
+	unsigned N =  inBuffer->getSize();
+	EventBuffer<RawHit> *outBuffer = new EventBuffer<RawHit>(N, inBuffer);
+
+	UndecodedHit *pi = inBuffer->getPtr();
+	UndecodedHit *pe = pi + N;
+	RawHit *po = outBuffer->getPtr();
+	for(; pi < pe; pi++, po++) {
+		po->channelID = pi->event.getChannelID();
+		po->qdcMode = reader->isQDC(po->channelID);
+		po->tacID = pi->event.getTacID();
+		po->frameID = pi->frameID;
+		po->tcoarse = pi->event.getTCoarse();
+		po->tfine = pi->event.getTFine();
+		po->ecoarse = pi->event.getECoarse();
+		po->efine = pi->event.getEFine();
+
+		po->time = pi->frameID * 1024 + po->tcoarse;
+		po->timeEnd = pi->frameID * 1024 + po->ecoarse;
+		if((po->timeEnd - po->time) < -256) po->timeEnd += 1024;
+	}
+	outBuffer->setUsed(N);
+	return outBuffer;
+
+}
+
+void RawReader::Decoder::report()
+{
+	UnorderedEventHandler<RawReader::UndecodedHit,RawHit>::report();
+}

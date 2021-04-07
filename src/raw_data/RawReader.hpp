@@ -3,13 +3,33 @@
 
 #include <EventSourceSink.hpp>
 #include <Event.hpp>
+#include <UnorderedEventHandler.hpp>
+#include <event_decode.hpp>
 
 #include <vector>
 
 static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 
 namespace PETSYS {
+
 	class RawReader : public EventStream {
+	private:
+		struct UndecodedHit {
+			uint64_t frameID;
+			RawEventWord event;
+		};
+
+		class Decoder : public UnorderedEventHandler<UndecodedHit, RawHit> {
+	        public:
+	                Decoder(RawReader *reader, EventSink<RawHit> *sink);
+	                void report();
+	        protected:
+	                virtual EventBuffer<RawHit> * handleEvents (EventBuffer<UndecodedHit> *inBuffer);
+		private:
+			RawReader *reader;
+		};
+
+
 	public:
 		~RawReader();
 		static RawReader *openFile(const char *fnPrefix);

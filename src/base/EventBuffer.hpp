@@ -69,6 +69,10 @@ namespace PETSYS {
 			used = 0;
 		};
 		
+		void setCapacity(size_t n) {
+			reserve(n);
+		};
+
 		void reserve(unsigned newCapacity) {
 			if (newCapacity <= capacity) 
 				return;
@@ -109,6 +113,17 @@ namespace PETSYS {
 			return used;
 		};
 
+		size_t getUsed() {
+			return used;
+		}
+
+		void setUsed(size_t n) { 
+			used = n;
+		};
+
+		TEvent *getPtr() {
+			return buffer;
+		};
 
 		virtual ~EventBuffer() {
 			free((void*)buffer);
