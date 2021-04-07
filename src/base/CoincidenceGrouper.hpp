@@ -2,13 +2,13 @@
 #define __PETSYS__COINCIDENCEGROUPER_HPP__DEFINED__
 
 #include <Event.hpp>
-#include <OverlappedEventHandler.hpp>
+#include <UnorderedEventHandler.hpp>
 #include <Instrumentation.hpp>
 #include <SystemConfig.hpp>
 
 namespace PETSYS {
 
-class CoincidenceGrouper : public OverlappedEventHandler<GammaPhoton, Coincidence> {
+class CoincidenceGrouper : public UnorderedEventHandler<GammaPhoton, Coincidence> {
 public:
 	CoincidenceGrouper(SystemConfig *systemConfig, EventSink<Coincidence> *sink);
 	~CoincidenceGrouper();

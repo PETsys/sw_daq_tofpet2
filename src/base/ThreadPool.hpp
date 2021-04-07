@@ -4,79 +4,57 @@
 #include <deque>
 #include <vector>
 #include <pthread.h>
+#include "EventSourceSink.hpp"
+#include "EventBuffer.hpp"
 
 namespace PETSYS {
-
-	class ThreadPool {
+	
+	class BaseThreadPool {
 	public:
-		class Worker;
-		class Job {
-		public:
-			bool isFinished();
-			void wait();
-
-			~Job();
-		private:
-			Job(void *(*start_routine)(void *), void *arg);
-
-			void *(*start_routine)(void *);
-			void *arg;
-
-			bool finished;
-			pthread_mutex_t lock;
-			pthread_cond_t condJobFinished;
-
-		friend class ThreadPool;
-		friend class Worker;
-		};
-
-		class Worker {
-		public:
-
-			~Worker();
-		private:
-			Worker(ThreadPool *pool);		
+		BaseThreadPool();
+		virtual ~BaseThreadPool();
+		void completeQueue();
+		
+	protected:
+		void queueTask(void *buffer, void *sink);
+		virtual void runTask(void *b, void *s) = 0;
+		
+		
 	
-			ThreadPool * pool;
-			
-			
-			pthread_mutex_t lock;
-			pthread_cond_t workerStart;
-			pthread_cond_t workerFinished;
-			pthread_t thread;
-			
-			static void *run(void *arg);
-		
-			friend class ThreadPool;
-		};
-	
-		ThreadPool(unsigned maxWorkers);
-		~ThreadPool();
-
-		void clientIncrease();
-		void clientDecrease();
-		
-		Job *queueJob(void *(*start_routine)(void *), void *arg);
-		bool isFull();
-		
 	private:
+		int maxWorkers;
+		std::deque<pthread_t> queue;
+		struct targ_t {
+			BaseThreadPool *self;
+			void *buffer;
+			void *sink;
+		};
 		
-		int nClients;
-		std::vector<Worker *> workers;
-		std::deque<Job *> queue;
-		unsigned maxWorkers;
-		unsigned maxQueueSize;
+		static void *thread_routine(void *);
 		
-		bool die;
-		pthread_mutex_t lock;
-		pthread_cond_t condJobQueued;
-		pthread_cond_t condJobStarted;
-//		pthread_cond_t condJobFinished;
+		
+		
 	};
-
-#ifndef __PETSYS_THREADPOOL_CPP__DEFINED__
-extern ThreadPool *GlobalThreadPool;
-#endif 
+	
+	template <class TEvent>
+	class ThreadPool : public BaseThreadPool {
+	public:	
+		ThreadPool() { };
+		virtual ~ThreadPool() { };
+		
+		void queueTask(EventBuffer<TEvent> *buffer, EventSink<TEvent> *sink) {
+			BaseThreadPool::queueTask((void *)buffer, (void *)sink);
+		};
+		
+	private: 
+		virtual void runTask(void *b, void *s) {
+			auto buffer = (EventBuffer<TEvent> *)b;
+			auto sink = (EventSink<TEvent> *)s;
+			sink->pushEvents(buffer);
+			
+		}
+		
+	};
 }
 
 #endif

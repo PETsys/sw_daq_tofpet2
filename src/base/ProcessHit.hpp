@@ -1,7 +1,7 @@
 #ifndef __PETSYS__PROCESS_HIT_HPP__DEFINED__
 #define __PETSYS__PROCESS_HIT_HPP__DEFINED__
 
-#include <OverlappedEventHandler.hpp>
+#include <UnorderedEventHandler.hpp>
 #include <Event.hpp>
 #include <SystemConfig.hpp>
 #include <Instrumentation.hpp>
@@ -9,7 +9,7 @@
 
 namespace PETSYS {
 	
-class ProcessHit : public OverlappedEventHandler<RawHit, Hit> {
+class ProcessHit : public UnorderedEventHandler<RawHit, Hit> {
 private:
 	SystemConfig *systemConfig;
 	EventStream *eventStream;

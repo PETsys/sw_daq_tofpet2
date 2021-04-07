@@ -2,13 +2,13 @@
 #define __PETSYS_SIMPLE_GROUPER_HPP__DEFINED__
 
 #include <SystemConfig.hpp>
-#include <OverlappedEventHandler.hpp>
+#include <UnorderedEventHandler.hpp>
 #include <Event.hpp>
 #include <Instrumentation.hpp>
 
 namespace PETSYS {
 	
-class SimpleGrouper : public OverlappedEventHandler<Hit, GammaPhoton> {
+class SimpleGrouper : public UnorderedEventHandler<Hit, GammaPhoton> {
 public:
 	SimpleGrouper(SystemConfig *systemConfig, EventSink<GammaPhoton> *sink);
 	~SimpleGrouper();

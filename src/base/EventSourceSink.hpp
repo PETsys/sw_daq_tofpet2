@@ -32,13 +32,10 @@ namespace PETSYS {
 	template <class TEventInput> 
 	class NullSink : public EventSink<TEventInput> {
 	public:
-		NullSink() { lastBuffer = NULL; };
+		NullSink() { };
 		virtual void pushT0(double t0) {};
 		virtual void pushEvents(EventBuffer<TEventInput> *buffer) {
-			// Do not delete this buffer immediable, because the next buffer 
-			// may hold pointers into one of the parent buffers.
-			delete lastBuffer;
-			lastBuffer = buffer;
+			delete buffer;
 		};
 		
 		virtual void finish() {
@@ -47,10 +44,7 @@ namespace PETSYS {
 		virtual void report() {
 		};
 		~NullSink() {
-			delete lastBuffer;
 		};
-	private:
-		AbstractEventBuffer *lastBuffer;
 	};
 	
 }

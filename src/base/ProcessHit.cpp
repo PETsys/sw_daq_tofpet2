@@ -3,7 +3,7 @@
 using namespace PETSYS;
 
 ProcessHit::ProcessHit(SystemConfig *systemConfig, EventStream *eventStream, EventSink<Hit> *sink) :
-OverlappedEventHandler<RawHit, Hit>(sink), systemConfig(systemConfig), eventStream(eventStream)
+UnorderedEventHandler<RawHit, Hit>(sink), systemConfig(systemConfig), eventStream(eventStream)
 {
 	nReceived = 0;
 	nReceivedInvalid = 0;
@@ -195,5 +195,5 @@ void ProcessHit::report()
 	fprintf(stderr, " hits passed\n");
 	fprintf(stderr, "  %10u (%4.1f%%)\n", nSent, 100.0 * nSent / nReceived);
 	
-	OverlappedEventHandler<RawHit, Hit>::report();
+	UnorderedEventHandler<RawHit, Hit>::report();
 }

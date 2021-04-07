@@ -7,7 +7,7 @@ using namespace std;
 using namespace PETSYS;
 
 CoarseSorter::CoarseSorter(EventSink<RawHit> *sink) :
-	OverlappedEventHandler<RawHit, RawHit>(sink)
+	UnorderedEventHandler<RawHit, RawHit>(sink)
 {
 	nSingleRead = 0;
 }
@@ -58,5 +58,5 @@ void CoarseSorter::report()
 	fprintf(stderr, ">> CoarseSorter report\n");
 	fprintf(stderr, " events passed\n");
 	fprintf(stderr, "  %10u\n", nSingleRead);
-	OverlappedEventHandler<RawHit, RawHit>::report();
+	UnorderedEventHandler<RawHit, RawHit>::report();
 }

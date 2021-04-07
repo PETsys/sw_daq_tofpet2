@@ -1,5 +1,5 @@
 #include <RawReader.hpp>
-#include <OverlappedEventHandler.hpp>
+#include <OrderedEventHandler.hpp>
 #include <getopt.h>
 #include <assert.h>
 #include <SystemConfig.hpp>
@@ -213,14 +213,14 @@ public:
 	
 };
 
-class WriteHelper : public OverlappedEventHandler<GammaPhoton, GammaPhoton> {
+class WriteHelper : public OrderedEventHandler<GammaPhoton, GammaPhoton> {
 private: 
 	DataFileWriter *dataFileWriter;
 	float step1;
 	float step2;
 public:
 	WriteHelper(DataFileWriter *dataFileWriter, float step1, float step2, EventSink<GammaPhoton> *sink) :
-		OverlappedEventHandler<GammaPhoton, GammaPhoton>(sink, true),
+		OrderedEventHandler<GammaPhoton, GammaPhoton>(sink),
 		dataFileWriter(dataFileWriter), step1(step1), step2(step2)
 	{
 	};

@@ -6,6 +6,10 @@
 #include <stdint.h>
 
 namespace PETSYS {
+	
+	// Maximum event mis-ordering to consider
+	static const float MAX_UNORDER = 20.0;
+	
 
 	struct RawHit {
 		bool valid;

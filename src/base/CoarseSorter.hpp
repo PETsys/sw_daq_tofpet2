@@ -1,7 +1,7 @@
 #ifndef __PETSYS_COARSE_SORTER_HPP__DEFINED__
 #define __PETSYS_COARSE_SORTER_HPP__DEFINED__
 #include <Event.hpp>
-#include <OverlappedEventHandler.hpp>
+#include <UnorderedEventHandler.hpp>
 #include <Instrumentation.hpp>
 #include <vector>
 
@@ -14,7 +14,7 @@ namespace PETSYS {
 	 * Having correct frame boundaries is convenient for modules which write out events grouped by frame.
 	 */
 	 
-	class CoarseSorter : public OverlappedEventHandler<RawHit, RawHit> {
+	class CoarseSorter : public UnorderedEventHandler<RawHit, RawHit> {
 	public:
 		CoarseSorter (EventSink<RawHit> *sink);
 		void report();

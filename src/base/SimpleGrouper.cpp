@@ -6,7 +6,7 @@ using namespace PETSYS;
 using namespace std;
 
 SimpleGrouper::SimpleGrouper(SystemConfig *systemConfig, EventSink<GammaPhoton> *sink) :
-	systemConfig(systemConfig), OverlappedEventHandler<Hit, GammaPhoton>(sink, false)
+	systemConfig(systemConfig), UnorderedEventHandler<Hit, GammaPhoton>(sink)
 {
 	for(int i = 0; i < GammaPhoton::maxHits; i++)
 		nPhotonsHits[i] = 0;
@@ -48,7 +48,7 @@ void SimpleGrouper::report()
 	fprintf(stderr, " photons passed\n");
 	fprintf(stderr, "  %10u (%4.1f%%) passed\n", nPhotonsPassed, 100.0*nPhotonsPassed/nPhotonsFound);
 			
-	OverlappedEventHandler<Hit, GammaPhoton>::report();
+	UnorderedEventHandler<Hit, GammaPhoton>::report();
 }
 
 EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffer)
@@ -102,7 +102,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			if(taken[j]) continue;
 			
 			// Stop searching for more hits for this photon
-			if((hit2.time - hit.time) > (overlap + timeWindow1)) break;
+			if((hit2.time - hit.time) > (timeWindow1 + MAX_UNORDER)) break;
 			
 			if(!systemConfig->isMultiHitAllowed(hit2.region, hit.region)) continue;
 			if(fabs(hit.time - hit2.time) > timeWindow1) continue;

@@ -8,12 +8,12 @@ namespace PETSYS {
 	class AbstractEventBuffer {
 	public:
 		AbstractEventBuffer(AbstractEventBuffer *parent) 
-		: parent(parent), bufferTMin(parent->getTMin()) 
+		: parent(parent), bufferSeqN(parent->bufferSeqN), bufferTMin(parent->bufferTMin) 
 		{
 		};
 		
-		AbstractEventBuffer(long long tMin)
-		: parent(NULL), bufferTMin(tMin)
+		AbstractEventBuffer(uint64_t seqN, long long tMin)
+		: parent(NULL), bufferSeqN(seqN), bufferTMin(tMin)
 		{
 		};
 
@@ -22,7 +22,10 @@ namespace PETSYS {
 			delete parent;
 		};
 
-	
+		uint64_t getSeqN() {
+			return bufferSeqN;
+		};
+		
 		long long getTMin() {
 			return bufferTMin;
 		};
@@ -37,6 +40,7 @@ namespace PETSYS {
 
 		private:
 		AbstractEventBuffer * parent;
+		uint64_t bufferSeqN;
 		long long bufferTMin;
 		long long bufferTMax;
 		
@@ -56,8 +60,8 @@ namespace PETSYS {
 			used = 0;
 		};
 		
-		EventBuffer(unsigned initialCapacity, long long tMin)
-			: AbstractEventBuffer(tMin) 
+		EventBuffer(unsigned initialCapacity, unsigned seqN, long long tMin)
+			: AbstractEventBuffer(seqN, tMin) 
 		{
 			initialCapacity = ((initialCapacity / 1024) + 1) * 1024;
 			buffer = (TEvent *)malloc(sizeof(TEvent)*initialCapacity);

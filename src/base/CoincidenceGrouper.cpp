@@ -4,7 +4,7 @@
 using namespace PETSYS;
 
 CoincidenceGrouper::CoincidenceGrouper(SystemConfig *systemConfig, EventSink<Coincidence> *sink)
-	: systemConfig(systemConfig), OverlappedEventHandler<GammaPhoton, Coincidence>(sink)
+	: systemConfig(systemConfig), UnorderedEventHandler<GammaPhoton, Coincidence>(sink)
 {
 	nPrompts = 0;
 }
@@ -18,7 +18,7 @@ void CoincidenceGrouper::report()
 	printf(">> CoincidenceGrouper report\n");
 	printf(" prompts passed\n");
 	printf("  %10u \n", nPrompts);
-	OverlappedEventHandler<GammaPhoton, Coincidence>::report();
+	UnorderedEventHandler<GammaPhoton, Coincidence>::report();
 }
 
 EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPhoton> *inBuffer)
@@ -33,7 +33,7 @@ EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPho
 		GammaPhoton &photon1 = inBuffer->get(i);
 		for(unsigned j = i+1; j < N; j++) {
 			GammaPhoton &photon2 = inBuffer->get(j);			
-			if ((photon2.time - photon1.time) > (overlap + cWindow)) break;
+			if ((photon2.time - photon1.time) > (cWindow + MAX_UNORDER)) break;
 			
 			if(!systemConfig->isCoincidenceAllowed(photon1.region, photon2.region)) continue;
 			

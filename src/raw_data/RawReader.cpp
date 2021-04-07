@@ -1,5 +1,6 @@
 #include <shm_raw.hpp>
 #include "RawReader.hpp"
+#include <ThreadPool.hpp>
 
 #include <unistd.h>
 #include <errno.h>
@@ -197,11 +198,14 @@ int RawReader::readFromDataFile(char *buf, int count)
 void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 {
 	Step step = steps[n];
+
+	auto pool = new ThreadPool<RawHit>();
 	
 	sink->pushT0(0);
 	
 	RawDataFrame *dataFrame = new RawDataFrame;
 	EventBuffer<RawHit> *outBuffer = NULL; 
+	unsigned seqN = 0;
 	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
 	
@@ -237,13 +241,14 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<RawHit>(outBlockSize, currentBufferFirstFrame * 1024);
-			
+			outBuffer = new EventBuffer<RawHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			seqN += 1;
 		}
 		else if(outBuffer->getSize() + N > outBlockSize) {
-			sink->pushEvents(outBuffer);
+			pool->queueTask(outBuffer, sink);
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<RawHit>(outBlockSize, currentBufferFirstFrame * 1024);
+			outBuffer = new EventBuffer<RawHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			seqN += 1;
 		}
 		
 		long long frameID = dataFrame->getFrameID();
@@ -294,9 +299,12 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	}
 	
 	if(outBuffer != NULL) {
-		sink->pushEvents(outBuffer);
+		pool->queueTask(outBuffer, sink);
 		outBuffer = NULL;
 	}
+	
+	pool->completeQueue();
+	delete pool;
 	
 	sink->finish();
 	if(verbose) {
