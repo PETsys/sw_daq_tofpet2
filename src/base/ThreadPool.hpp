@@ -10,6 +10,17 @@
 namespace PETSYS {
 	
 	class BaseThreadPool {
+	private:
+		struct worker_t{
+			BaseThreadPool *pool;
+			pthread_t thread;
+			bool isBusy;
+		};
+
+		struct job_t{
+			void *b;
+			void *s;
+		};
 	public:
 		BaseThreadPool();
 		virtual ~BaseThreadPool();
@@ -22,13 +33,16 @@ namespace PETSYS {
 		
 	
 	private:
-		int maxWorkers;
-		std::deque<pthread_t> queue;
-		struct targ_t {
-			BaseThreadPool *self;
-			void *buffer;
-			void *sink;
-		};
+		int maxQueueSize;
+		std::deque<job_t> queue;
+
+		int nWorkers;
+		worker_t *workers;
+
+		pthread_mutex_t lock;
+		pthread_cond_t cond_completed;
+		pthread_cond_t cond_queued;
+		bool terminate;
 		
 		static void *thread_routine(void *);
 		
