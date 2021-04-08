@@ -33,7 +33,7 @@ static void replace_variables(char *fn, const char *entry, char *cdir)
 	
 }
 
-SystemConfig *SystemConfig::fromFile(const char *configFileName, uint64_t mask)
+SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 {
 	char *path = new char[PATH_MAX];
 	strcpy(path, configFileName);

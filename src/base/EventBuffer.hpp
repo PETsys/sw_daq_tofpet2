@@ -12,7 +12,7 @@ namespace PETSYS {
 		{
 		};
 		
-		AbstractEventBuffer(uint64_t seqN, long long tMin)
+		AbstractEventBuffer(u_int64_t seqN, long long tMin)
 		: parent(NULL), bufferSeqN(seqN), bufferTMin(tMin)
 		{
 		};
@@ -22,7 +22,7 @@ namespace PETSYS {
 			delete parent;
 		};
 
-		uint64_t getSeqN() {
+		u_int64_t getSeqN() {
 			return bufferSeqN;
 		};
 		
@@ -40,7 +40,7 @@ namespace PETSYS {
 
 		private:
 		AbstractEventBuffer * parent;
-		uint64_t bufferSeqN;
+		u_int64_t bufferSeqN;
 		long long bufferTMin;
 		long long bufferTMax;
 		

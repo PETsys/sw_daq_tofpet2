@@ -21,7 +21,7 @@ namespace PETSYS {
 	protected:
 		virtual EventBuffer<RawHit> * handleEvents (EventBuffer<RawHit> *inBuffer);
 	private:
-		u_int32_t nSingleRead;
+		u_int64_t nSingleRead;
 	};
 
 }

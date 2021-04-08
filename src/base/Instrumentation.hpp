@@ -4,8 +4,8 @@
 #include <sys/types.h>
 namespace PETSYS {
 	
-	void atomicIncrement(volatile u_int32_t &val);
-	void atomicAdd(volatile u_int32_t &val, u_int32_t increment);
+	void atomicIncrement(volatile u_int64_t &val);
+	void atomicAdd(volatile u_int64_t &val, u_int64_t increment);
 	
 }
 

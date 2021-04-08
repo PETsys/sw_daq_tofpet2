@@ -18,7 +18,7 @@ private:
 	virtual EventBuffer<Coincidence> * handleEvents(EventBuffer<GammaPhoton> *inBuffer);
 		
 	SystemConfig *systemConfig;
-	u_int32_t nPrompts;
+	u_int64_t nPrompts;
 };
 }
 #endif // __PETSYS__COINCIDENCEGROUPER_HPP__DEFINED__

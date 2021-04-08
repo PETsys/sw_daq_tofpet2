@@ -8,12 +8,12 @@ namespace PETSYS {
 
 	class SystemConfig {
 	public:
-		static const uint64_t LOAD_ALL			= 0xFFFFFFFFFFFFFFFFULL;
-		static const uint64_t LOAD_SYSTEM_MAP		= 0x0000000000000001ULL;
-		static const uint64_t LOAD_TDC_CALIBRATION	= 0x0000000000000002ULL;
-		static const uint64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
-		static const uint64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
-		static const uint64_t LOAD_MAPPING		= 0x0000000000000010ULL;
+		static const u_int64_t LOAD_ALL			= 0xFFFFFFFFFFFFFFFFULL;
+		static const u_int64_t LOAD_SYSTEM_MAP		= 0x0000000000000001ULL;
+		static const u_int64_t LOAD_TDC_CALIBRATION	= 0x0000000000000002ULL;
+		static const u_int64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
+		static const u_int64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
+		static const u_int64_t LOAD_MAPPING		= 0x0000000000000010ULL;
 	
 
 		struct TacConfig {
@@ -63,7 +63,7 @@ namespace PETSYS {
 		
 
 		static SystemConfig *fromFile(const char *configFileName);
-		static SystemConfig *fromFile(const char *configFileName, uint64_t mask);
+		static SystemConfig *fromFile(const char *configFileName, u_int64_t mask);
 		
 		inline bool useTDCCalibration() { return hasTDCCalibration; };
 		inline bool useQDCCalibration() { return hasQDCCalibration; };

@@ -14,13 +14,13 @@ private:
 	SystemConfig *systemConfig;
 	EventStream *eventStream;
 	
-	uint32_t nReceived;
-	uint32_t nReceivedInvalid;
-	uint32_t nTDCCalibrationMissing;
-	uint32_t nQDCCalibrationMissing;
-	uint32_t nEnergyCalibrationMissing;
-	uint32_t nXYZMissing;
-	uint32_t nSent;
+	u_int64_t nReceived;
+	u_int64_t nReceivedInvalid;
+	u_int64_t nTDCCalibrationMissing;
+	u_int64_t nQDCCalibrationMissing;
+	u_int64_t nEnergyCalibrationMissing;
+	u_int64_t nXYZMissing;
+	u_int64_t nSent;
 public:
 	ProcessHit(SystemConfig *systemConfig, EventStream *eventStream, EventSink<Hit> *sink);
 	virtual void report();

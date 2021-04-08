@@ -24,7 +24,7 @@ EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
 {
 	unsigned N =  inBuffer->getSize();
 	EventBuffer<RawHit> * outBuffer = new EventBuffer<RawHit>(N, inBuffer);
-	u_int32_t lSingleRead = 0;
+	u_int64_t lSingleRead = 0;
 	
 	vector<SortEntry> sortList;
 	sortList.reserve(N);
@@ -59,9 +59,9 @@ EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
 
 void CoarseSorter::report()
 {
-	u_int32_t nTotal = nSingleRead;
+	u_int64_t nTotal = nSingleRead;
 	fprintf(stderr, ">> CoarseSorter report\n");
 	fprintf(stderr, " events passed\n");
-	fprintf(stderr, "  %10u\n", nSingleRead);
+	fprintf(stderr, "  %10lu\n", nSingleRead);
 	UnorderedEventHandler<RawHit, RawHit>::report();
 }
