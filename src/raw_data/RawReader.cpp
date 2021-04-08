@@ -357,6 +357,7 @@ EventBuffer<RawHit> * RawReader::Decoder::handleEvents(EventBuffer<RawReader::Un
 		po->time = pi->frameID * 1024 + po->tcoarse;
 		po->timeEnd = pi->frameID * 1024 + po->ecoarse;
 		if((po->timeEnd - po->time) < -256) po->timeEnd += 1024;
+		po->valid = true;
 	}
 	outBuffer->setUsed(N);
 	return outBuffer;
