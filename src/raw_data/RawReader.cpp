@@ -206,7 +206,6 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	RawDataFrame *dataFrame = new RawDataFrame;
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
 	unsigned seqN = 0;
-	const long outBlockSize = 4*1024;
 	long long currentBufferFirstFrame = 0;
 	
 	long long lastFrameID = -1;
@@ -238,7 +237,10 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		assert(r == N*sizeof(uint64_t));
 		currentPosition += r;
 		
-		
+		// Blocksize
+		// Best block size from profiling: 2048
+		// but handle larger frames correctly
+		size_t outBlockSize = max(N, 2048);
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
 			outBuffer = new EventBuffer<UndecodedHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
