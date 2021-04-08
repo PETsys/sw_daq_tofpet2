@@ -14,8 +14,8 @@ namespace PETSYS {
 	struct RawHit {
 		bool valid;
 		bool qdcMode;
-		double time;
-		double timeEnd;
+		long long time;
+		long long timeEnd;
 		unsigned int channelID;
 
 		unsigned long frameID;

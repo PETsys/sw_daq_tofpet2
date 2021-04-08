@@ -13,12 +13,11 @@ CoarseSorter::CoarseSorter(EventSink<RawHit> *sink) :
 }
 
 struct SortEntry {
-	long long frameID;
         long long time;
-        unsigned index;
+        RawHit *p;
 };
 
-static bool operator< (SortEntry lhs, SortEntry rhs) { return (lhs.frameID < rhs.frameID) ||  (lhs.time < rhs.time); }
+static bool operator< (SortEntry lhs, SortEntry rhs) { return lhs.time < rhs.time; }
 
 
 EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
@@ -30,25 +29,31 @@ EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
 	vector<SortEntry> sortList;
 	sortList.reserve(N);
 
-	long long T = 1;
-	
-	for(unsigned i = 0; i < N; i++) {
-		RawHit &p = inBuffer->get(i);
-		long frameTime = 1024L * T;
-		SortEntry entry = { (long long)(p.time / frameTime), (long long)(p.time / (4*T)), i };
+	auto pi = inBuffer->getPtr();
+	auto pe = pi + N;
+
+	for(; pi < pe; pi++) {
+		SortEntry entry = {
+			.time = pi->time,
+			.p = pi
+		};
 		sortList.push_back(entry);
 	}
 	
 	sort(sortList.begin(), sortList.end());
 	
-	for(unsigned j = 0; j < sortList.size(); j++) {
-		unsigned i = sortList[j].index;
-		RawHit &p = inBuffer->get(i);
-		outBuffer->push(p);
+	auto po = outBuffer->getPtr();
+	for(auto iter = sortList.begin(); iter != sortList.end(); iter++) {
+		auto p = (*iter).p;
+		*po = *p;
+		po++;
 		lSingleRead++;
 	}
+
+	
 	atomicAdd(nSingleRead, lSingleRead);
 
+	outBuffer->setUsed(lSingleRead);
 	return outBuffer;
 }
 
