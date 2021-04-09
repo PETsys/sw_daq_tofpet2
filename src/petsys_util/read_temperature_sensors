@@ -1,111 +1,159 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from petsys import daqd, fe_temperature
-from math import sqrt
+from petsys import daqd, fe_temperature, config
+from math import sqrt, fabs
 import time
 import argparse
 import sys
 
 
 
-def moduleSensors(sensor_list,nSensors):
-    return (sensor_list[pos:pos+nSensors] for pos in range(0, len(sensor_list),nSensors)) 
+def write_tree(sensor_list): 
+    sensor_list.sort(key = lambda x:x.get_location())
+	
+    locations = [ x.get_location() for x in sensor_list ]
+    moduleLocations = list(set([ (portID, slaveID, moduleID) for (portID, slaveID, moduleID, subModuleID, place) in locations]))
+    moduleLocations.sort()
+    femSensorList = list(set([(subModuleID,place) for (portID, slaveID, moduleID, subModuleID, place) in locations]))
+    femSensorList.sort(key = lambda x:x[0])
+    
+    asic_sensor_names = ""
+    sipm_sensor_names = ""
+    
+    for subModuleID, kind in femSensorList:
+        if kind == "asic": asic_sensor_names += "   A"+str(subModuleID)+ " Sensor"
+        if kind == "sipm": sipm_sensor_names += "   S"+str(subModuleID)+ " Sensor"
 
-def write_tree(sensor_list):
-    nSensors = 4
-    locations_list = [sensor.get_location() for sensor in sensor_list]
-    if any(location[3] > 1 for location in locations_list):
-        nSensors = 8
-    print("---------------------------------------- "+time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())) +" ----------------------------------------------")
-    print("portID\t\tslaveID\t\tmoduleID\tA1 sensor\t  A2 sensor\t  S1 sensor\t  S2 sensor")    
+    timeString = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+    length = 31 + len(femSensorList)*12 
+    lenght2 = (length - len(timeString))*0.5
+    line =  ""
+    line2 = ""
+    for i in range(length):
+        line += "-" 
+        if i < lenght2:
+            line2 += "-" 
+
+    print(line2+timeString+line2)
+    print("portID    slaveID    moduleID  %s%s" % (asic_sensor_names,sipm_sensor_names)) 
+    print(line)
     
-    
-    for femSensors in moduleSensors(sensor_list, nSensors):
-        (portID, slaveID, moduleID, sensorID, sensorPlace) = femSensors[0].get_location()
-        for sensor in femSensors:
-            loc = sensor.get_location()    
-            if(loc[3] == 0 and loc[4] == "asic"):
-                t1 = sensor.get_temperature()
-            if(loc[3] == 1 and loc[4] == "asic"):
-                t2 = sensor.get_temperature()
-            if(loc[3] == 0 and loc[4] == "sipm"):
-                t3 = sensor.get_temperature()
-            if(loc[3] == 1 and loc[4] == "sipm"):
-                t4 = sensor.get_temperature()        
-        print("%d\t\t%d\t\t%d\t      %7.2f ºC\t%7.2f ºC\t%7.2f ºC\t%7.2f ºC" % (portID, slaveID, moduleID, t1, t2, t3, t4))
-    print("-----------------------------------------------------------------------------------------------------------\n") 
-    
+    for portID, slaveID, moduleID in moduleLocations:
+        asic_sensor_readings = ""
+        sipm_sensor_readings = ""
+        
+        for sensor in sensor_list:
+            thisPortID, thisSlaveID, thisModuleID, subModuleID, kind = sensor.get_location()
+			
+            if (portID != thisPortID) or (slaveID != thisSlaveID) or (moduleID != thisModuleID):
+                # Filter out this module, it will be printed in different iteration of this loop
+                continue
+	
+            if kind == "asic": asic_sensor_readings += ("  %7.2f ºC" % sensor.get_temperature())
+            if kind == "sipm": sipm_sensor_readings += ("  %7.2f ºC" % sensor.get_temperature())
+			
+		
+        print("%d         %d          %d        %s%s" % (portID, slaveID, moduleID, asic_sensor_readings, sipm_sensor_readings))    
+    print(line)
+    print("\n")
+      
 def write_table_header(fd, sensor_list):
     locations_list = [sensor.get_location() for sensor in sensor_list]
     fd.write("# Absolute Sensor ID format : portID_slaveID_moduleID_SensorID\n")
     fd.write("# Sensor ID is:\n")
     if any(location[3] > 1 for location in locations_list): #module is FEM256
-        fd.write("# A1 - Sensor 1 on FEM 256 (ASIC)\n")
-        fd.write("# A2 - Sensor 2 on FEM 256 (ASIC)\n")
-        fd.write("# A3 - Sensor 3 on FEM 256 (ASIC)\n")
-        fd.write("# A4 - Sensor 4 on FEM 256 (ASIC)\n")  
-        fd.write("# S1 - Sensor 1 on FEB/S (SIPM)\n")
-        fd.write("# S2 - Sensor 2 on FEB/S (SIPM)\n")
-        fd.write("# S3 - Sensor 3 on FEB/S (SIPM)\n")
-        fd.write("# S4 - Sensor 4 on FEB/S (SIPM)\n")                       
+        fd.write("# A0 - Sensor on FEM 256 (ASIC 0)\n")
+        fd.write("# A1 - Sensor on FEM 256 (ASIC 1)\n")
+        fd.write("# A2 - Sensor on FEM 256 (ASIC 2)\n")
+        fd.write("# A3 - Sensor on FEM 256 (ASIC 3)\n")  
+        fd.write("# S0 - Sensor on FEB/S (SIPM read by ASIC 0)\n")
+        fd.write("# S1 - Sensor on FEB/S (SIPM read by ASIC 1)\n")
+        fd.write("# S2 - Sensor on FEB/S (SIPM read by ASIC 2)\n")
+        fd.write("# S3 - Sensor on FEB/S (SIPM read by ASIC 3)\n")                       
     else:
-        fd.write("# A1 - Sensor on FEB/A (ASIC) connected to port J1 of the FEB/I\n")
-        fd.write("# A2 - Sensor on FEB/A (ASIC) connected to port J2 of the FEB/I\n")
-        fd.write("# S1 - Sensor on FEB/S (SIPM) connected to port J1 of the FEB/I\n")
-        fd.write("# S2 - Sensor on FEB/S (SIPM) connected to port J2 of the FEB/I\n")               
+        fd.write("# A0 - Sensor on FEB/A (ASIC 0) connected to port J1 of the FEB/I\n")
+        fd.write("# A1 - Sensor on FEB/A (ASIC 1) connected to port J2 of the FEB/I\n")
+        fd.write("# S0 - Sensor on FEB/S (SIPM) connected to port J1 of the FEB/I\n")
+        fd.write("# S1 - Sensor on FEB/S (SIPM) connected to port J2 of the FEB/I\n")               
 
     fd.write("#\n#DAQ timestamp\tSystem time")
 
     for (portID,slaveID, moduleID, sensorID, sensorPlace) in locations_list:
-         sid = 'A'+ str(sensorID+1)   
+         sid = 'A'+ str(sensorID)   
          if sensorPlace == "sipm":
-             sid = 'S'+ str(sensorID+1)   
+             sid = 'S'+ str(sensorID)   
          fd.write("\t%d_%d_%d_%s" % (portID,slaveID,moduleID,sid))
     fd.write("\n")
          
 def write_table_row(fd, sensor_list, timestamp):
+    T = []
     fd.write("%d\t%d" %(timestamp, time.time()))
     for sensor in sensor_list:
-        fd.write("\t%.2f" % sensor.get_temperature())
+        temp = sensor.get_temperature()
+        fd.write("\t%.2f" % temp)
+        if sensor.get_location()[4] == "asic":
+            T.append(temp)
     fd.write("\n")
     fd.flush()
-    
+    return T
+
 def main(argv):
     parser = argparse.ArgumentParser(description='Measure temperature from all connected sensors')
     parser.add_argument("--time", type=float, required=False, default=0, help="Acquisition time (in seconds)")
-    parser.add_argument("--interval", type=float, required=False, default=10, help="Measurement interval (in seconds)")
+    parser.add_argument("--interval", type=float, required=False, default=60, help="Measurement interval (in seconds)")
     parser.add_argument("-o", type=str, dest="fileName", required=False, default="/dev/null", help="Data filename")
+    parser.add_argument("--startup", dest="isStartup", action="store_true", help="Check temperature stability when starting up")
     args = parser.parse_args()
 
     connection = daqd.Connection()
-    
+      
     sensor_list = fe_temperature.get_sensor_list(connection)
 
     if sensor_list is []:
-        print("WARNING: No sensors found. Check connections and power")
+        print("WARNING: No sensors found. Check connections and power.")
         return 1
 
     dataFile = open(args.fileName, "w")
-
     write_table_header(dataFile, sensor_list)
     
     tEnd = time.time() + args.time
 
-    isFirst = True
-        
+    if args.isStartup:
+          tEnd = time.time() + 610
+          systemConfig = config.Config()
+          connection.initializeSystem()
+          systemConfig.loadToHardware(connection, bias_enable=config.APPLY_BIAS_OFF)
+          prevT = [-999]
+          
     while True:
         tNextRead = time.time() + args.interval
-        timestamp = connection.getCurrentTimeTag()
+        if args.isStartup:
+            tNextRead = time.time() + 60
+            isStable = True
         
+        timestamp = connection.getCurrentTimeTag()
         write_tree(sensor_list)
-        write_table_row(dataFile, sensor_list, timestamp) 
-                
-       	if tNextRead > tEnd:
+        T = write_table_row(dataFile, sensor_list, timestamp)
+        
+        if args.isStartup:
+            for t1, t2 in zip(T,prevT):
+                if fabs(t1-t2) > 0.2: # Setting stability on ASIC Sensors to 0.2 ºC
+                    isStable = False
+                    prevT = T 
+                    break
+            if isStable == True:
+                print("\nASIC temperatures stable over the last minute. System is ready to start data acquisition/calibration.\n")
+                sys.exit(0)
+
+
+        if tNextRead > tEnd:
             break
-			
+
         tNow = time.time()
         if tNextRead > tNow:
             time.sleep(tNextRead - tNow)
+
+            
     return 0
 
 if __name__ == '__main__':
