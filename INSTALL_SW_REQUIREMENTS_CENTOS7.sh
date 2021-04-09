@@ -27,5 +27,8 @@ dkms
 
 pip3 install pandas
 pip3 install bitarray
+pip3 install matplotlib
+yum -y install cairo-devel
+pip3 install pycairo
 
 sh INSTALL_DRIVERS.sh
