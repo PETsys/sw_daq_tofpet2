@@ -15,8 +15,8 @@ namespace PETSYS {
 	class RawReader : public EventStream {
 	private:
 		struct UndecodedHit {
-			uint64_t frameID;
-			RawEventWord event;
+			u_int64_t frameID;
+			u_int64_t eventWord;
 		};
 
 		class Decoder : public UnorderedEventHandler<UndecodedHit, RawHit> {

@@ -280,25 +280,8 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		
 		UndecodedHit *p = outBuffer->getPtr() + outBuffer->getUsed();
 		for(int i = 0; i < N; i++) {
-/*			RawHit &e = outBuffer->getWriteSlot();
-			e.channelID = dataFrame->getChannelID(i);
-			e.qdcMode = isQDC(e.channelID);
-			e.tacID = dataFrame->getTacID(i);
-			e.frameID = frameID;
-			e.tcoarse = dataFrame->getTCoarse(i);
-			e.tfine = dataFrame->getTFine(i);
-			e.ecoarse = dataFrame->getECoarse(i);
-			e.efine = dataFrame->getEFine(i);
-			
-			e.time = (frameID - currentBufferFirstFrame) * 1024 + e.tcoarse;
-			e.timeEnd = (frameID - currentBufferFirstFrame) * 1024 + e.ecoarse;
-			if((e.timeEnd - e.time) < -256) e.timeEnd += 1024;
-				
-			e.valid = true;
-	*/
-			p->frameID = frameID - currentBufferFirstFrame;
-			p->event = RawEventWord(dataFrame->data[2+i]);
-			p++;
+			p[i].frameID = frameID - currentBufferFirstFrame;
+			p[i].eventWord = dataFrame->data[2+i];
 		}
 		outBuffer->setUsed(outBuffer->getUsed() + N);
 		outBuffer->setTMax((frameID + 1) * 1024);
@@ -347,14 +330,15 @@ EventBuffer<RawHit> * RawReader::Decoder::handleEvents(EventBuffer<RawReader::Un
 	UndecodedHit *pe = pi + N;
 	RawHit *po = outBuffer->getPtr();
 	for(; pi < pe; pi++, po++) {
-		po->channelID = pi->event.getChannelID();
+		RawEventWord e = RawEventWord(pi->eventWord);
+		po->channelID = e.getChannelID();
 		po->qdcMode = reader->isQDC(po->channelID);
-		po->tacID = pi->event.getTacID();
+		po->tacID = e.getTacID();
 		po->frameID = pi->frameID;
-		po->tcoarse = pi->event.getTCoarse();
-		po->tfine = pi->event.getTFine();
-		po->ecoarse = pi->event.getECoarse();
-		po->efine = pi->event.getEFine();
+		po->tcoarse = e.getTCoarse();
+		po->tfine = e.getTFine();
+		po->ecoarse = e.getECoarse();
+		po->efine = e.getEFine();
 
 		po->time = pi->frameID * 1024 + po->tcoarse;
 		po->timeEnd = pi->frameID * 1024 + po->ecoarse;
