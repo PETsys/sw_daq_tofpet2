@@ -37,8 +37,8 @@ namespace PETSYS {
 
 		pthread_mutex_lock(&lock);
 		terminate = true;
-		pthread_mutex_unlock(&lock);
 		pthread_cond_broadcast(&cond_queued);
+		pthread_mutex_unlock(&lock);
 
 		for(int i = 0; i < nWorkers; i++) {
 			pthread_join(workers[i].thread, NULL);
@@ -65,8 +65,8 @@ namespace PETSYS {
 			};
 
 		queue.push_back(job);
-		pthread_mutex_unlock(&lock);
 		pthread_cond_signal(&cond_queued);
+		pthread_mutex_unlock(&lock);
 	}
 	
 	void BaseThreadPool::completeQueue()
@@ -99,17 +99,14 @@ namespace PETSYS {
 			auto job = pool->queue.front();
 			pool->queue.pop_front();
 			self->isBusy = true;
-			pthread_mutex_unlock(&pool->lock);
 			pthread_cond_signal(&pool->cond_dequeued);
+			pthread_mutex_unlock(&pool->lock);
 			
 			pool->runTask(job.b, job.s);
 
 			pthread_mutex_lock(&pool->lock);
 			self->isBusy = false;
-			pthread_mutex_unlock(&pool->lock);
 			pthread_cond_signal(&pool->cond_completed);
-
-			pthread_mutex_lock(&pool->lock);
 		}
 		pthread_mutex_unlock(&pool->lock);
 		return NULL;
