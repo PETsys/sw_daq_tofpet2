@@ -29,19 +29,21 @@ namespace PETSYS {
 		
 		virtual void pushEvents(EventBuffer<TEventInput> *buffer) {
 			size_t mySeqN = buffer->getSeqN();
+			pthread_cond_t cond;
+			pthread_cond_init(&cond, NULL);
 			pthread_mutex_lock(&lock);
+			queue[mySeqN] = &cond;
 			while(mySeqN != expectedSeqN) {
 				// Not our turn yet
-				pthread_cond_t cond;
-				pthread_cond_init(&cond, NULL);
-				queue[mySeqN] = &cond;
 				pthread_cond_wait(&cond, &lock);
-				queue.erase(mySeqN);
-				pthread_cond_destroy(&cond);
 			}
+			queue.erase(mySeqN);
+			pthread_cond_destroy(&cond);
+			pthread_mutex_unlock(&lock);
 			// Process the data
 			auto newBuffer = handleEvents(buffer);
 		
+			pthread_mutex_lock(&lock);
 			// Increment expected sequence number and signal any waiting workers
 			expectedSeqN += 1;
 			if(queue.count(expectedSeqN) > 0) {
