@@ -172,7 +172,7 @@ int createListeningSocket(char *socketName)
 	
 	memset(&address, 0, sizeof(struct sockaddr_un));
 	address.sun_family = AF_UNIX;
-	snprintf(address.sun_path, PATH_MAX, socketName);
+	snprintf(address.sun_path, 108, "%s", socketName);
 
 
 	if(bind(socket_fd, (struct sockaddr *) &address, sizeof(struct sockaddr_un)) != 0) {

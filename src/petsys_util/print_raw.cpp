@@ -90,12 +90,12 @@ int main(int argc, char *argv[])
 		
 		while(ftell(dataFile) < endOffset) {
 			fread((void *)(tmpRawDataFrame->data), sizeof(uint64_t), 2, dataFile);
-			long frameSize = tmpRawDataFrame->getFrameSize();
+			auto frameSize = tmpRawDataFrame->getFrameSize();
 			fread((void *)((tmpRawDataFrame->data)+2), sizeof(uint64_t), frameSize-2, dataFile);
 			
-			long long unsigned frameID = tmpRawDataFrame->getFrameID();
-			bool frameLost = tmpRawDataFrame->getFrameLost();
-			int nEvents = tmpRawDataFrame->getNEvents();
+			auto frameID = tmpRawDataFrame->getFrameID();
+			auto frameLost = tmpRawDataFrame->getFrameLost();
+			auto nEvents = tmpRawDataFrame->getNEvents();
 
 			/*
 			 * Sequences of frames with zero events are suppressed after the first frame in the sequence
@@ -116,21 +116,21 @@ int main(int argc, char *argv[])
 			if(suppressEmpty && nEvents == 0) continue;
 			
 			
-			printf("%04d %016llx Size: %-4llu FrameID: %-20llu\n", 0, tmpRawDataFrame->data[0], tmpRawDataFrame->getFrameSize(), frameID);
-			printf("%04d %016llx nEvents: %20llu %4s\n", 1,  tmpRawDataFrame->data[1], tmpRawDataFrame->getNEvents(), frameLost ? "LOST" : "");
+			printf("%04d %016lx Size: %-4u FrameID: %-20llu\n", 0, tmpRawDataFrame->data[0], tmpRawDataFrame->getFrameSize(), frameID);
+			printf("%04d %016lx nEvents: %20d %4s\n", 1,  tmpRawDataFrame->data[1], tmpRawDataFrame->getNEvents(), frameLost ? "LOST" : "");
 			
 			for (int i = 0; i < nEvents; i++) {
 
-				unsigned long channelID = tmpRawDataFrame->getChannelID(i);
-				unsigned long tacID = tmpRawDataFrame->getTacID(i);
-				unsigned long tCoarse = tmpRawDataFrame->getTCoarse(i);
-				unsigned long eCoarse = tmpRawDataFrame->getECoarse(i);
-				unsigned long tFine = tmpRawDataFrame->getTFine(i);
-				unsigned long eFine = tmpRawDataFrame->getEFine(i);
+				auto channelID = tmpRawDataFrame->getChannelID(i);
+				auto tacID = tmpRawDataFrame->getTacID(i);
+				auto tCoarse = tmpRawDataFrame->getTCoarse(i);
+				auto eCoarse = tmpRawDataFrame->getECoarse(i);
+				auto tFine = tmpRawDataFrame->getTFine(i);
+				auto eFine = tmpRawDataFrame->getEFine(i);
 				
-				printf("%04d %016llx", i+2,  tmpRawDataFrame->data[i+2]);
-				printf(" ChannelID: (%02d %02d %02d %02d)", (channelID >> 17) % 32, (channelID >> 12) % 32, (channelID >> 6) % 64, (channelID % 64));
-				printf(" TacID: %d TCoarse: %4d TFine: %4d ECoarse: %4d EFine: %4d", tacID, tCoarse, tFine, eCoarse, eFine);
+				printf("%04d %016lx", i+2,  tmpRawDataFrame->data[i+2]);
+				printf(" ChannelID: (%02u %02u %02u %02u)", (channelID >> 17) % 32, (channelID >> 12) % 32, (channelID >> 6) % 64, (channelID % 64));
+				printf(" TacID: %u TCoarse: %4u TFine: %4u ECoarse: %4u EFine: %4u", tacID, tCoarse, tFine, eCoarse, eFine);
 				printf("\n");
 			}
 			

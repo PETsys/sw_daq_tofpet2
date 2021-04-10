@@ -126,7 +126,7 @@ public:
 				hData->Fill();
 			}
 			else {
-				fprintf(dataFile, "%lld\t%hu\t%hu\t%hu\t%hu\t%hu\t%hu\n",
+				fprintf(dataFile, "%lu\t%u\t%hu\t%hu\t%hu\t%hu\t%hu\n",
 					hit.frameID,
 					hit.channelID, hit.tacID,
 					hit.tcoarse, hit.ecoarse,
@@ -168,7 +168,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
 	fprintf(stderr,  "  -o \t\t\t Output file name - containins raw event data in ROOT format.\n");
 	fprintf(stderr, "Optional flags:\n");
-	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
+	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 

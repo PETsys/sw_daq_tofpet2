@@ -75,18 +75,18 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 	uint64_t header[8];
 	ssize_t r = read(rawFile, (void *)header, sizeof(uint64_t)*8);
 	if(r < 1) {
-		fprintf(stderr, "Could not read from '%s'\n", fName, strerror(errno));
+		fprintf(stderr, "Could not read from '%s': %s\n", fName, strerror(errno));
 		exit(1);
 	}
 	else if (r < sizeof(uint64_t)*8) {
-		fprintf(stderr, "Read only %d bytes from '%s', expected %d\n", r, fName, sizeof(uint64_t)*8);
+		fprintf(stderr, "Read only %ld bytes from '%s', expected %lu\n", r, fName, sizeof(uint64_t)*8);
 		exit(1);
 	}
 
 	RawReader *reader = new RawReader();
 	reader->dataFile = rawFile;
 	reader->frequency = header[0] & 0xFFFFFFFFUL;
-	if (header[2] & 0x8000 != 0) { 
+	if ((header[2] & 0x8000) != 0) { 
 		reader->triggerID = header[2] & 0x7FFF; 
 	}
 	else {
@@ -96,7 +96,7 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 	if(header[3]!=0){
 		sprintf(fName, "%s.modf", fnPrefix);
 		FILE *modeFile = fopen(fName, "r");
-		if(fName == NULL) {
+		if(modeFile == NULL) {
 			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
 			exit(1);
 		}
@@ -106,7 +106,7 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 			if(strlen(line) == 0) continue;
 			unsigned portID, slaveID, chipID,channelID;
 			char mode[128];		
-			if(sscanf(line, "%d\t%u\t%u\t%u\t%s", &portID, &slaveID, &chipID, &channelID, &mode)!= 5) continue;
+			if(sscanf(line, "%d\t%u\t%u\t%u\t%s", &portID, &slaveID, &chipID, &channelID, mode)!= 5) continue;
 			unsigned long gChannelID = 0;
 			gChannelID |= channelID;
 			gChannelID |= (chipID << 6);
@@ -122,7 +122,7 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 	
 
 	Step step;
-	while(fscanf(idxFile, "%lu\t%lu\t%lld\t%lld\t%f\t%f", &step.stepBegin, &step.stepEnd, &step.stepFirstFrame, &step.stepLastFrame, &step.step1, &step.step2) == 6) {
+	while(fscanf(idxFile, "%llu\t%llu\t%lld\t%lld\t%f\t%f", &step.stepBegin, &step.stepEnd, &step.stepFirstFrame, &step.stepLastFrame, &step.step1, &step.step2) == 6) {
 		reader->steps.push_back(step);
 	}
 	return reader;

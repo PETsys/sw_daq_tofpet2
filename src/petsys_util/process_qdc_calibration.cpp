@@ -679,8 +679,8 @@ void calibrateAllAsics(SystemConfig *config, CalibrationEntry *calibrationTable,
 			unsigned long portID = (gAsicID >> 11) % 32;
 			
 			char summaryFilePrefix[1024];
-			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
-			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
+			sprintf(summaryFilePrefix, "%s_%02lu_%02lu_%02lu", outputFilePrefix, portID, slaveID, chipID);
+			printf("Calibrating ASIC (%2lu %2lu %2lu)\n", portID, slaveID, chipID);
 			fflush(stdout);
 			calibrateAsic(config, gAsicID, tmpDataFile, calibrationTable, summaryFilePrefix, nBins, xMin, xMax);
 			exit(0);

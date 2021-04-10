@@ -227,11 +227,11 @@ int main(int argc, char *argv[])
 				calEventSet.clear();
 			}	
 			
-			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %d event/frame max\n", 
+			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
 					stepMaxFrame); fflush(stderr);
-			fprintf(stderr, "writeRaw:: some events were lost for %d (%5.1f%%) frames; all events were lost for %d (%5.1f%%) frames\n", 
+			fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
 					stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
 					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
 					); 

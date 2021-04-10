@@ -802,7 +802,7 @@ void calibrateAsic(
 			channelOK &= entry.valid;
 		}
 		if(!channelOK) {
-			fprintf(stderr, "WARNING Channel (%2d %2d %2d %2d) has one or more uncalibrated TAC. Zero'ing out channel.\n", portID, slaveID, chipID, channelID);
+			fprintf(stderr, "WARNING Channel (%2lu %2lu %2lu %2lu) has one or more uncalibrated TAC. Zero'ing out channel.\n", portID, slaveID, chipID, channelID);
 			for(int tac = 0; tac < 8; tac++) {
 				unsigned long gid = (gChannelID << 3) | tac;
 				CalibrationEntry &entry = calibrationTable[gid];
@@ -964,8 +964,8 @@ void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float li
 			unsigned long portID = (gAsicID >> 11) % 32;
 			
 			char summaryFilePrefix[1024];
-			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, chipID);
-			printf("Calibrating ASIC (%2d %2d %2d)\n", portID, slaveID, chipID);
+			sprintf(summaryFilePrefix, "%s_%02lu_%02lu_%02lu", outputFilePrefix, portID, slaveID, chipID);
+			printf("Calibrating ASIC (%2lu %2lu %2lu)\n", portID, slaveID, chipID);
 			fflush(stdout);
 			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
 			calibrateAsic(gAsicID, tmpDataFile, linearityNbins, linearityRangeMinimum, linearityRangeMaximum,

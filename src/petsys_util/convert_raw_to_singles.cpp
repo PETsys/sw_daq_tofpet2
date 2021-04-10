@@ -133,7 +133,7 @@ public:
 			hFile->Write();
 		}
 		else if(fileType == FILE_BINARY) {
-			fprintf(indexFile, "%llu\t%llu\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
+			fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
 			stepBegin = ftell(dataFile);
 		}
 		else {
@@ -229,7 +229,7 @@ void displayHelp(char * program)
 	fprintf(stderr, "Optional flags:\n");
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
-	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%.\n");
+	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };

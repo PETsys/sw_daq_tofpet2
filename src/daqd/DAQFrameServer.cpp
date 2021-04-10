@@ -224,7 +224,7 @@ void *DAQFrameServer::doWork()
 		bool frameLost = (headerWords[1] & 0x10000) != 0;
 
 		if(frameSize > MaxRawDataFrameQueueSize) {
-			fprintf(stderr, "Excessive frame size: %u\n word (max is %u)", frameSize, MaxRawDataFrameQueueSize);
+			fprintf(stderr, "Excessive frame size: %llu\n word (max is %u)", frameSize, MaxRawDataFrameQueueSize);
 			lastFrameWasBad = true; skippedLoops = 1000007; continue;
 		}
 

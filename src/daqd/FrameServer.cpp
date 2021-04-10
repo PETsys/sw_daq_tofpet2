@@ -55,7 +55,7 @@ FrameServer::FrameServer(int nFEB, int *feTypeMap, int debugLevel)
 	acquisitionMode = 0;
 	hasWorker = false;
 	
-	printf("Size of frame is %u\n", sizeof(RawDataFrame));
+	printf("Size of frame is %lu\n", sizeof(RawDataFrame));
 }
 
 FrameServer::~FrameServer()
@@ -183,13 +183,13 @@ void *FrameServer::runWorker(void *arg)
 bool FrameServer::parseDataFrame(RawDataFrame *dataFrame)
 {
 	
-	unsigned long long frameID = dataFrame->data[0] & 0xFFFFFFFFFULL;
-	unsigned long frameSize = (dataFrame->data[0] >> 36) & 0x7FFF;
-	unsigned nEvents = dataFrame->data[1] & 0xFFFF;
+	auto frameID = dataFrame->data[0] & 0xFFFFFFFFFULL;
+	auto frameSize = (dataFrame->data[0] >> 36) & 0x7FFF;
+	auto nEvents = dataFrame->data[1] & 0xFFFF;
 	bool frameLost = (dataFrame->data[1] & 0x10000) != 0;
 	
 	if (frameSize != 2 + nEvents) {
-		printf("Inconsistent size: got %4d words, expected %4d words(%d events).\n", 
+		printf("Inconsistent size: got %4lu words, expected %4lu words(%lu events).\n", 
 			frameSize, 2 + nEvents, nEvents);
 		return false;
 	}

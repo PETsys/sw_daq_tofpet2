@@ -27,7 +27,7 @@ int Client::handleRequest()
 	
 	int nBytesRead = recv(socket, socketBuffer, sizeof(cmdHeader), 0);
 	if(nBytesRead !=  sizeof(cmdHeader)) {
-		fprintf(stderr, "Could not read() %u bytes from client %d\n", sizeof(CmdHeader_t), socket);
+		fprintf(stderr, "Could not read() %lu bytes from client %d\n", sizeof(CmdHeader_t), socket);
 		return -1;
 	}
 	
@@ -66,7 +66,7 @@ int Client::handleRequest()
 		actionStatus = doSetTrigger();
 	else if(cmdHeader.type == commandSetIdleTimeCalculation)
 		actionStatus = doSetIdleTimeCalculation();
-	else if(cmdHeader.type = commandSetGateEnable)
+	else if(cmdHeader.type == commandSetGateEnable)
 		actionStatus = doSetGateEnable();
 	
 	if(actionStatus == -1) {
