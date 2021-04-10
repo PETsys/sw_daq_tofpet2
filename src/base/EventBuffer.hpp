@@ -22,7 +22,7 @@ namespace PETSYS {
 			delete parent;
 		};
 
-		u_int64_t getSeqN() {
+		size_t getSeqN() {
 			return bufferSeqN;
 		};
 		

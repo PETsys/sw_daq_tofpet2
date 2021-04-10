@@ -205,7 +205,7 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	
 	RawDataFrame *dataFrame = new RawDataFrame;
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
-	unsigned seqN = 0;
+	size_t seqN = 0;
 	long long currentBufferFirstFrame = 0;
 	
 	long long lastFrameID = -1;
