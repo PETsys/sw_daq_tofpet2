@@ -19,6 +19,7 @@ namespace PETSYS {
 		terminate = false;
 		pthread_mutex_init(&lock, NULL);
 		pthread_cond_init(&cond_queued, NULL);
+		pthread_cond_init(&cond_dequeued, NULL);
 		pthread_cond_init(&cond_completed, NULL);
 
 		nWorkers = nCPU;
@@ -46,6 +47,7 @@ namespace PETSYS {
 		delete [] workers;
 
 		pthread_cond_destroy(&cond_completed);
+		pthread_cond_destroy(&cond_dequeued);
 		pthread_cond_destroy(&cond_queued);
 		pthread_mutex_destroy(&lock);
 	}
@@ -54,7 +56,7 @@ namespace PETSYS {
 	{
 		pthread_mutex_lock(&lock);
 		while(queue.size() >= maxQueueSize) {
-			pthread_cond_wait(&cond_completed, &lock);
+			pthread_cond_wait(&cond_dequeued, &lock);
 		}
 		
 		job_t job = {
@@ -71,7 +73,7 @@ namespace PETSYS {
 	{
 		pthread_mutex_lock(&lock);
 		while (!queue.empty()) {
-			pthread_cond_wait(&cond_completed, &lock);
+			pthread_cond_wait(&cond_dequeued, &lock);
 		}
 
 		for(int i = 0; i < nWorkers; i++) {
@@ -98,6 +100,7 @@ namespace PETSYS {
 			pool->queue.pop_front();
 			self->isBusy = true;
 			pthread_mutex_unlock(&pool->lock);
+			pthread_cond_signal(&pool->cond_dequeued);
 			
 			pool->runTask(job.b, job.s);
 

@@ -40,8 +40,9 @@ namespace PETSYS {
 		worker_t *workers;
 
 		pthread_mutex_t lock;
-		pthread_cond_t cond_completed;
 		pthread_cond_t cond_queued;
+		pthread_cond_t cond_dequeued;
+		pthread_cond_t cond_completed;
 		bool terminate;
 		
 		static void *thread_routine(void *);
