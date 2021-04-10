@@ -210,6 +210,7 @@ int FrameServer::setCoincidenceTrigger(CoincidenceTriggerConfig *config)
 int FrameServer::setIdleTimeCalculation(unsigned mode)
 {
 	idleTimeMode = mode;
+	return 0;
 }
 
 int FrameServer::setGateEnable(unsigned mode)
