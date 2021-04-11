@@ -236,25 +236,27 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		r = readFromDataFile((char*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
 		currentPosition += r;
+
+		long long frameID = dataFrame->getFrameID();
+		bool frameLost = dataFrame->getFrameLost();
 		
 		// Blocksize
 		// Best block size from profiling: 2048
 		// but handle larger frames correctly
-		size_t outBlockSize = max(N, 2048);
+		size_t allocSize = max(N, 2048);
 		if(outBuffer == NULL) {
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<UndecodedHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
 			seqN += 1;
 		}
-		else if(outBuffer->getSize() + N > outBlockSize) {
+		else if((outBuffer->getFree() < N) || ((frameID - currentBufferFirstFrame) > (1LL << 32))) {
+			// Buffer is full or buffer is covering too much time
 			pool->queueTask(outBuffer, mysink);
 			currentBufferFirstFrame = dataFrame->getFrameID();
-			outBuffer = new EventBuffer<UndecodedHit>(outBlockSize, seqN, currentBufferFirstFrame * 1024);
+			outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
 			seqN += 1;
 		}
 		
-		long long frameID = dataFrame->getFrameID();
-		bool frameLost = dataFrame->getFrameLost();
 		
 		// Account skipped frames with all events lost
 		if (frameID != lastFrameID + 1) {
