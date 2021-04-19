@@ -65,14 +65,14 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			out.time = in.time;
 			if(useTDC) {
 				float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
-				out.time = in.time - q_T - ct.t0;
+				out.time = double(in.time) - q_T - ct.t0;
 				if(ct.a1 == 0) eventFlags |= 0x2;
 			}
 			if(!in.qdcMode) {
 				out.timeEnd = in.timeEnd;
 				if(useTDC) {
 					float q_E = ( -ce.a1 + sqrtf((ce.a1 * ce.a1) - (4.0f * (ce.a0 - in.efine) * ce.a2))) / (2.0f * ce.a2) ;
-					out.timeEnd = in.timeEnd - q_E - ce.t0;
+					out.timeEnd = double(in.timeEnd) - q_E - ce.t0;
 					if(ce.a1 == 0) eventFlags |= 0x2;
 				}
 				out.energy = out.timeEnd - out.time;
