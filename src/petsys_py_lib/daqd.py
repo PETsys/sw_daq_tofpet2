@@ -300,8 +300,11 @@ class Connection:
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
 		asicType = {}
 		initialGlobalAsicConfig = {} # Store the default config we're uploading into each FEB/D
+		initialAsicChannelConfig = {}
 
 		for portID, slaveID in self.getActiveFEBDs():
+
+			supportsTxCalibration2 = (self.read_config_register(portID, slaveID, 64, 0xFFF8) & 0x2)
 			for chipID in range(MAX_CHIPS):
 				try:
 					status, readback = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
@@ -323,8 +326,13 @@ class Connection:
 					gcfg.setValue("tx_ddr", ddr)
 					gcfg.setValue("tx_nlinks", tx_nlinks)
 					#  .. and with the TX logic to calibration
-					gcfg.setValue("tx_mode", 0b01)
+					if supportsTxCalibration2:
+						gcfg.setValue("tx_mode", 0b10)
+					else:
+						gcfg.setValue("tx_mode", 0b01)
+					ccfg.setValue("trigger_mode_1", 0b11)
 					initialGlobalAsicConfig[(portID, slaveID, chipID)] = gcfg
+					initialAsicChannelConfig[(portID, slaveID, chipID)] = ccfg
 
 					self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=gcfg)
 					for n in range(64):
@@ -408,9 +416,13 @@ class Connection:
 
 				# Same configuration as before...
 				gcfg = initialGlobalAsicConfig[(portID, slaveID, chipID)]
+				ccfg = initialAsicChannelConfig[(portID, slaveID, chipID)]
 				# .. but with the TX logic to normal
 				gcfg.setValue("tx_mode", 0b10)
+				ccfg.setValue("trigger_mode_1", 0b00)
 				self.__doAsicCommand(portID, slaveID, chipID, "wrGlobalCfg", value=gcfg)
+				for n in range(64):
+					self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=n, value=ccfg)
 
 		# Allow some ms for the deserializer to lock to the 8B/10B pattern
 		sleep(0.010)
