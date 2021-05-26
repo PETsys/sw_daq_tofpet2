@@ -49,26 +49,57 @@ PFP_KX7::PFP_KX7()
 	if ((fd = open("/dev/psdaq0", O_RDWR | O_SYNC)) == -1)
 		assert(false);
 	
-	uint32_t ExtClkFreq;
-	ReadWithoutCheck(base_addr1 + ExtClk0, &ExtClkFreq, 1);
 	
-	if (ExtClkFreq < 0.99995*TARGET_EXT_CLK_FREQUENCY || ExtClkFreq > 1.00005*TARGET_EXT_CLK_FREQUENCY) {  // check the ext oscilator frequency
-		uint32_t data;
-		data = 1;
-		WriteWithoutCheck(base_addr1 + 0x18, &data, 1);
+	uint32_t fw_flags;
+	bool pfp_kx7old = true;
+
+	ReadWithoutCheck(base_addr0 + (statusReg+75) * 4, &fw_flags, 1);
+	if(fw_flags & 0x1) {
+		// Firmware supports PFP KX7 plus and version
+		uint32_t fw_revision_l;
+		uint32_t fw_revision_h;
+		ReadWithoutCheck(base_addr0 + (statusReg+76) * 4, &fw_revision_l, 1);
+		ReadWithoutCheck(base_addr0 + (statusReg+77) * 4, &fw_revision_h, 1);
 		
-		do {
-			ReadWithoutCheck(base_addr1 + 0x10, &data, 1);
-			usleep(1000);
-		} while(data != 0);
+		uint64_t fw_revision = (uint64_t(fw_revision_h) << 32) | fw_revision_l;
+
+		if(fw_flags & 0x2) {
+			printf("PFP KX7+ card detected, firmare revision 0x%016llX.\n", fw_revision);
+			pfp_kx7old = false;
+		}
+		else {
+			printf("PFP KX7 card detected, firmare revision 0x%016llX.\n", fw_revision);
+			pfp_kx7old = true;
+		}
+	}
+	else {
+		printf("PFP KX7 card detected, unknown firmware revision.\n");
+		pfp_kx7old = true;
+	}
+
+
+	if(pfp_kx7old) {
+		uint32_t ExtClkFreq;
+		ReadWithoutCheck(base_addr1 + ExtClk0, &ExtClkFreq, 1);
 		
-		data = TARGET_EXT_CLK_FREQUENCY/10000;
-		WriteWithoutCheck(base_addr1 + Osc0, &data, 1);
-		
-		do {
-			ReadWithoutCheck(base_addr1 + 0x10, &data, 1);
-			usleep(1000);
-		} while (data != 0);
+		if (ExtClkFreq < 0.99995*TARGET_EXT_CLK_FREQUENCY || ExtClkFreq > 1.00005*TARGET_EXT_CLK_FREQUENCY) {  // check the ext oscilator frequency
+			uint32_t data;
+			data = 1;
+			WriteWithoutCheck(base_addr1 + 0x18, &data, 1);
+			
+			do {
+				ReadWithoutCheck(base_addr1 + 0x10, &data, 1);
+				usleep(1000);
+			} while(data != 0);
+			
+			data = TARGET_EXT_CLK_FREQUENCY/10000;
+			WriteWithoutCheck(base_addr1 + Osc0, &data, 1);
+			
+			do {
+				ReadWithoutCheck(base_addr1 + 0x10, &data, 1);
+				usleep(1000);
+			} while (data != 0);
+		}
 	}
 
 	// setting up firmware configuration
