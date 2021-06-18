@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+
+import sys
+from petsys import daqd, config, monitor
+import argparse
+
+def main(argv):
+	parser = argparse.ArgumentParser(description='Monitor setup example')
+	parser.add_argument("--monitor-toc", dest="monitor_toc", type=str, required=True, help="Monitor TOC")
+	args = parser.parse_args()
+	
+	conn = daqd.Connection()
+	conn.initializeSystem()
+	
+	m = monitor.Monitor()
+	acquisition_t0 = monitor.SingleValue("acquisition_t0", m)
+	acquisition_elapsed = monitor.SingleValue("acquisition_elapsed", m)
+	coincidence_counter = monitor.SingleValue("coincidence_counter", m)
+	
+	channel_counter = {}
+	channel_energy = {}
+	for p,s,a,c in conn.getActiveAsicsChannels():
+		channelID = c 
+		channelID = (channelID << 6) | a
+		channelID = (channelID << 6) | s
+		channelID = (channelID << 5) | p
+		channel_counter[channelID] = monitor.SingleValue("channel_counter/%d" % channelID, m)
+		channel_energy[channelID] = monitor.Histogram1D(100, 0, 1000, "channel_energy/%d" % channelID, m);
+	
+	m.materialize()
+	m.writeTOC(args.monitor_toc)
+	print("LAUNCH ACQUISITION")
+	input("AND PRESS ENTER WHEN FINISHED")
+	
+	m.lock()
+	print("Acquisition started at %f seconds UNIX EPOCH" % acquisition_t0.getValue())
+	print("Acquisition length was %f seconds" % (acquisition_elapsed.getValue() / conn.getSystemFrequency()))
+	print("Acquisition had %d coincidences" % int(coincidence_counter.getValue()))
+	m.unlock()
+	
+	return 0
+
+if __name__ == '__main__':
+	sys.exit(main(sys.argv))
