@@ -9,10 +9,14 @@ def main(argv):
 	parser.add_argument("--monitor-toc", dest="monitor_toc", type=str, required=True, help="Monitor TOC")
 	args = parser.parse_args()
 	
+	# Connect to DAQD, we'll need to know which ASICs are actually present
 	conn = daqd.Connection()
 	conn.initializeSystem()
 	
+	# Create the monitor
 	m = monitor.Monitor()
+	# Create the monitor objects
+	# The names used here MUST be the same names as used in the actual monitor (online_monitor)
 	acquisition_t0 = monitor.SingleValue("acquisition_t0", m)
 	acquisition_elapsed = monitor.SingleValue("acquisition_elapsed", m)
 	coincidence_counter = monitor.SingleValue("coincidence_counter", m)
@@ -27,16 +31,22 @@ def main(argv):
 		channel_counter[channelID] = monitor.SingleValue("channel_counter/%d" % channelID, m)
 		channel_energy[channelID] = monitor.Histogram1D(100, 0, 1000, "channel_energy/%d" % channelID, m);
 	
+	# Actually creates the shared memory block
 	m.materialize()
+	# Writes out a TOC file describing the contents/layout of the shared memory block to be read by the monitor
 	m.writeTOC(args.monitor_toc)
 	print("LAUNCH ACQUISITION")
-	input("AND PRESS ENTER WHEN FINISHED")
 	
-	m.lock()
-	print("Acquisition started at %f seconds UNIX EPOCH" % acquisition_t0.getValue())
-	print("Acquisition length was %f seconds" % (acquisition_elapsed.getValue() / conn.getSystemFrequency()))
-	print("Acquisition had %d coincidences" % int(coincidence_counter.getValue()))
-	m.unlock()
+	while input("(R)read or (Q)uit?") not in [ "q", "Q" ]:
+		m.lock()
+		print("Acquisition started at %f seconds UNIX EPOCH" % acquisition_t0.getValue())
+		print("Acquisition length was %f seconds" % (acquisition_elapsed.getValue() / conn.getSystemFrequency()))
+		print("Acquisition had %d coincidences" % int(coincidence_counter.getValue()))
+		m.unlock()
+
+
+	# Wait until acquisition is finisghed, we don't want to remove the shared memory meanwhile
+	input("PRESS ENTER WHEN ACQUISTION IS FINISHED")
 	
 	return 0
 

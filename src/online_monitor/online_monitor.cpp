@@ -133,7 +133,7 @@ public:
 			}
 			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+coincidence_counter"})) {
 				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				acquisition_elapsed = new SingleValue("coincidence_counter", m, m->getPtr() + offset);
+				coincidence_counter = new SingleValue("coincidence_counter", m, m->getPtr() + offset);
 			}
 			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+channel_counter/(\\d+)"})) {
 				size_t offset = boost::lexical_cast<size_t>(what[1]);
@@ -183,10 +183,8 @@ public:
 			
 			
 		}
-
-		if(acquisition_elapsed != NULL) acquisition_elapsed->setValue(buffer->getTMax());
-		if(coincidence_counter != NULL) coincidence_counter->addToValue(N);
-		
+ 		if(acquisition_elapsed != NULL) acquisition_elapsed->setValue(buffer->getTMax());
+ 		if(coincidence_counter != NULL) coincidence_counter->addToValue(N);
 		monitor->unlock();
 		
 		return buffer;
@@ -256,6 +254,7 @@ int main(int argc, char *argv[])
 			new NullSink<Coincidence>()
 		))))));
 	
+	monitor->resetAllObjects();
 	pipeline->pushT0(acquisitionStartTime);
 	
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 

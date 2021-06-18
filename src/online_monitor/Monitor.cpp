@@ -82,14 +82,18 @@ namespace PETSYS { namespace OnlineMonitor {
 			(*iter)->destroy();
 			
 		}
-		pthread_mutex_destroy(mutex);
 
-		munmap(ptr, shmSize);
+		if(ptr != NULL) {
+			pthread_mutex_destroy(mutex);
+			munmap(ptr, shmSize);
+		}
 		ptr = NULL;
 			
-		close(fd);
-		shm_unlink(shmObjectPath);
+		if(fd != -1) {
+			close(fd);
+		}
 		fd = -1;		
+		shm_unlink(shmObjectPath);
 	}
 	
 	void Monitor::lock()
@@ -107,7 +111,7 @@ namespace PETSYS { namespace OnlineMonitor {
 		if(ptr != NULL) {
 			destroy();
 		}
-		
+
 		shmSize = sizeof(pthread_mutex_t);
 		for(auto iter = objectList.begin(); iter != objectList.end(); iter++) {
 			shmSize += (*iter)->getSize();
@@ -120,7 +124,7 @@ namespace PETSYS { namespace OnlineMonitor {
 			fprintf(stderr, "Could not create  /dev/shm%s\n", shmObjectPath);
 			exit(1);
 		}
-		
+	
 		ftruncate(fd, shmSize);
 		
 		auto p = ptr = (char *)mmap(NULL, 
@@ -142,7 +146,6 @@ namespace PETSYS { namespace OnlineMonitor {
 			(*iter)->init(p);
 			p += (*iter)->getSize();
 		}
-		
 	}
 	
 	void Monitor::writeTOC(string fn)

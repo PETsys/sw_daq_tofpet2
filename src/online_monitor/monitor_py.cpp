@@ -25,6 +25,7 @@ BOOST_PYTHON_MODULE(monitor) {
 		.def("addObject", &PETSYS::OnlineMonitor::Monitor::addObject)
 		.def("materialize", &PETSYS::OnlineMonitor::Monitor::materialize)
 		.def("writeTOC", &PETSYS::OnlineMonitor::Monitor::writeTOC)
+		.def("resetAllObjects", &PETSYS::OnlineMonitor::Monitor::resetAllObjects)
 	;
 	
 }

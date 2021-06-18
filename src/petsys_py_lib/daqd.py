@@ -48,7 +48,8 @@ class Connection:
 		self.__asicConfigCache_TAC_Refresh = None
 		self.__hvdac_config_cache = {}
 
-		self.__helperPipe = None
+		self.__writerPipe = None
+		self.__monitorPipe = None
 		
 		self.__temperatureSensorList = {}
 		self.__triggerUnit = None
@@ -1034,6 +1035,12 @@ class Connection:
 		
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
+		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
+		
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec="./online_monitor"):
+		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
+		
+	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
 		
 		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
@@ -1077,15 +1084,33 @@ class Connection:
 			str(qdcMode), "%1.12f" % self.getAcquisitionStartTime(),
 			calMode and 'T' or 'N', 
 			str(triggerID) ]
-		self.__helperPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+		self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+		
+		if monitor_exec is not None:
+			cmd = [
+				monitor_exec,
+				str(int(self.__systemFrequency)),
+				(qdcMode == "tot") and "tot" or "qdc",
+				monitor_config,
+				self.__shmName,
+				monitor_toc,
+				str(triggerID), 
+				"%1.12f" % self.getAcquisitionStartTime()
+				]
+			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
-		self.__helperPipe.terminate()
+		self.__writerPipe.terminate()
+		if self.__monitorPipe is not None: self.__monitorPipe.terminate()
+
 		sleep(0.5)
-		self.__helperPipe.kill()
-		self.__helperPipe = None
+
+		self.__writerPipe.kill()
+		self.__writerPipe = None
+		if self.__monitorPipe is not None: self.__monitorPipe.kill()
+		self.__monitorPipe = None
 
 
 	## Acquires data and decodes it, while writting through the acquisition pipeline 
@@ -1093,7 +1118,10 @@ class Connection:
 	# @param step2 Tag to a given variable specific to this acquisition
 	# @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
-		(pin, pout) = (self.__helperPipe.stdin, self.__helperPipe.stdout)
+		workers = [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
+		if self.__monitorPipe is not None:
+			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
+			
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 
@@ -1142,9 +1170,11 @@ class Connection:
 			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
 			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
-			pin.write(data); pin.flush()
+			for pin, pout in workers:
+				pin.write(data); pin.flush()
 			
-			data = pout.read(n2)
+			for pin, pout in workers:
+				data = pout.read(n2)
 			rdPointer,  = struct.unpack(template2, data)
 
 			index = (rdPointer + bs - 1) % bs
@@ -1163,9 +1193,11 @@ class Connection:
 		print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
 
 		data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
-		pin.write(data); pin.flush()
+		for pin, pout in workers:
+			pin.write(data); pin.flush()
 
-		data = pout.read(n2)
+		for pin, pout in workers:
+			data = pout.read(n2)
 		rdPointer,  = struct.unpack(template2, data)
 		self.__setDataFrameReadPointer(rdPointer)
 		
