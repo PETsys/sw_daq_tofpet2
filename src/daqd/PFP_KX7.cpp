@@ -64,11 +64,11 @@ PFP_KX7::PFP_KX7()
 		uint64_t fw_revision = (uint64_t(fw_revision_h) << 32) | fw_revision_l;
 
 		if(fw_flags & 0x2) {
-			printf("PFP KX7+ card detected, firmare revision 0x%016llX.\n", fw_revision);
+			printf("PFP KX7+ card detected, firmare revision 0x%016lX.\n", fw_revision);
 			pfp_kx7old = false;
 		}
 		else {
-			printf("PFP KX7 card detected, firmare revision 0x%016llX.\n", fw_revision);
+			printf("PFP KX7 card detected, firmare revision 0x%016lX.\n", fw_revision);
 			pfp_kx7old = true;
 		}
 	}
