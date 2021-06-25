@@ -79,7 +79,7 @@ int Client::handleRequest()
 
 int Client::doCommandToFrontEnd(int commandLength)
 {
-	char buffer[256];
+	char buffer[2048];
 	memcpy(buffer, socketBuffer + sizeof(CmdHeader_t), commandLength);
 	int portID = buffer[0];
 	int slaveID = buffer[1];

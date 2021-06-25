@@ -81,7 +81,7 @@ protected:
 
 	struct reply_t {
 		int size;
-		char buffer[128];
+		char buffer[2048];
 	};
 	std::queue<reply_t *> replyQueue;
 	pthread_cond_t condReplyQueue;
