@@ -16,33 +16,50 @@
 
 using namespace PETSYS;
 
-static const char *shmObjectPath = "/daqd_shm";
-
-FrameServer::FrameServer(int nFEB, int *feTypeMap, int debugLevel)
-	: debugLevel(debugLevel)
+void FrameServer::allocateSharedMemory(const char * shmName, int &shmfd, RawDataFrame * &shmPtr)
 {
-
-	
-	dataFrameSharedMemory_fd = shm_open(shmObjectPath, O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
-	if(dataFrameSharedMemory_fd < 0) {
+	shmfd = shm_open(shmName, O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+	if(shmfd < 0) {
 		perror("Error creating shared memory");
-		fprintf(stderr, "Check that no other instance is running and rm /dev/shm%s\n", shmObjectPath);
-		exit(1);
+		fprintf(stderr, "Check that no other instance is running and rm /dev/shmPtr%s\n", shmName);
+		return;
 	}
 	
-	unsigned long dataFrameSharedMemorySize = MaxRawDataFrameQueueSize * sizeof(RawDataFrame);
-	ftruncate(dataFrameSharedMemory_fd, dataFrameSharedMemorySize);
+	unsigned long shmSize = MaxRawDataFrameQueueSize * sizeof(RawDataFrame);
+	ftruncate(shmfd, shmSize);
 	
-	dataFrameSharedMemory = (RawDataFrame *)mmap(NULL, 
-						  dataFrameSharedMemorySize, 
+	shmPtr = (RawDataFrame *)mmap(NULL, 
+						  shmSize, 
 						  PROT_READ | PROT_WRITE, 
 						  MAP_SHARED, 
-						  dataFrameSharedMemory_fd, 
+						  shmfd, 
 						  0);
-	if(dataFrameSharedMemory == NULL) {
+	if(shmPtr == NULL) {
 		perror("Error mmaping() shared memory");
-		exit(1);
+		return;
 	}
+	
+}
+
+void FrameServer::freeSharedMemory(const char * shmName, int shmfd, RawDataFrame * shmPtr)
+{
+	if(shmPtr != NULL) {
+		unsigned long shmSize = MaxRawDataFrameQueueSize * sizeof(RawDataFrame);
+		munmap(shmPtr, shmSize);
+	}
+	
+	if(shmfd != -1) {
+		close(shmfd);
+	}
+	
+	shm_unlink(shmName);
+}
+
+FrameServer::FrameServer(const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
+	: shmName(shmName), shmfd(shmfd), shmPtr(shmPtr), debugLevel(debugLevel)
+{
+
+
 
 	dataFrameWritePointer = 0;
 	dataFrameReadPointer = 0;
@@ -67,11 +84,6 @@ FrameServer::~FrameServer()
 	pthread_cond_destroy(&condDirtyDataFrame);
 	pthread_cond_destroy(&condCleanDataFrame);
 	pthread_mutex_destroy(&lock);	
-	
-	unsigned long dataFrameSharedMemorySize = MaxRawDataFrameQueueSize * sizeof(RawDataFrame);
-	munmap(dataFrameSharedMemory, dataFrameSharedMemorySize);
-	shm_unlink(shmObjectPath);
-	
 }
 
 void FrameServer::startAcquisition(int mode)
@@ -114,7 +126,7 @@ void FrameServer::stopAcquisition()
 
 const char *FrameServer::getDataFrameSharedMemoryName()
 {
-	return shmObjectPath;
+	return shmName;
 }
 
 unsigned FrameServer::getDataFrameWritePointer()

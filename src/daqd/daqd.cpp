@@ -28,28 +28,25 @@ using namespace PETSYS;
  * Used to stop on CTRL-C or kill
  */
 static bool globalUserStop = false;
-static FrameServer *globalFrameServer = NULL;
 
 static void catchUserStop(int signal) {
 	fprintf(stderr, "Caught signal %d\n", signal);
 	globalUserStop = true;
 }
 
-static int createListeningSocket(char *socketName);
-static void pollSocket(int listeningSocket, FrameServer *frameServer);
+static int createListeningSocket(const char *clientSocketName);
+static void pollSocket(int clientSocket, FrameServer *frameServer);
 
 
 int main(int argc, char *argv[])
 {
-	bool feTypeHasBeenSet = false;
-	int feType[5] = { -1, -1, -1, -1, -1 };
-	char *socketName = NULL;	
+	const char *clientSocketName = "/tmp/d.sock";
+	const char *shmName = "/daqd_shm";
 	int debugLevel = 0;
 	
 	int daqType = -1;
 	
 	static struct option longOptions[] = {
-		{ "fe-type", required_argument, 0, 0 },
 		{ "socket-name", required_argument, 0, 0 },
 		{ "debug-level", required_argument, 0, 0 },
 		{ "daq-type", required_argument, 0, 0 },
@@ -64,43 +61,16 @@ int main(int argc, char *argv[])
 			break;
 		}
 		
-		if (c == 0 && optionIndex == 0) {
-			char *s = (char *)optarg;
-			if(strlen(s) != 5) break;
-			for (int i = 0; i < 5; i++) {
-				switch(s[i]) {
-				case 't':
-				case 'T': 
-					feType[i] = 0; 
-					break;
-				case 's':
-				case 'S': 
-					feType[i] = 1; 
-					break;
-				case 'd':
-				case 'D': 
-					feType[i] = 2; break;
-				case '0':
-					feType[i] = -1; break;
-				default : 
-					fprintf(stderr, "Valid values for x are 0 (not present) t (TOFPET), s (STiCv3) or d (dSiPM)\n");
-					return -1;
-				}
-			}
-			feTypeHasBeenSet = true;
-		}
-		else if (c == 0 && optionIndex == 1) 
-			socketName = (char *)optarg;
-		else if (c == 0 && optionIndex == 2)
+		if (c == 0 && optionIndex == 0) 
+			clientSocketName = (char *)optarg;
+		else if (c == 0 && optionIndex == 1)
 			debugLevel = boost::lexical_cast<int>((char *)optarg);
-		else if (c == 0 && optionIndex == 3) {
+		else if (c == 0 && optionIndex == 2) {
 			if(strcmp((char *)optarg, "GBE") == 0) {
 				daqType = 0;
-				feTypeHasBeenSet = true;
 			}
 			else if (strcmp((char *)optarg, "PFP_KX7") == 0) {
-				daqType = 2;
-				feTypeHasBeenSet = 1;
+				daqType = 1;
 			}
 			else {
 				fprintf(stderr, "ERROR: '%s' is not a valid DAQ type\n", (char *)optarg);
@@ -115,7 +85,7 @@ int main(int argc, char *argv[])
 		
 	}
 	
-	if(socketName == NULL) {
+	if(clientSocketName == NULL) {
 		fprintf(stderr, "--socket-name </path/to/socket> required\n");
 		return -1;
 	}
@@ -125,40 +95,68 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	if(!feTypeHasBeenSet) {
-		fprintf(stderr, "--fe-type xxxxx required\n");
-		return -1;
-	}
-	
 
  	globalUserStop = false;					
 	signal(SIGTERM, catchUserStop);
 	signal(SIGINT, catchUserStop);
+	signal(SIGHUP, catchUserStop);
 	
 
-	int listeningSocket = createListeningSocket(socketName);
-	if(listeningSocket < 0)
-		return -1;
+	int retval = -1;
+	int clientSocket = -1;
+	int shmfd = 1;
+	RawDataFrame *shmPtr = NULL;
+	FrameServer *frameServer = NULL;
 
+	clientSocket = createListeningSocket(clientSocketName);
+	if(clientSocket < 0) {
+		goto cleanup_remove_client_socket;
+	}
+	
+	
+	FrameServer::allocateSharedMemory(shmName, shmfd, shmPtr);
+	if((shmfd == -1) || (shmPtr == NULL)) {
+		goto cleanup_shared_memory;
+	}
+	
+	
 
+	
 	
 	if (daqType == 0) {
-		globalFrameServer = new UDPFrameServer(debugLevel);
+		frameServer = UDPFrameServer::createFrameServer(shmName, shmfd, shmPtr, debugLevel);
 	}
-	else if (daqType == 2) {		
-		globalFrameServer = new DAQFrameServer(new PFP_KX7(), 0, NULL, debugLevel);
+	else if (daqType == 1) {		
+		frameServer = DAQFrameServer::createFrameServer(new PFP_KX7(), shmName, shmfd, shmPtr, debugLevel);
+	}
+	
+	if(frameServer == NULL) {
+		goto cleanup_frame_server;
 	}
 
-	pollSocket(listeningSocket, globalFrameServer);	
-	close(listeningSocket);	
-	unlink(socketName);
+	pollSocket(clientSocket, frameServer);
+	retval = 0;
+	
+cleanup_frame_server:
+	if(frameServer != NULL) {
+		delete frameServer;
+	}
 
-	delete globalFrameServer;
+	
+cleanup_shared_memory:
+	FrameServer::freeSharedMemory(shmName, shmfd, shmPtr);
 
-	return 0;
+	
+cleanup_remove_client_socket:
+	if(clientSocket != -1) {
+		close(clientSocket);
+		unlink(clientSocketName);
+	}
+
+	return retval;
 }
 
-int createListeningSocket(char *socketName)
+int createListeningSocket(const char *clientSocketName)
 {
 	struct sockaddr_un address;
 	int socket_fd = -1;
@@ -172,16 +170,16 @@ int createListeningSocket(char *socketName)
 	
 	memset(&address, 0, sizeof(struct sockaddr_un));
 	address.sun_family = AF_UNIX;
-	snprintf(address.sun_path, 108, "%s", socketName);
+	snprintf(address.sun_path, 108, "%s", clientSocketName);
 
 
 	if(bind(socket_fd, (struct sockaddr *) &address, sizeof(struct sockaddr_un)) != 0) {
 		fprintf(stderr, "ERROR: Could not bind() socket (%d)\n", errno);
-		fprintf(stderr, "Check that no other instance is running and remove %s\n", socketName);
+		fprintf(stderr, "Check that no other instance is running and remove %s\n", clientSocketName);
 		return -1;
 	}
 	
-	if(chmod(socketName, 0660) != 0) {
+	if(chmod(clientSocketName, 0660) != 0) {
 		perror("ERROR: Could not not set socket permissions\n");
 		return -1;
 	}
@@ -194,7 +192,7 @@ int createListeningSocket(char *socketName)
 	return socket_fd;
 }
 
-void pollSocket(int listeningSocket, FrameServer *frameServer)
+void pollSocket(int clientSocket, FrameServer *frameServer)
 {
 	sigset_t mask, omask;
 	sigemptyset(&mask);
@@ -210,9 +208,9 @@ void pollSocket(int listeningSocket, FrameServer *frameServer)
 	
 	// Add the listening socket
 	memset(&event, 0, sizeof(event));
-	event.data.fd = listeningSocket;
+	event.data.fd = clientSocket;
 	event.events = EPOLLIN;
-	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listeningSocket, &event) == -1) {
+	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, clientSocket, &event) == -1) {
 	  fprintf(stderr, "ERROR: %d on epoll_ctl()\n", errno);
 	  return;
 	  
@@ -244,8 +242,8 @@ void pollSocket(int listeningSocket, FrameServer *frameServer)
 		else if (nReady < 1)
 		  continue;
 		
-		if(event.data.fd == listeningSocket) {
-			int client = accept(listeningSocket, NULL, NULL);
+		if(event.data.fd == clientSocket) {
+			int client = accept(clientSocket, NULL, NULL);
 			fprintf(stderr, "Got a new client: %d\n", client);
 			
 			// Add the event to the list

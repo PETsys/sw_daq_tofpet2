@@ -11,8 +11,12 @@ namespace PETSYS {
 
 class UDPFrameServer : public FrameServer
 {
+protected:
+	UDPFrameServer(int udpSocket, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
 public:
-	UDPFrameServer(int debugLevel);
+	
+	static UDPFrameServer * createFrameServer(const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
+	
 	virtual ~UDPFrameServer();	
 
 	int sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength);

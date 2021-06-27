@@ -28,15 +28,19 @@ const uint64_t IDLE_WORD = 0xFFFFFFFFFFFFFFFFULL;
 const uint64_t HEADER_WORD = 0xFFFFFFFFFFFFFFF5ULL;
 const uint64_t TRAILER_WORD = 0xFFFFFFFFFFFFFFFAULL;
 
-DAQFrameServer::DAQFrameServer(AbstractDAQCard *card, int nFEB, int *feTypeMap, int debugLevel)
-  : FrameServer(nFEB, feTypeMap, debugLevel), DP(card)
+
+DAQFrameServer *DAQFrameServer::createFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
 {
-	
-	printf("allocated DP object = %p\n", DP);
+	return new DAQFrameServer(card, shmName, shmfd, shmPtr, debugLevel);
+}
+
+DAQFrameServer::DAQFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
+: FrameServer(shmName, shmfd, shmPtr, debugLevel), DP(card)
+{
 	
 	startWorker();
 }
-
+	
 
 DAQFrameServer::~DAQFrameServer()
 {
@@ -239,7 +243,7 @@ void *DAQFrameServer::doWork()
 			// If not, just carry on with the devNull frame
 			pthread_mutex_lock(&m->lock);
 			if(!isFull(m->dataFrameWritePointer, m->dataFrameReadPointer)) {
-				dataFrame = &dataFrameSharedMemory[m->dataFrameWritePointer % MaxRawDataFrameQueueSize];
+				dataFrame = &shmPtr[m->dataFrameWritePointer % MaxRawDataFrameQueueSize];
 			}
 			pthread_mutex_unlock(&m->lock);
 		}

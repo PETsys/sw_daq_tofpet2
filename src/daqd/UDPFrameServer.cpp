@@ -23,45 +23,74 @@ static int myFeTypeMap[1] = { 0 };
 
 using namespace PETSYS;
 
-UDPFrameServer::UDPFrameServer(int debugLevel)
-	: FrameServer(1, myFeTypeMap, debugLevel)
+
+UDPFrameServer * UDPFrameServer::createFrameServer(const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
 {
+	int status;
+	int udpSocket = -1;
+	struct sockaddr_in localAddress;	
+	struct timeval tv;
+
+	char buffer[16+1+5];
+	
+
 	udpSocket = socket(AF_INET,SOCK_DGRAM,0);
-	assert(udpSocket != -1);
+	if(udpSocket == -1) {
+		fprintf(stderr, "ERROR: Failed to create UDP socket: %s (%d)\n", strerror(errno), errno);
+		goto cleanup_socket;
+	}
 	
 	// "Connect" our socket to the front end service
-	struct sockaddr_in localAddress;	
 	memset(&localAddress, 0, sizeof(struct sockaddr_in));
 	localAddress.sin_family = AF_INET;
 	localAddress.sin_addr.s_addr=inet_addr(feAddr);  
 	localAddress.sin_port=htons(fePort);
-	int r = connect(udpSocket, (struct sockaddr *)&localAddress, sizeof(struct sockaddr_in));
-	assert(r == 0);
+	status = connect(udpSocket, (struct sockaddr *)&localAddress, sizeof(struct sockaddr_in));
+	if(status == -1) {
+		fprintf(stderr, "ERROR: Failed to bind UDP socket to port %d: %s (%d)\n", fePort, strerror(errno), errno);
+		goto cleanup_connect;
+	}
 	
-	struct timeval tv;
 	tv.tv_sec = 0;
 	tv.tv_usec = 100000;
-	r = setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv));
-	assert(r == 0);
+	status = setsockopt(udpSocket, SOL_SOCKET, SO_RCVTIMEO,&tv,sizeof(tv));
+	if(udpSocket == -1) {
+		fprintf(stderr, "ERROR: Failed to set socket options: %s (%d)\n", strerror(errno), errno);
+		goto cleanup_connect;
+	}
 	
-	char buffer[16+1+5];
 	memset(buffer, 0xFF, sizeof(buffer));
 	send(udpSocket, buffer, sizeof(buffer), 0);
-	r = recv(udpSocket, buffer, sizeof(buffer), 0);
-	if (r < 1) {
+	status = recv(udpSocket, buffer, sizeof(buffer), 0);
+	if (status < 1) {
 		fprintf(stderr, "ERROR: Failed to receive a reply from FPGA\n");
-		exit(0);
+		goto cleanup_connect;
 	}
-	printf("Got FPGA reply\n");
+	printf("Got FPGA reply\n");	
 	
-		
-	startWorker();
+	return new UDPFrameServer(udpSocket, shmName, shmfd, shmPtr, debugLevel);
+
+cleanup_reply:
+
+cleanup_connect:
+	if(udpSocket != -1) {
+		close(udpSocket);
+	}
+cleanup_socket:
+	return NULL;
 }
 
+
+UDPFrameServer::UDPFrameServer(int udpSocket, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
+: FrameServer(shmName, shmfd, shmPtr, debugLevel), udpSocket(udpSocket)
+{
+	startWorker();
+}
 
 UDPFrameServer::~UDPFrameServer()
 {
 	stopWorker();
+	close(udpSocket);
 }
 
 
@@ -118,7 +147,7 @@ void *UDPFrameServer::doWork()
 					
 					pthread_mutex_lock(&m->lock);
 					if(!isFull(m->dataFrameWritePointer,  m->dataFrameReadPointer)) {
-						dataFrame = &dataFrameSharedMemory[m->dataFrameWritePointer  % MaxRawDataFrameQueueSize];
+						dataFrame = &shmPtr[m->dataFrameWritePointer  % MaxRawDataFrameQueueSize];
 					}
 					pthread_mutex_unlock(&m->lock);
 					

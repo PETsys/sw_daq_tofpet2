@@ -19,8 +19,10 @@ struct CoincidenceTriggerConfig {
 };
 
 class FrameServer {
+protected:
+	FrameServer(const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
+	
 public:
-	FrameServer(int nFEB, int *feTypeMap, int debugLevel);
         virtual ~FrameServer();	
 
 	// Sends a command and gets the reply
@@ -45,6 +47,9 @@ public:
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setIdleTimeCalculation(unsigned mode);
 	virtual int setGateEnable(unsigned mode);
+	
+	static void allocateSharedMemory(const char * shmName, int &shmfd, RawDataFrame * &shmPtr);
+	static void freeSharedMemory(const char * shmName, int shmfd, RawDataFrame *shmPtr);
 
 	
 private: 
@@ -59,8 +64,9 @@ protected:
 	
 	int8_t *feTypeMap;
 	
-	int dataFrameSharedMemory_fd;
-	RawDataFrame *dataFrameSharedMemory;
+	const char *shmName;
+	int shmfd;
+	RawDataFrame *shmPtr;
 	
 	static void *runWorker(void *);
 	virtual void * doWork() = 0;

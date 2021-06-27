@@ -10,8 +10,10 @@
 namespace PETSYS {
 	
 class AbstractDAQCard {
-public:
+protected:
 	AbstractDAQCard();
+
+public:
 	virtual ~AbstractDAQCard();
 
 	virtual int getWords(uint64_t *buffer, int count) = 0;
@@ -28,8 +30,11 @@ public:
 
 class DAQFrameServer : public FrameServer
 {
+protected:
+	DAQFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
 public:
-	DAQFrameServer(AbstractDAQCard *card, int nFEB, int *feTypeMap, int debugLevel);
+	static DAQFrameServer *createFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
+	
 	virtual ~DAQFrameServer();	
 
 
