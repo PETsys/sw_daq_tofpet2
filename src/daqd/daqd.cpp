@@ -14,6 +14,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <boost/lexical_cast.hpp>
+#include <vector>
 
 #include "UDPFrameServer.hpp"
 #include "FrameServer.hpp"
@@ -45,11 +46,15 @@ int main(int argc, char *argv[])
 	int debugLevel = 0;
 	
 	int daqType = -1;
+	unsigned ncards = 1;
+	unsigned daqCardPortBits = 5;
 	
 	static struct option longOptions[] = {
 		{ "socket-name", required_argument, 0, 0 },
 		{ "debug-level", required_argument, 0, 0 },
 		{ "daq-type", required_argument, 0, 0 },
+		{ "ncards", required_argument, 0, 0 },
+		{ "card-width", required_argument, 0, 0},
 		{ NULL, 0, 0, 0 }
 	};
 	while(1) {
@@ -79,6 +84,12 @@ int main(int argc, char *argv[])
 			}
 			
 		}
+		else if (c == 0 && optionIndex == 3) {
+			ncards = boost::lexical_cast<unsigned>((char *)optarg);
+		}
+		else if (c == 0 && optionIndex == 4) {
+			daqCardPortBits = boost::lexical_cast<unsigned>((char *)optarg);
+		}
 		else {
 			fprintf(stderr, "ERROR: Unknown option!\n");
 		}
@@ -107,6 +118,7 @@ int main(int argc, char *argv[])
 	int shmfd = 1;
 	RawDataFrame *shmPtr = NULL;
 	FrameServer *frameServer = NULL;
+	std::vector<AbstractDAQCard *> daqCards;
 
 	clientSocket = createListeningSocket(clientSocketName);
 	if(clientSocket < 0) {
@@ -118,16 +130,22 @@ int main(int argc, char *argv[])
 	if((shmfd == -1) || (shmPtr == NULL)) {
 		goto cleanup_shared_memory;
 	}
-	
-	
 
-	
 	
 	if (daqType == 0) {
 		frameServer = UDPFrameServer::createFrameServer(shmName, shmfd, shmPtr, debugLevel);
 	}
-	else if (daqType == 1) {		
-		frameServer = DAQFrameServer::createFrameServer(new PFP_KX7(), shmName, shmfd, shmPtr, debugLevel);
+	else if (daqType == 1) {
+		for(int index = 0; index < ncards; index++) {
+			AbstractDAQCard *card = PFP_KX7::openCard(index);
+			if(card == NULL)
+				goto cleanup_daq_cards;
+
+			daqCards.push_back(card);
+		}
+
+
+		frameServer = DAQFrameServer::createFrameServer(daqCards, daqCardPortBits, shmName, shmfd, shmPtr, debugLevel);
 	}
 	
 	if(frameServer == NULL) {
@@ -137,9 +155,15 @@ int main(int argc, char *argv[])
 	pollSocket(clientSocket, frameServer);
 	retval = 0;
 	
+
 cleanup_frame_server:
 	if(frameServer != NULL) {
 		delete frameServer;
+	}
+
+cleanup_daq_cards:
+	for(auto iter = daqCards.begin(); iter != daqCards.end(); iter++) {
+		delete *iter;
 	}
 
 	

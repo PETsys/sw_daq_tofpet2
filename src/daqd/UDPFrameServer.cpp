@@ -31,6 +31,7 @@ UDPFrameServer * UDPFrameServer::createFrameServer(const char * shmName, int shm
 	struct sockaddr_in localAddress;	
 	struct timeval tv;
 
+	int attempts = 5;
 	char buffer[16+1+5];
 	
 
@@ -59,10 +60,14 @@ UDPFrameServer * UDPFrameServer::createFrameServer(const char * shmName, int shm
 		goto cleanup_connect;
 	}
 	
-	memset(buffer, 0xFF, sizeof(buffer));
-	send(udpSocket, buffer, sizeof(buffer), 0);
-	status = recv(udpSocket, buffer, sizeof(buffer), 0);
-	if (status < 1) {
+	while(attempts > 0) {
+		memset(buffer, 0xFF, sizeof(buffer));
+		send(udpSocket, buffer, sizeof(buffer), 0);
+		status = recv(udpSocket, buffer, sizeof(buffer), 0);
+		if(status >= 0) break;
+		attempts -= 1;
+	}
+	if (attempts <= 0) {
 		fprintf(stderr, "ERROR: Failed to receive a reply from FPGA\n");
 		goto cleanup_connect;
 	}
@@ -84,7 +89,6 @@ cleanup_socket:
 UDPFrameServer::UDPFrameServer(int udpSocket, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
 : FrameServer(shmName, shmfd, shmPtr, debugLevel), udpSocket(udpSocket)
 {
-	startWorker();
 }
 
 UDPFrameServer::~UDPFrameServer()
@@ -197,28 +201,47 @@ int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 	int replyLength = 0;	
 	int nLoops = 0;
 	do {
-		pthread_mutex_lock(&lock);
 		reply_t *reply = NULL;
-	
-/*		if(replyQueue.empty()) {
-			pthread_cond_wait(&condReplyQueue, &lock);
-		}*/
 
-		if(replyQueue.empty()) {
-			struct timespec ts; 
-			clock_gettime(CLOCK_REALTIME, &ts);
-			ts.tv_nsec += 10000000L; // 10 ms
-			ts.tv_sec += (ts.tv_nsec / 100000000L);
-			ts.tv_nsec = (ts.tv_nsec % 100000000L);                        
-			pthread_cond_timedwait(&condReplyQueue, &lock, &ts);
-		}
+		if(amAcquiring()) {
+			// During acquisitions, UDP packets are processed by the worker
+			pthread_mutex_lock(&lock);
+			if(replyQueue.empty()) {
+				struct timespec ts; 
+				clock_gettime(CLOCK_REALTIME, &ts);
+				ts.tv_nsec += 10000000L; // 10 ms
+				ts.tv_sec += (ts.tv_nsec / 100000000L);
+				ts.tv_nsec = (ts.tv_nsec % 100000000L); 
+				pthread_cond_timedwait(&condReplyQueue, &lock, &ts);
+			}
 
-		if (!replyQueue.empty()) {
-			reply = replyQueue.front();
-			replyQueue.pop();
-			
+			if (!replyQueue.empty()) {
+				reply = replyQueue.front();
+				replyQueue.pop();
+			}
+			pthread_mutex_unlock(&lock);
 		}
-		pthread_mutex_unlock(&lock);
+		else {
+			// Otherwise we have to process them here
+			unsigned char rxBuffer[2048];
+			int r = recv(udpSocket, rxBuffer, sizeof(rxBuffer), 0);
+
+			if (r == -1 && (errno = EAGAIN || errno == EWOULDBLOCK)) {
+				continue;
+			}
+			else if(r == -1) {
+				fprintf(stderr, "ERROR %s (%d) when reading UDP socket\n", strerror(errno), errno);
+				break;
+			}
+
+
+			if(rxBuffer[0] == 0x5A) {
+				if(debugLevel > 2) printf("Worker:: Found a reply frame with %d bytes\n", r);
+				reply = new reply_t;
+				memcpy(reply->buffer, rxBuffer + 1, r - 1);
+				reply->size = r - 1;
+			}
+		}
 		
 		if(reply == NULL) {
 			boost::posix_time::ptime now = boost::posix_time::microsec_clock::local_time();
@@ -228,7 +251,6 @@ int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 				continue;
 			
 		}
-		//printf("Found something on queue with size: %d\n", reply->size);
 	
 		if (reply->size < 2) {
 			fprintf(stderr, "WARNING: Reply only had %d bytes\n", reply->size);

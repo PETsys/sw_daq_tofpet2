@@ -59,6 +59,7 @@ protected:
 	static const int CommandTimeout = 250; // ms
 	
 	bool parseDataFrame(RawDataFrame *dataFrame);
+	bool amAcquiring();
 	
 	int debugLevel;
 	

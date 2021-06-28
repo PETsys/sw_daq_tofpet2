@@ -6,6 +6,7 @@
 #include "boost/tuple/tuple.hpp"
 #include <boost/unordered_map.hpp> 
 #include "boost/date_time/posix_time/posix_time.hpp"
+#include <vector>
 
 namespace PETSYS {
 	
@@ -31,9 +32,9 @@ public:
 class DAQFrameServer : public FrameServer
 {
 protected:
-	DAQFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
+	DAQFrameServer(std::vector<AbstractDAQCard *> cards, unsigned daqCardPortBits, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
 public:
-	static DAQFrameServer *createFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
+	static DAQFrameServer *createFrameServer(std::vector<AbstractDAQCard *> cards, unsigned daqCardPortBits, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel);
 	
 	virtual ~DAQFrameServer();	
 
@@ -49,11 +50,14 @@ public:
 	virtual int setGateEnable(unsigned mode);
 
 private:
-	AbstractDAQCard *DP;
+	std::vector<AbstractDAQCard *> cards;
+	unsigned daqCardPortBits;
+	uint64_t *cfData;
 	
 protected:
 
 	void * doWork();
+	bool getFrame(AbstractDAQCard *card, uint64_t *dst);
 	
 };
 

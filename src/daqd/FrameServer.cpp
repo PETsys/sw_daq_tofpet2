@@ -96,11 +96,12 @@ void FrameServer::startAcquisition(int mode)
 	// and it may fill at least one slot
 	
 	pthread_mutex_lock(&lock);
+	acquisitionMode = 0;
 	dataFrameWritePointer = 0;
 	dataFrameReadPointer = 0;
-	acquisitionMode = 0;
 	pthread_cond_signal(&condCleanDataFrame);
 	pthread_mutex_unlock(&lock);
+	stopWorker();
 
 	usleep(220000);
 	
@@ -110,6 +111,7 @@ void FrameServer::startAcquisition(int mode)
 	acquisitionMode = mode;
 	pthread_cond_signal(&condCleanDataFrame);
 	pthread_mutex_unlock(&lock);
+	startWorker();
 }
 
 void FrameServer::stopAcquisition()
@@ -119,9 +121,14 @@ void FrameServer::stopAcquisition()
 	dataFrameWritePointer = 0;
 	dataFrameReadPointer = 0;
 	pthread_cond_signal(&condCleanDataFrame);
-	pthread_mutex_unlock(&lock);	
+	pthread_mutex_unlock(&lock);
+	stopWorker();
 }
 
+bool FrameServer::amAcquiring()
+{
+	return hasWorker;
+}
 
 
 const char *FrameServer::getDataFrameSharedMemoryName()
@@ -155,41 +162,31 @@ void FrameServer::setDataFrameReadPointer(unsigned ptr)
 
 void FrameServer::startWorker()
 {
-	printf("FrameServer::startWorker called...\n");
 	if(hasWorker) return;
 
 	die = false;
-	hasWorker = true;
 	pthread_create(&worker, NULL, runWorker, (void*)this);
-	
-
-	printf("FrameServer::startWorker exiting...\n");
-
+	hasWorker = true;
 }
 
 void FrameServer::stopWorker()
 {
-	printf("FrameServer::stopWorker called...\n");
-	
+	if(!hasWorker) return;
 	die = true;
-	
 	pthread_mutex_lock(&lock);
 	pthread_cond_signal(&condCleanDataFrame);
 	pthread_cond_signal(&condDirtyDataFrame);
 	pthread_mutex_unlock(&lock);
-
-	if(hasWorker) {
-		hasWorker = false;
-		pthread_join(worker, NULL);
-	}
-
-	printf("FrameServer::stopWorker exiting...\n");
+	pthread_join(worker, NULL);
+	hasWorker = false;
 }
 
 void *FrameServer::runWorker(void *arg)
 {
 	FrameServer *F = (FrameServer *)arg;
+	printf("INFO: FrameServer::runWorker starting...\n");
         return F->doWork();
+	printf("INFO: FrameServer::runWorker finished!\n");
 }
 
 bool FrameServer::parseDataFrame(RawDataFrame *dataFrame)

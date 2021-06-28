@@ -11,10 +11,13 @@
 
 namespace PETSYS {
 class PFP_KX7 : public AbstractDAQCard {
+protected:
+	  PFP_KX7(int index);
+
 public:
-	  PFP_KX7();
-	  ~PFP_KX7();
-	  int getWords(uint64_t *buffer, int count);
+	static PFP_KX7 *openCard(int fd);
+	 ~PFP_KX7();
+	 int getWords(uint64_t *buffer, int count);
 	bool cardOK();
 	void clearReplyQueue();
 	int sendCommand(uint64_t *packetBuffer, int packetBufferSize);

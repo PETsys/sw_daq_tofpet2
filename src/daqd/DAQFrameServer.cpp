@@ -29,41 +29,64 @@ const uint64_t HEADER_WORD = 0xFFFFFFFFFFFFFFF5ULL;
 const uint64_t TRAILER_WORD = 0xFFFFFFFFFFFFFFFAULL;
 
 
-DAQFrameServer *DAQFrameServer::createFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
+DAQFrameServer *DAQFrameServer::createFrameServer(std::vector<AbstractDAQCard *> cards, unsigned daqCardPortBits, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
 {
-	return new DAQFrameServer(card, shmName, shmfd, shmPtr, debugLevel);
+	return new DAQFrameServer(cards, daqCardPortBits, shmName, shmfd, shmPtr, debugLevel);
 }
 
-DAQFrameServer::DAQFrameServer(AbstractDAQCard *card, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
-: FrameServer(shmName, shmfd, shmPtr, debugLevel), DP(card)
+DAQFrameServer::DAQFrameServer(std::vector<AbstractDAQCard *> cards, unsigned daqCardPortBits, const char * shmName, int shmfd, RawDataFrame * shmPtr, int debugLevel)
+: FrameServer(shmName, shmfd, shmPtr, debugLevel), cards(cards), daqCardPortBits(daqCardPortBits)
 {
-	
-	startWorker();
+	int nCards = cards.size();
+	cfData = new uint64_t [MaxRawDataFrameSize * nCards];
 }
 	
 
 DAQFrameServer::~DAQFrameServer()
 {
-	stopWorker();
-	printf("DAQFrameServer::~DAQFrameServer\n");
-	delete DP;	
+	stopAcquisition();
+	delete [] cfData;
 }
 
 void DAQFrameServer::startAcquisition(int mode)
 {
-	DP->setAcquistionOnOff(false);
-	DP->setAcquistionOnOff(true);
+	stopAcquisition();
+
+	for(auto card = cards.begin(); card != cards.end(); card++) {
+		(*card)->setAcquistionOnOff(true);
+	}
+
 	FrameServer::startAcquisition(mode);
 }
 
 void DAQFrameServer::stopAcquisition()
 {
-	DP->setAcquistionOnOff(false);
- 	FrameServer::stopAcquisition();
+	FrameServer::stopAcquisition();
+
+	for(auto card = cards.begin(); card != cards.end(); card++) {
+		(*card)->setAcquistionOnOff(false);
+	}
+
 }
 
 int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
 {
+	// Convert these int to uint64_t
+	uint64_t sendPortID = portID;
+	uint64_t sendSlaveID = slaveID;
+
+	uint64_t cardID = sendPortID >> daqCardPortBits;
+	sendPortID = sendPortID % (1 << daqCardPortBits);
+
+	if(cardID >= cards.size()) {
+		fprintf(stderr, "Error in DAQFrameServer::sendCommand(): packet addressed to non-existing card %lu.\n", cardID);
+		return -1;
+
+	}
+
+	AbstractDAQCard *card = cards[cardID];
+
+
 	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);
 	
 	const int MAX_PACKET_WORDS = 8;
@@ -78,15 +101,15 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 
 	uint64_t header = 0;
 	header = header + (8ULL << 36);
-	header = header + (uint64_t(portID) << 59) + (uint64_t(slaveID) << 54);
+	header = header + (sendPortID << 59) + (sendSlaveID << 54);
 
 	packetBuffer[0] = header;
 	packetBuffer[1] = commandLength;
 	memcpy((void*)(packetBuffer+2), buffer, commandLength);
 
-	DP->clearReplyQueue();
+	card->clearReplyQueue();
 	boost::posix_time::ptime t1 = boost::posix_time::microsec_clock::local_time();
-	DP->sendCommand(packetBuffer, packetLength);
+	card->sendCommand(packetBuffer, packetLength);
 	
 
 	boost::posix_time::ptime t2 = boost::posix_time::microsec_clock::local_time();
@@ -105,17 +128,25 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			return 0;
 		}
 
-		int status = DP->recvReply(packetBuffer, MAX_PACKET_WORDS);
+		int status = card->recvReply(packetBuffer, MAX_PACKET_WORDS);
 		if (status < 0) {
 			continue; // Timed out and did not receive a reply
 		}
 		
-		int recvPortID = packetBuffer[0] >> 59;
-		int recvSlaveID = (packetBuffer[0] >> 54) & 0x1F;
+		uint64_t recvPortID = packetBuffer[0] >> 59;
+		uint64_t recvSlaveID = (packetBuffer[0] >> 54) & 0x1F;
+
+		// Put back the portID bits take by the cardID
+		sendPortID = (cardID << daqCardPortBits) | sendPortID;
+		recvPortID = (cardID << daqCardPortBits) | recvPortID;
+
+		packetBuffer[0] &= 0x1FFFFFFFFFFFFFFULL;
+		packetBuffer[0] |= (recvPortID << 59);
+
 		
-		if((portID != recvPortID) || (slaveID != recvSlaveID)) {
-			fprintf(stderr, "WARNING: Mismatched address. Sent (%2d, %2d), received (%2d, %2d).\n",
-				portID, slaveID, 
+		if((sendPortID != recvPortID) || (sendSlaveID != recvSlaveID)) {
+			fprintf(stderr, "WARNING: Mismatched address. Sent (%2lu, %2lu), received (%2lu, %2lu).\n",
+				sendPortID, sendSlaveID,
 				recvPortID, recvSlaveID
 			);
 			continue;
@@ -123,35 +154,36 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 
 		int replyLength = packetBuffer[1];
 		if(replyLength < 2) { // Received something weird
-			fprintf(stderr, "WARNING: Received very short reply from (%2d, %2d): %d bytes.\n", 
-				portID, slaveID, 
+			fprintf(stderr, "WARNING: Received very short reply from (%2lu, %2lu): %u bytes.\n",
+				sendPortID, sendSlaveID,
 				replyLength
 			);
 			continue;
 		}
 		
 		if(replyLength > 8*(MAX_PACKET_WORDS-2)) {
-			fprintf(stderr, "WARNING: Truncated packet from (%2d, %2d): expected %d bytes.\n", 
-				portID, slaveID, 
+			fprintf(stderr, "WARNING: Truncated packet from (%2lu, %2lu): expected %d bytes.\n",
+				sendPortID, sendSlaveID,
 				replyLength
 			);
 			continue;
 		}
 
 		if(replyLength > bufferSize) {
-			fprintf(stderr, "WARNING: Packet too large from (%2d, %2d): %d bytes.\n", 
-				portID, slaveID, 
+			fprintf(stderr, "WARNING: Packet too large from (%2lu, %2lu): %d bytes.\n",
+				sendPortID, sendSlaveID,
 				replyLength
 			);
 			continue;
 		}
 		
+
 		memcpy(buffer, packetBuffer+2, replyLength);
 		
 		uint16_t recvSN = (unsigned(buffer[0]) << 8) + buffer[1];
 		if(sentSN != recvSN) {
-			fprintf(stderr, "WARNING: Mismatched SN  from (%2d, %2d): sent %04hx, got %04hx.\n",
-				portID, slaveID, 
+			fprintf(stderr, "WARNING: Mismatched SN  from (%2lu, %2lu): sent %04hx, got %04hx.\n",
+				sendPortID, sendSlaveID,
 				sentSN, recvSN
 			);
 			continue;
@@ -169,29 +201,20 @@ static bool isFull(unsigned writePointer, unsigned readPointer)
 	return (writePointer != readPointer) && ((writePointer % MaxRawDataFrameQueueSize) == (readPointer % MaxRawDataFrameQueueSize));
 }
 
-void *DAQFrameServer::doWork()
-{	
-
-	printf("DAQFrameServer::runWorker starting...\n");
-	printf("DP object is %p\n", DP);
-	DAQFrameServer *m = this;
-	
-	RawDataFrame *devNull = new RawDataFrame;
-	
-	
-	long nFramesFound = 0;
-	long nFramesPushed = 0;
-
+bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
+{
+	// NOTE skippedLoops is useful to add debug printfs()
+	// Do not remove
 	const int maxSkippedLoops = 32*1024;
 	int skippedLoops = 0;
+
+
 	bool lastFrameWasBad = true;
 	unsigned long long frameCount = 0;
 
 	while(!die){
 		if(skippedLoops >= maxSkippedLoops) {
-			//printf("skippedLoops = %d\n", skippedLoops);
 			skippedLoops = 0;
-			
 		}
 		
 		uint64_t headerWords[2];
@@ -199,98 +222,268 @@ void *DAQFrameServer::doWork()
 
 		// If we are comming back from a bad frame, let's dump until we read an idle
 		if(lastFrameWasBad) {
-			nWords = DP->getWords(&headerWords[0], 1);
-			//printf("DBG1 %016llx\n", headerWords[0]);
+			nWords = card->getWords(&headerWords[0], 1);
 			if(nWords != 1) { skippedLoops = 1000001; continue; }			
 			if(headerWords[0] != IDLE_WORD) { skippedLoops++; continue; }
 		}
 		lastFrameWasBad = false;
 
 		// Read something, which may be a filler or a header
-		nWords = DP->getWords(&headerWords[0], 1);
+		nWords = card->getWords(&headerWords[0], 1);
 		if (nWords != 1) { skippedLoops = 1000002; continue; }		
 		if(headerWords[0] == IDLE_WORD) { skippedLoops++; continue; }
-/*		printf("DBG2 %016llx\n", headerWords[0]);		*/
 		if(headerWords[0] != HEADER_WORD) { lastFrameWasBad = true; skippedLoops = 1000003; continue; }
 		skippedLoops = 0;
 		
 		// Read the frame's first 2 words
-		nWords = DP->getWords(&headerWords[0], 2);
+		nWords = card->getWords(&headerWords[0], 2);
 		if (nWords != 2) { skippedLoops = 1000003; continue; }
-		//printf("DBG3 %016llx\n", headerWords[0]);
 
-
-		unsigned long long frameSource = (headerWords[0] >> 54) & 0x400;
-		unsigned long long frameType = (headerWords[0] >> 51) & 0x7;
-		unsigned long long frameSize = (headerWords[0] >> 36) & 0x7FFF;
-		unsigned long long frameID = (headerWords[0] ) & 0xFFFFFFFFF;
-		unsigned long long nEvents = headerWords[1] & 0xFFFF;
+		uint64_t frameSource = (headerWords[0] >> 54) & 0x400;
+		uint64_t frameType = (headerWords[0] >> 51) & 0x7;
+		uint64_t frameSize = (headerWords[0] >> 36) & 0x7FFF;
+		uint64_t frameID = (headerWords[0] ) & 0xFFFFFFFFF;
+		uint64_t nEvents = headerWords[1] & 0xFFFF;
 		bool frameLost = (headerWords[1] & 0x10000) != 0;
 
-		if(frameSize > MaxRawDataFrameQueueSize) {
-			fprintf(stderr, "Excessive frame size: %llu\n word (max is %u)", frameSize, MaxRawDataFrameQueueSize);
+
+		if((frameType != 0x1) || (frameSource != 0)) {
+			fprintf(stderr, "Bad frame header: %04lx %04lx\n", frameType, frameSource);
+			lastFrameWasBad = true; skippedLoops = 1000009; continue;
+		}
+
+		if(frameSize > MaxRawDataFrameSize) {
+			fprintf(stderr, "Excessive frame size: %lu\n word (max is %u)", frameSize, MaxRawDataFrameSize);
 			lastFrameWasBad = true; skippedLoops = 1000007; continue;
 		}
 
-		// Drop most of lost frames (lost = 1, nEvents = 0) to avoid wasting buffer space
-		// Keep ~1% just to ensure software always has something
-		bool dropLostFrame = (nEvents == 0) && frameLost &&  (frameCount % 128 != 0);
-		frameCount += 1;
-
-		RawDataFrame *dataFrame = devNull;
-		if (m->acquisitionMode != 0 && !dropLostFrame) {
-			// Get a free frame from the queue, if possible
-			// If not, just carry on with the devNull frame
-			pthread_mutex_lock(&m->lock);
-			if(!isFull(m->dataFrameWritePointer, m->dataFrameReadPointer)) {
-				dataFrame = &shmPtr[m->dataFrameWritePointer % MaxRawDataFrameQueueSize];
-			}
-			pthread_mutex_unlock(&m->lock);
+		if(frameSize != (nEvents+2)) {
+			fprintf(stderr, "Inconsistent frame size: %lu\n words, %lu events\n", frameSize, nEvents);
+			lastFrameWasBad = true; skippedLoops = 1000008; continue;
 		}
-		if(die) break;
 		
-		
-		dataFrame->data[0] = headerWords[0]; //one word was already read
-		dataFrame->data[1] = headerWords[1]; //one word was already read
-		nWords = DP->getWords(dataFrame->data+2,frameSize-2);
+		dst[0] = headerWords[0]; //one word was already read
+		dst[1] = headerWords[1]; //one word was already read
+		nWords = card->getWords(dst+2,frameSize-2);
 		if(nWords < 0) { lastFrameWasBad = true; skippedLoops = 1000004; continue; }
 		
 		// After a frame, we always have a tailerword word
 		uint64_t trailerWord;
-		nWords = DP->getWords(&trailerWord, 1);
+		nWords = card->getWords(&trailerWord, 1);
 		if(nWords < 0) { lastFrameWasBad = true; skippedLoops = 1000005; continue; }
-// 		printf("DBG4 %016llx \n", trailerWord);
+
 		if(trailerWord != TRAILER_WORD) { 
-/*			for(unsigned i = 0; i < frameSize; i++) { 
-				printf("%4d %016llx \n", i, dataFrame->data[i]);
-			}
-			printf("TAIL %016llx \n", trailerWord);
-*/				
 				lastFrameWasBad = true; skippedLoops = 1000006; continue; 
 		}
 
-		if (!m->parseDataFrame(dataFrame))
-			continue;
+		// If we got here, we got a good data frame
+		return true;
 
-		if(dataFrame != devNull) {
-			pthread_mutex_lock(&m->lock);
-			m->dataFrameWritePointer = (m->dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
-			pthread_mutex_unlock(&m->lock);
-		}
 	}	
-	delete devNull;
-	printf("DAQFrameServer::runWorker exiting...\n");
+	// If we got here, we didn't produce a good data frame
+	return false;
+}
+
+
+void *DAQFrameServer::doWork()
+{
+	int nCards = cards.size();
+
+	bool cfValid[nCards];
+
+	// Initial fill with frame data
+	for(int i = 0; i < nCards; i++) {
+		cfValid[i] = getFrame(cards[i], cfData + MaxRawDataFrameSize * i);
+	}
+	if(die) return NULL;
+
+	long long expectedFrameID = 1LL<<62;
+	for(int i = 0; i < nCards; i++) {
+		uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
+                long long frameID = word0 & 0xFFFFFFFFF;
+		if(frameID < expectedFrameID) expectedFrameID = frameID;
+	}
+
+	// Read frames from various cards until they're all at the expected frameID or ahead
+	for(int i = 0; i < nCards; i++) {
+		uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
+		long long frameID = word0 & 0xFFFFFFFFF;
+		while(frameID < expectedFrameID) {
+			cfValid[i] = getFrame(cards[i], cfData + i);
+			if(die) return NULL;
+			word0 = cfData[MaxRawDataFrameSize * i + 0];
+			frameID = word0 & 0xFFFFFFFFF;
+		}
+        }
+
+	while(!die) {
+		// Fill out the cards' buffer for any consumed frames
+		for(int i = 0; i < nCards; i++) {
+			if(!cfValid[i]) {
+				cfValid[i] = getFrame(cards[i], cfData + i * MaxRawDataFrameSize);
+				if(die) return NULL;
+			}
+		}
+
+		// WARNING The following is a failsafe which should never be needed
+		// Consider removing this code
+		// Read frames from various cards until they're all at the expected frameID or ahead
+		for(int i = 0; i < nCards; i++) {
+			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
+			long long frameID = word0 & 0xFFFFFFFFF;
+
+			while(frameID < expectedFrameID) {
+				cfValid[i] = getFrame(cards[i], cfData + i);
+				if(die) return NULL;
+				word0 = cfData[MaxRawDataFrameSize * i + 0];
+				frameID = word0 & 0xFFFFFFFFF;
+			}
+
+		}
+
+		// Check if output frame will be a lost frame
+		bool frameLost = false;
+		for(int i = 0; i < nCards; i++) {
+			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
+			uint64_t word1 = cfData[MaxRawDataFrameSize * i + 1];
+			uint64_t word2 = cfData[MaxRawDataFrameSize * i + 2];
+	                long long frameID = word0 & 0xFFFFFFFFF;
+
+
+			if(frameID != expectedFrameID) {
+				frameLost = true;
+				continue;
+			}
+
+			frameLost |= (word1 & 0x10000) != 0;
+		}
+
+		RawDataFrame *dst = NULL;
+
+		// Store data if we are in acquisition mode and
+		// - Frame is not lost
+		// - Frame is lost but frameID is a multiple of 128 (forward at least 1% so the process does not freeze)
+		if((acquisitionMode != 0) && (!frameLost || ((expectedFrameID % 128) == 0))) {
+			pthread_mutex_lock(&lock);
+			if(!isFull(dataFrameWritePointer, dataFrameReadPointer)) {
+				dst = &shmPtr[dataFrameWritePointer % MaxRawDataFrameQueueSize];
+			}
+			pthread_mutex_unlock(&lock);
+		}
+
+		if(dst != NULL) {
+			uint64_t *dst_data = dst->data;
+			if(frameLost) {
+				// This frame is lost for some reason so just assemble an empty frame
+				// with the correct frameID and the lostFrame flat set
+				dst_data[0] = (2LL << 36) | expectedFrameID;
+				dst_data[1] = 1 << 16;
+			}
+			else {
+				uint64_t nEvents = 0;
+
+				uint64_t *cfNextPtr[nCards];
+				uint64_t *cfEndPtr[nCards];
+				unsigned short cfNextTCoarse[nCards];
+
+				for(int i = 0; i < nCards; i++) {
+					uint64_t word1 = cfData[MaxRawDataFrameSize * i + 1];
+					cfNextPtr[i] = cfData + i * MaxRawDataFrameSize + 2;
+					cfEndPtr[i] = cfNextPtr[i] + (word1 & 0xFFFF);
+
+					cfNextTCoarse[i] = (cfNextPtr[i] != cfEndPtr[i]) ? ((*cfNextPtr[i]) >> 30 % 1024) : 0xFFFF;
+				}
+
+				while(true) {
+					// Pick the source with the oldest event (lowest time tag)
+					int selCard = -1;
+					unsigned short selTCoarse = 0xFFFF;
+					for(int i = 0; i < nCards; i++) {
+						if(cfNextPtr[i] != cfEndPtr[i])
+							if(cfNextTCoarse[i] <= selTCoarse) {
+								selTCoarse = cfNextTCoarse[i];
+								selCard = i;
+							}
+					}
+
+					if(selCard == -1) {
+						// Nothing was selected which means all sources were exausted
+						break;
+					}
+
+					uint64_t cardID_shifted = (uint64_t(selCard) << (63 - daqCardPortBits));
+					uint64_t eventWord = (*cfNextPtr[selCard]);
+					dst_data[nEvents + 2] = cardID_shifted | eventWord;
+
+					// Update output event count
+					nEvents += 1;
+
+					// Update the source
+					cfNextPtr[selCard] += 1;
+					cfNextTCoarse[selCard] = (cfNextPtr[selCard] != cfEndPtr[selCard]) ? ((*cfNextPtr[selCard]) >> 30 % 1024) : 0xFFFF;
+				}
+
+				// Write the frame headers
+				dst_data[0] = ((nEvents+2) << 36) | expectedFrameID;
+				dst_data[1] = nEvents;
+			}
+
+			// Update the shared memory pointers to signal a new frame has been written
+			pthread_mutex_lock(&lock);
+			dataFrameWritePointer = (dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
+			pthread_mutex_unlock(&lock);
+		}
+
+		for(int i = 0; i < nCards; i++) {
+			// Mark all sources with the correct frameID as invalid since they were consumed
+			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
+			long long frameID = word0 & 0xFFFFFFFFF;
+			if(frameID == expectedFrameID) {
+				cfValid[i] = false;
+			}
+		}
+
+		expectedFrameID += 1;
+
+
+
+	}
 	return NULL;
 }
 
 uint64_t DAQFrameServer::getPortUp()
 {
-	return DP->getPortUp();
+	uint64_t retval = 0;
+// 	for(auto card = cards.begin(); card != cards.end(); card++) {
+// 		retval = retval << (1 << daqCardPortBits);
+// 		retval = retval | (*card)->getPortUp();
+// 	}
+
+
+
+	unsigned portsPerCard = 1 << daqCardPortBits;
+	for(unsigned i = 0; i < cards.size(); i++) {
+		uint64_t pup = cards[i]->getPortUp();
+		retval |= pup << (i * portsPerCard);
+	}
+
+	return retval;
 }
 
 uint64_t DAQFrameServer::getPortCounts(int port, int whichCount)
 {
-	return DP->getPortCounts(port, whichCount);
+	unsigned portsPerCard = 1 << daqCardPortBits;
+	int cardID = port >> daqCardPortBits;
+	port = port % portsPerCard;
+
+	if(cardID >= cards.size()) {
+		fprintf(stderr, "Error in DAQFrameServer::getPortCounts(): trying to read non-existing card %d.\n", cardID);
+		return -1;
+
+	}
+
+	AbstractDAQCard *card = cards[cardID];
+	return card->getPortCounts(port, whichCount);
 }
 
 int AbstractDAQCard::setSorter(unsigned mode)
@@ -305,12 +498,11 @@ int AbstractDAQCard::setCoincidenceTrigger(CoincidenceTriggerConfig *config)
 
 int DAQFrameServer::setSorter(unsigned mode)
 {
-	return DP->setSorter(mode);
+	return -1;
 }
 int DAQFrameServer::setCoincidenceTrigger(CoincidenceTriggerConfig *config)
 {
-	int r = DP->setCoincidenceTrigger(config);
-	return r;
+	return -1;
 }
 
 int AbstractDAQCard::setGateEnable(unsigned mode)
@@ -320,5 +512,5 @@ int AbstractDAQCard::setGateEnable(unsigned mode)
 
 int DAQFrameServer::setGateEnable(unsigned mode)
 {
-	return DP->setGateEnable(mode);
+	return -1;
 }

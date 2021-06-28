@@ -44,12 +44,26 @@ static const unsigned DMA_TRANS_BYTE_SIZE = 262144;  // max for USER_FIFO_THRESH
 static const unsigned BUFFER_SIZE = DMA_TRANS_BYTE_SIZE / 8;
 static const unsigned N_BUFFER = 8;
 
-PFP_KX7::PFP_KX7()
+PFP_KX7 * PFP_KX7::openCard(int index)
 {
-	if ((fd = open("/dev/psdaq0", O_RDWR | O_SYNC)) == -1)
-		assert(false);
+	char devName[512];
+	sprintf(devName, "/dev/psdaq%d", index);
 	
+	int fd = open(devName, O_RDWR | O_SYNC);
+	if(fd == -1) {
+		fprintf(stderr, "ERROR: Could not open device %s: %s (%d)\n", devName, strerror(errno), errno);
+		return NULL;
+	}
+
+	return new PFP_KX7(fd);
 	
+
+}
+
+
+PFP_KX7::PFP_KX7(int fd)
+: fd(fd)
+{
 	uint32_t fw_flags;
 	bool pfp_kx7old = true;
 
@@ -312,7 +326,6 @@ int PFP_KX7::recvReply(uint64_t *packetBuffer, int packetBufferSize)
 
 void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 {
-	fprintf(stderr,"worker started...\n");
 	PFP_KX7 *p = (PFP_KX7 *)arg;
 	
 	while(true) {
@@ -320,7 +333,6 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 		if (p->bufferSetThreadStop) {
 			// Time to quit
 			pthread_mutex_unlock(&p->bufferSetMutex);
-			fprintf(stderr,"worker terminated...\n");
 			return NULL;
 		}
 
@@ -346,7 +358,6 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 		pthread_mutex_unlock(&p->bufferSetMutex);
 		pthread_cond_signal(&p->bufferSetCondFilled);
 	}
-	fprintf(stderr,"worker terminated...\n");
 	return NULL;
 }
 
@@ -373,6 +384,7 @@ int PFP_KX7::setAcquistionOnOff(bool enable)
 			bufferSetThreadStop = false;
 			pthread_create(&bufferSetThread, NULL, bufferSetThreadRoutine, (void *)this);
 			bufferSetThreadValid = true;
+			printf("INFO: PFP_KX7 worker started...\n");
 		}
 	}
 	else {
@@ -386,6 +398,7 @@ int PFP_KX7::setAcquistionOnOff(bool enable)
 			pthread_cond_signal(&bufferSetCondConsumed);
 			pthread_join(bufferSetThread, NULL);
 			bufferSetThreadValid = false;
+			printf("INFO: PFP_KX7 worker stopped.\n");
 		}
 	}
 	
