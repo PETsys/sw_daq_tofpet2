@@ -28,10 +28,12 @@ public:
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setGateEnable(unsigned mode);
+	virtual void lookForWords(uint64_t pattern, bool match);
 
 	  static const int ETIMEOUT = -1;
 	  static const int ENOWORDS = -2;
 	  static const int ENOCARD = -10000;
+
 
 private:
 	static const int base_addr0		= 0x00280000;

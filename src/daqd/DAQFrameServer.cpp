@@ -38,7 +38,9 @@ DAQFrameServer::DAQFrameServer(std::vector<AbstractDAQCard *> cards, unsigned da
 : FrameServer(shmName, shmfd, shmPtr, debugLevel), cards(cards), daqCardPortBits(daqCardPortBits)
 {
 	int nCards = cards.size();
-	cfData = new uint64_t [MaxRawDataFrameSize * nCards];
+	size_t bs = MaxRawDataFrameSize + 4;
+	cfData = new uint64_t [bs * nCards];
+	lastFrameWasBad = true;
 }
 	
 
@@ -56,6 +58,7 @@ void DAQFrameServer::startAcquisition(int mode)
 		(*card)->setAcquistionOnOff(true);
 	}
 
+	lastFrameWasBad = true;
 	FrameServer::startAcquisition(mode);
 }
 
@@ -203,85 +206,59 @@ static bool isFull(unsigned writePointer, unsigned readPointer)
 
 bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
 {
-	// NOTE skippedLoops is useful to add debug printfs()
-	// Do not remove
-	const int maxSkippedLoops = 32*1024;
-	int skippedLoops = 0;
-
-
-	bool lastFrameWasBad = true;
-	unsigned long long frameCount = 0;
-
-	while(!die){
-		if(skippedLoops >= maxSkippedLoops) {
-			skippedLoops = 0;
-		}
-		
-		uint64_t headerWords[2];
+	while(!die) {
 		int nWords;
-
 		// If we are comming back from a bad frame, let's dump until we read an idle
 		if(lastFrameWasBad) {
-			nWords = card->getWords(&headerWords[0], 1);
-			if(nWords != 1) { skippedLoops = 1000001; continue; }			
-			if(headerWords[0] != IDLE_WORD) { skippedLoops++; continue; }
+			card->lookForWords(IDLE_WORD, true);
 		}
-		lastFrameWasBad = false;
 
-		// Read something, which may be a filler or a header
-		nWords = card->getWords(&headerWords[0], 1);
-		if (nWords != 1) { skippedLoops = 1000002; continue; }		
-		if(headerWords[0] == IDLE_WORD) { skippedLoops++; continue; }
-		if(headerWords[0] != HEADER_WORD) { lastFrameWasBad = true; skippedLoops = 1000003; continue; }
-		skippedLoops = 0;
-		
-		// Read the frame's first 2 words
-		nWords = card->getWords(&headerWords[0], 2);
-		if (nWords != 2) { skippedLoops = 1000003; continue; }
+		lastFrameWasBad = true;
+		// Look for a non-filler
+		card->lookForWords(IDLE_WORD, false);
 
-		uint64_t frameSource = (headerWords[0] >> 54) & 0x400;
-		uint64_t frameType = (headerWords[0] >> 51) & 0x7;
-		uint64_t frameSize = (headerWords[0] >> 36) & 0x7FFF;
-		uint64_t frameID = (headerWords[0] ) & 0xFFFFFFFFF;
-		uint64_t nEvents = headerWords[1] & 0xFFFF;
-		bool frameLost = (headerWords[1] & 0x10000) != 0;
+		// Read 3 words which should be a HEADER_WORD and the two first words of a frame
+		nWords = card->getWords(dst, 3);
+		if (nWords != 3) continue;
+		if(dst[0] != HEADER_WORD) continue;
+
+		uint64_t frameSource = (dst[1] >> 54) & 0x400;
+		uint64_t frameType = (dst[1] >> 51) & 0x7;
+		uint64_t frameSize = (dst[1] >> 36) & 0x7FFF;
+		uint64_t frameID = (dst[1] ) & 0xFFFFFFFFF;
+		uint64_t nEvents = dst[2] & 0xFFFF;
+		bool frameLost = (dst[2] & 0x10000) != 0;
 
 
 		if((frameType != 0x1) || (frameSource != 0)) {
 			fprintf(stderr, "Bad frame header: %04lx %04lx\n", frameType, frameSource);
-			lastFrameWasBad = true; skippedLoops = 1000009; continue;
+			continue;
 		}
 
 		if(frameSize > MaxRawDataFrameSize) {
 			fprintf(stderr, "Excessive frame size: %lu\n word (max is %u)", frameSize, MaxRawDataFrameSize);
-			lastFrameWasBad = true; skippedLoops = 1000007; continue;
+			continue;
 		}
 
 		if(frameSize != (nEvents+2)) {
 			fprintf(stderr, "Inconsistent frame size: %lu\n words, %lu events\n", frameSize, nEvents);
-			lastFrameWasBad = true; skippedLoops = 1000008; continue;
+			continue;
 		}
-		
-		dst[0] = headerWords[0]; //one word was already read
-		dst[1] = headerWords[1]; //one word was already read
-		nWords = card->getWords(dst+2,frameSize-2);
-		if(nWords < 0) { lastFrameWasBad = true; skippedLoops = 1000004; continue; }
-		
-		// After a frame, we always have a tailerword word
-		uint64_t trailerWord;
-		nWords = card->getWords(&trailerWord, 1);
-		if(nWords < 0) { lastFrameWasBad = true; skippedLoops = 1000005; continue; }
 
-		if(trailerWord != TRAILER_WORD) { 
-				lastFrameWasBad = true; skippedLoops = 1000006; continue; 
-		}
+		// Read the rest of the expected event words plus the TRAILER_WORD
+		nWords = card->getWords(dst+3, nEvents + 2);
+		if(nWords != (nEvents + 2)) continue;
+		if(dst[frameSize+1] != TRAILER_WORD) continue;
+		if(dst[frameSize+2] != IDLE_WORD) continue;
 
 		// If we got here, we got a good data frame
+		lastFrameWasBad = false;
 		return true;
 
-	}	
+	}
 	// If we got here, we didn't produce a good data frame
 	return false;
+
 }
 
 
@@ -292,27 +269,27 @@ void *DAQFrameServer::doWork()
 	bool cfValid[nCards];
 
 	// Initial fill with frame data
+	size_t bs = MaxRawDataFrameSize + 4;
 	for(int i = 0; i < nCards; i++) {
-		cfValid[i] = getFrame(cards[i], cfData + MaxRawDataFrameSize * i);
+		cfValid[i] = getFrame(cards[i], cfData + bs * i);
 	}
 	if(die) return NULL;
 
 	long long expectedFrameID = 1LL<<62;
 	for(int i = 0; i < nCards; i++) {
-		uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
-                long long frameID = word0 & 0xFFFFFFFFF;
+		uint64_t *words = cfData + bs*i + 1;
+                long long frameID = words[0] & 0xFFFFFFFFF;
 		if(frameID < expectedFrameID) expectedFrameID = frameID;
 	}
 
 	// Read frames from various cards until they're all at the expected frameID or ahead
 	for(int i = 0; i < nCards; i++) {
-		uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
-		long long frameID = word0 & 0xFFFFFFFFF;
+		uint64_t *words = cfData + bs*i + 1;
+		long long frameID = words[0] & 0xFFFFFFFFF;
 		while(frameID < expectedFrameID) {
 			cfValid[i] = getFrame(cards[i], cfData + i);
 			if(die) return NULL;
-			word0 = cfData[MaxRawDataFrameSize * i + 0];
-			frameID = word0 & 0xFFFFFFFFF;
+			frameID = words[0] & 0xFFFFFFFFF;
 		}
         }
 
@@ -320,7 +297,7 @@ void *DAQFrameServer::doWork()
 		// Fill out the cards' buffer for any consumed frames
 		for(int i = 0; i < nCards; i++) {
 			if(!cfValid[i]) {
-				cfValid[i] = getFrame(cards[i], cfData + i * MaxRawDataFrameSize);
+				cfValid[i] = getFrame(cards[i], cfData + bs*i);
 				if(die) return NULL;
 			}
 		}
@@ -329,14 +306,13 @@ void *DAQFrameServer::doWork()
 		// Consider removing this code
 		// Read frames from various cards until they're all at the expected frameID or ahead
 		for(int i = 0; i < nCards; i++) {
-			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
-			long long frameID = word0 & 0xFFFFFFFFF;
+			uint64_t *words = cfData + bs*i + 1;
+			long long frameID = words[0] & 0xFFFFFFFFF;
 
 			while(frameID < expectedFrameID) {
-				cfValid[i] = getFrame(cards[i], cfData + i);
+				cfValid[i] = getFrame(cards[i], cfData + bs*i);
 				if(die) return NULL;
-				word0 = cfData[MaxRawDataFrameSize * i + 0];
-				frameID = word0 & 0xFFFFFFFFF;
+				frameID = words[0] & 0xFFFFFFFFF;
 			}
 
 		}
@@ -344,10 +320,8 @@ void *DAQFrameServer::doWork()
 		// Check if output frame will be a lost frame
 		bool frameLost = false;
 		for(int i = 0; i < nCards; i++) {
-			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
-			uint64_t word1 = cfData[MaxRawDataFrameSize * i + 1];
-			uint64_t word2 = cfData[MaxRawDataFrameSize * i + 2];
-	                long long frameID = word0 & 0xFFFFFFFFF;
+			uint64_t *words = cfData + bs*i + 1;
+	                long long frameID = words[0] & 0xFFFFFFFFF;
 
 
 			if(frameID != expectedFrameID) {
@@ -355,7 +329,7 @@ void *DAQFrameServer::doWork()
 				continue;
 			}
 
-			frameLost |= (word1 & 0x10000) != 0;
+			frameLost |= (words[1] & 0x10000) != 0;
 		}
 
 		RawDataFrame *dst = NULL;
@@ -387,9 +361,9 @@ void *DAQFrameServer::doWork()
 				unsigned short cfNextTCoarse[nCards];
 
 				for(int i = 0; i < nCards; i++) {
-					uint64_t word1 = cfData[MaxRawDataFrameSize * i + 1];
-					cfNextPtr[i] = cfData + i * MaxRawDataFrameSize + 2;
-					cfEndPtr[i] = cfNextPtr[i] + (word1 & 0xFFFF);
+					uint64_t *words = cfData + bs*i + 1;
+					cfNextPtr[i] = words + 2;
+					cfEndPtr[i] = cfNextPtr[i] + (words[1] & 0xFFFF);
 
 					cfNextTCoarse[i] = (cfNextPtr[i] != cfEndPtr[i]) ? ((*cfNextPtr[i]) >> 30 % 1024) : 0xFFFF;
 				}
@@ -416,7 +390,7 @@ void *DAQFrameServer::doWork()
 					dst_data[nEvents + 2] = cardID_shifted | eventWord;
 
 					// Update output event count
-					nEvents += 1;
+					if(nEvents  < (MaxRawDataFrameSize-2)) nEvents += 1;
 
 					// Update the source
 					cfNextPtr[selCard] += 1;
@@ -436,8 +410,8 @@ void *DAQFrameServer::doWork()
 
 		for(int i = 0; i < nCards; i++) {
 			// Mark all sources with the correct frameID as invalid since they were consumed
-			uint64_t word0 = cfData[MaxRawDataFrameSize * i + 0];
-			long long frameID = word0 & 0xFFFFFFFFF;
+			uint64_t *words = cfData + bs*i + 1;
+			long long frameID = words[0] & 0xFFFFFFFFF;
 			if(frameID == expectedFrameID) {
 				cfValid[i] = false;
 			}

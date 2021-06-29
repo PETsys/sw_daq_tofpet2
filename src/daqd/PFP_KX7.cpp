@@ -175,6 +175,62 @@ PFP_KX7::~PFP_KX7()
 	close(fd);
 }
 
+void PFP_KX7::lookForWords(uint64_t pattern, bool match)
+{
+	if(!bufferSetThreadValid) {
+		// TODO:
+		// DAQFrameServer tries to read data even before the acquisiton has been started
+		// But this should be fixed in DAQFrameServer later
+		return;
+
+	}
+
+	bool found = false;
+	while(!found) {
+
+		if(currentBuffer == NULL) {
+			// We have no buffer to copy data from yet
+
+			pthread_mutex_lock(&bufferSetMutex);
+			bool empty = (bufferSetWrPtr == bufferSetRdPtr);
+			if(empty) {
+				// We're empty, wait for signal and try again
+				pthread_cond_wait(&bufferSetCondFilled, &bufferSetMutex);
+				pthread_mutex_unlock(&bufferSetMutex);
+				continue;
+			}
+
+			unsigned index = bufferSetRdPtr % N_BUFFER;
+			pthread_mutex_unlock(&bufferSetMutex);
+			currentBuffer = bufferSet + index;
+		}
+		else if(currentBuffer->consumed == currentBuffer->filled) {
+			// We have a buffer but it's exausted
+
+			currentBuffer = NULL;
+
+			pthread_mutex_lock(&bufferSetMutex);
+			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
+			pthread_mutex_unlock(&bufferSetMutex);
+			pthread_cond_signal(&bufferSetCondConsumed);
+			continue;
+
+		}
+
+		uint64_t *head = currentBuffer->data + currentBuffer->consumed;
+		uint64_t *end = currentBuffer->data + currentBuffer->filled;
+
+
+		while(true) {
+			if(head == end) break;
+			found = ((*head == pattern) == match);
+			if(found) break;
+			head++;
+		}
+
+		currentBuffer->consumed = head -  currentBuffer->data;
+	}
+}
 
 int PFP_KX7::getWords(uint64_t *buffer, int count)
 {

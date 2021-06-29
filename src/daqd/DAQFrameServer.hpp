@@ -27,6 +27,7 @@ public:
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setGateEnable(unsigned mode);
+	virtual void lookForWords(uint64_t pattern, bool match) = 0;
 };
 
 class DAQFrameServer : public FrameServer
@@ -58,6 +59,7 @@ protected:
 
 	void * doWork();
 	bool getFrame(AbstractDAQCard *card, uint64_t *dst);
+	bool lastFrameWasBad = true;
 	
 };
 
