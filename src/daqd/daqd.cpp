@@ -61,12 +61,12 @@ int main(int argc, char *argv[])
 		
 		int optionIndex = 0;
 		int c = getopt_long(argc, argv, "", longOptions, &optionIndex);
-		
+
 		if (c == -1) {
 			break;
 		}
 		
-		if (c == 0 && optionIndex == 0) 
+		else if (c == 0 && optionIndex == 0)
 			clientSocketName = (char *)optarg;
 		else if (c == 0 && optionIndex == 1)
 			debugLevel = boost::lexical_cast<int>((char *)optarg);
@@ -92,6 +92,7 @@ int main(int argc, char *argv[])
 		}
 		else {
 			fprintf(stderr, "ERROR: Unknown option!\n");
+			return -1;
 		}
 		
 	}
