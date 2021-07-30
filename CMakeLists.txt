@@ -118,8 +118,5 @@ target_link_libraries("print_raw" common)
 add_executable("merge_raw" "src/petsys_util/merge_raw.cpp" )
 target_link_libraries("merge_raw" common)
 
-add_executable("analyze_quick_scan" "src/petsys_lab_util/analyze_asic_quick_scan.cpp")
-target_link_libraries("merge_raw" common)
-
 add_executable("online_monitor" "src/online_monitor/online_monitor.cpp")
 target_link_libraries("online_monitor" common)
