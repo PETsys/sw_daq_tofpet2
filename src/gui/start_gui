@@ -954,7 +954,7 @@ class GUI:
             self.show_error_dialog("daqd communication server is not running.")
             return
            
-        self.execute("python3 -u ./startup", "Check for temperature stability")
+        self.execute("python3 -u ./read_temperature_sensors --startup", "Check for temperature stability")
             
         #if success:
         #    self.show_info_dialog("Temperature is stable","ASIC(s) temperatures stable over the last minute. System ready to acquire.")
