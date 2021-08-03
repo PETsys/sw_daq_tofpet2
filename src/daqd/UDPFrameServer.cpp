@@ -114,10 +114,10 @@ void *UDPFrameServer::doWork()
 	
 	RawDataFrame *devNull = new RawDataFrame;
 	
-	unsigned char rxBuffer[2048];
-	uint64_t dataBuffer[2048/sizeof(uint64_t)];
+	uint8_t *rxBuffer = new uint8_t [65536];
+	uint64_t *dataBuffer = new uint64_t[MaxRawDataFrameSize];
 	while(!m->die) {
-		int r = recv(m->udpSocket, rxBuffer, sizeof(rxBuffer), 0);
+		int r = recv(m->udpSocket, rxBuffer, 65536, 0);
 
 		if (r == -1 && (errno = EAGAIN || errno == EWOULDBLOCK)) {	
 			continue;
@@ -182,6 +182,8 @@ void *UDPFrameServer::doWork()
 		
 	}
 	
+	delete [] dataBuffer;
+	delete [] rxBuffer;
 	delete devNull;
 	printf("UDPFrameServer::runWorker exiting...\n");
 	return NULL;
