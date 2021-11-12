@@ -99,7 +99,18 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 		loadTriggerMap(config, fn);
 	}
 	
-	
+	config->hasTimeOffsetCalibration = false;
+	if ((mask & LOAD_TIMEALIGN_CALIBRATION) != 0) {
+		const char *entry = iniparser_getstring(configFile, "main:time_offset_calibration_table", NULL);
+		if(entry != NULL) {
+			replace_variables(fn, entry, cdir);
+			loadTimeOffsetCalibration(config, fn);
+			config->hasTimeOffsetCalibration = true;
+		}        
+		else
+			fprintf(stderr, "WARNING: time_align_calibration_table not specified in section 'main' of '%s': timestamps of different channels may present offsets\n", configFileName);
+	}
+
 	// Load trigger configuration
 	 config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
 	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
@@ -320,7 +331,36 @@ void SystemConfig::loadEnergyCalibration(SystemConfig *config, const char *fn)
 	fclose(f);
 }
 
-
+void SystemConfig::loadTimeOffsetCalibration(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[PATH_MAX];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+		
+		unsigned portID, slaveID, chipID;
+                int channelID;
+		float t0;
+		
+		if(sscanf(line, "%u\t%u\t%u\t%d\t%f\n", 
+			&portID, &slaveID, &chipID, &channelID,
+			&t0) != 5) continue;
+               
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+		
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+				
+		channelConfig.t0 = t0;
+               
+        }
+	fclose(f);
+}
 
 
 void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
