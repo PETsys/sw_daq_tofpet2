@@ -12,12 +12,21 @@ parser.add_argument("--config", type=str, required=True, help="Configuration fil
 parser.add_argument("-o", type=str, dest="outFilePrefix", required=True, help="Data file prefix")
 parser.add_argument("--nreads-noise", dest="noise_reads", type=int, required=False, default=4)
 parser.add_argument("--nreads-dark", dest="dark_reads", type=int, required=False, default=4)
+parser.add_argument("--ext-bias", dest="ext_bias", action="store_true", default=False, help="Prompt user to set bias")
 args = parser.parse_args()
 
-systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
+if args.ext_bias:
+	systemConfig = config.ConfigFromFile(args.config, loadMask=0x0)
+	input("Set no-dark bias voltage and press ENTER")
+else:
+	systemConfig = config.ConfigFromFile(args.config, loadMask=config.LOAD_BIAS_CALIBRATION | config.LOAD_BIAS_SETTINGS)
+
 daqd = daqd.Connection()
 daqd.initializeSystem()
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_PREBD)
+if args.ext_bias:
+	systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+else:
+	systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_PREBD)
 asicsConfig = daqd.getAsicsConfig()
 
 
@@ -175,7 +184,12 @@ for ac in list(asicsConfig.values()):
 		cc.setValue("trigger_b_latched", 0)
 		cc.setValue("dead_time", 20)
 
-systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
+if args.ext_bias:
+	systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_OFF)
+	input("Set normal operation bias voltage and press ENTER")
+else:
+	systemConfig.loadToHardware(daqd, bias_enable=config.APPLY_BIAS_ON)
+	
 darkProfiles = {}
 print("Scanning threshold for dark counts")
 for thresholdIndex, thresholdName, baselineName in thresholdList:
