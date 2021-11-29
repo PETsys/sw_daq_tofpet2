@@ -175,13 +175,13 @@ PFP_KX7::~PFP_KX7()
 	close(fd);
 }
 
-void PFP_KX7::lookForWords(uint64_t pattern, bool match)
+bool PFP_KX7::lookForWords(uint64_t pattern, bool match)
 {
 	if(!bufferSetThreadValid) {
 		// TODO:
 		// DAQFrameServer tries to read data even before the acquisiton has been started
 		// But this should be fixed in DAQFrameServer later
-		return;
+		return false;
 
 	}
 
@@ -213,7 +213,7 @@ void PFP_KX7::lookForWords(uint64_t pattern, bool match)
 			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
 			pthread_mutex_unlock(&bufferSetMutex);
 			pthread_cond_signal(&bufferSetCondConsumed);
-			continue;
+			return false;
 
 		}
 
@@ -230,6 +230,7 @@ void PFP_KX7::lookForWords(uint64_t pattern, bool match)
 
 		currentBuffer->consumed = head -  currentBuffer->data;
 	}
+	return true;
 }
 
 int PFP_KX7::getWords(uint64_t *buffer, int count)

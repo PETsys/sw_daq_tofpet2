@@ -210,12 +210,12 @@ bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
 		int nWords;
 		// If we are comming back from a bad frame, let's dump until we read an idle
 		if(lastFrameWasBad) {
-			card->lookForWords(IDLE_WORD, true);
+			if(!card->lookForWords(IDLE_WORD, true)) continue;
 		}
 
 		lastFrameWasBad = true;
 		// Look for a non-filler
-		card->lookForWords(IDLE_WORD, false);
+		if(!card->lookForWords(IDLE_WORD, false)) continue;
 
 		// Read 3 words which should be a HEADER_WORD and the two first words of a frame
 		nWords = card->getWords(dst, 3);

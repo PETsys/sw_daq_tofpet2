@@ -28,7 +28,7 @@ public:
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setGateEnable(unsigned mode);
-	virtual void lookForWords(uint64_t pattern, bool match);
+	virtual bool lookForWords(uint64_t pattern, bool match);
 
 	  static const int ETIMEOUT = -1;
 	  static const int ENOWORDS = -2;
