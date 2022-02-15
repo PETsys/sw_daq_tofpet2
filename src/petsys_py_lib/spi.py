@@ -56,7 +56,7 @@ def ad5535_set_channel(conn, portID, slaveID, chipID, channelID, value):
 	return ad5535_ll(conn, portID, slaveID, chipID, command)
 
 
-def ltc2668_ll(self, portID, slaveID, chipID, command):
+def ltc2668_ll(conn, portID, slaveID, chipID, command):
 	"""! LTC2668 DAC SPI low level coding
 
 	@param conn daqd connection object
@@ -83,7 +83,7 @@ def ltc2668_ll(self, portID, slaveID, chipID, command):
 		miso_edge = "falling")
 
 
-def ltc2668_set_channel(self, portID, slaveID, chipID, channelID, value):
+def ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value):
 	"""! Set AD5535 channel
 
 	@param conn daqd connection object
@@ -175,6 +175,7 @@ def m95256_ll(conn, portID, slaveID, chipID, command, read_count):
 
 	@return Data received from the SPI bus returned by spi_master_execute()
 	"""
+
 	w = 8 * len(command)
 	r = 8 * read_count
 	p = 2
@@ -209,8 +210,8 @@ def m95256_read(conn, portID, slaveID, chipID, address, n_bytes):
 
 	# Break down reads into 4 byte chunks due to DAQ
 	rr = bytes()
-	for a in range(address, address + n_bytes, 4):
-		count = min([4, address + n_bytes - a])
+	for a in range(address, address + n_bytes, 2):
+		count = min([2, address + n_bytes - a])
 		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
 		r = r[1:-1]
 		rr += r

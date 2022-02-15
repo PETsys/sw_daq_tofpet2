@@ -28,16 +28,16 @@ def set_channel(conn, portID, slaveID, channelID, value):
 
 	if bias_type == "ad5535rev1":
 		if channelID > 32:
-			chipID = 0x11
+			chipID = 0x8000 + 0x100 * slot + 0x11
 		else:
-			chipID = 0x10
+			chipID = 0x8000 + 0x100 * slot + 0x10
 		channelID = channelID % 32
 
 		spi.ad5535_set_channel(conn, portID, slaveID, chipID, channelID, value)
 
 	elif bias_type == "ltc2668rev1":
-		chipID = 0x10
-		spi.ltc2668_set_channel(portID, slaveID, chipID, channelID, value)
+		chipID = 0x8000 + 0x100 * slot + 0x10
+		spi.ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value)
 
 	return None
 
