@@ -6,6 +6,7 @@
 from . import shm_raw
 from . import tofpet2b
 from . import tofpet2c
+from . import bias
 import socket
 from random import randrange
 import struct
@@ -106,6 +107,14 @@ class Connection:
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
 		return sorted(self.__getActiveFEBDs().keys())
+
+	def getUnitInfo(self, portID, slaveID):
+		self.__getActiveFEBDs()
+
+		try:
+			return self.__activeFEBDs[(portID, slaveID)]
+		except KeyError as e:
+			raise ErrorUnitNotPresent(portID, slaveID)
 	
 	def __getActiveFEBDs(self):
 		if self.__activeFEBDs == {}:
@@ -114,28 +123,34 @@ class Connection:
 		return self.__activeFEBDs
 
 	def __scanUnits_ll(self):
-		r = {}
-		u = None
+		febds = {}
+		tgr = None
 		for portID in self.getActivePorts():
 			slaveID = 0
 
-			if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
-				bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
-				r[(portID, slaveID)] = (bias_type, )
-			
-			if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
-				u = (portID, slaveID)
-		
-			while self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
-				slaveID += 1
-				if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
-					bias_type = self.read_config_register(portID, slaveID, 16, 0x0012)
-					r[(portID, slaveID)] = (bias_type, )
-				
+			while True:
 				if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
-					u = (portID, slaveID)
+					# This is a CLK&TGR unit
+					tgr = (portID, slaveID)
 
-		return r, u
+				if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
+					result = {}
+					result["c_fem_type"] = self.read_config_register(portID, slaveID, 16, 0x0002)
+					result["c_n_asic_per_fem"] = self.read_config_register(portID, slaveID, 16, 0x0004)
+					result["c_board_type"] = self.read_config_register(portID, slaveID, 16, 0x0022)
+					result["c_n_fems"] = self.read_config_register(portID, slaveID, 16, 0x0024)
+
+					result["bias"] = bias.read_febd_bias_info(self, portID, slaveID)
+					febds[(portID, slaveID)] = result
+
+
+				if self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
+					# This FEB/D has a slave
+					slaveID += 1
+				else:
+					break
+
+		return febds, tgr
 
 	def getActiveAsics(self):
 		return sorted(self.__activeAsics.keys())
@@ -147,15 +162,7 @@ class Connection:
 		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
 	
 	def getActiveBiasChannels(self):
-		r = []
-		for p, s in self.getActiveFEBDs():
-			bias_type = self.getBiasType(p, s)
-			if bias_type == 1:
-				bias_channels = 64
-			else:
-				bias_channels = 16
-			r += [ (p, s, c) for c in range(bias_channels) ]
-		return r
+		return bias.get_active_channels(self)
 
 	## Disables test pulse 
 	def setTestPulseNone(self):
@@ -273,7 +280,11 @@ class Connection:
 		self.disableEventGate()
 		self.disableCoincidenceTrigger()
 		self.disableAuxIO()
-		self.__setAllBiasToZero()
+
+		# Set all bias to zero
+		for portID, slaveID, channelID in self.getActiveBiasChannels():
+			# 0 works for all types of bias mezzanines
+			self.__write_hv_channel(portID, slaveID, channelID, 0, forceAccess=True)
 
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
@@ -611,11 +622,20 @@ class Connection:
 			self.write_config_register(portID, slaveID, word_width, base_address, value)
 		return None
 	
-	def spi_master_execute(self, portID, slaveID, cfgFunctionID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data):
+	def spi_master_execute(self, portID, slaveID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data, freq_sel=1, miso_edge="rising"):
+
+		if miso_edge == "rising":
+			miso_edge = 0
+		elif miso_edge == "falling":
+			miso_edge = 1
+
+
 		if len(mosi_data) == 0:
 			mosi_data = [ 0x00 ]
 		
-		command = [ chipID, 
+		command = [
+			(miso_edge << 7) | freq_sel,
+			(chipID  >> 8) & 0xFF, chipID & 0xFF,
 			cycle_length & 0xFF, (cycle_length >> 8) & 0xFF,
 			sclk_en_on & 0xFF, (sclk_en_on >> 8) & 0xFF,
 			sclk_en_off & 0xFF, (sclk_en_off >> 8) & 0xFF,
@@ -627,146 +647,10 @@ class Connection:
 			miso_off & 0xFF, (miso_off >> 8) & 0xFF 
 			] + mosi_data
 		
-		return self.sendCommand(portID, slaveID, cfgFunctionID, bytes(command))
+
+		return self.sendCommand(portID, slaveID, 0x02, bytes(command))
 			
-	def __write_hv_ad5535(self, portID, slaveID, channelID, value):
-		chipID = channelID // 32
-		channelID = channelID % 32
-		#chipID = 1 - whichDAC # Wrong decoding in ad5535.vhd
-		
-		channelID &= 0b11111
-		value &= 0b11111111111111
-		command = channelID << 14 | value
-		return self.__write_ad5535_ll(portID, slaveID, 3, chipID, command)
-		
-	def __write_ad5535_ll(self, portID, slaveID, cfgFunctionID, chipID, data):
-		# SPI master needs data in byte sizes
-		# with SPI first bit being most significant bit of first byte
-		data = data << 5
-		command = [ (data >> 16) & 0xFF, (data >> 8) & 0xFF, (data >> 0) & 0xFF ]
-		
-		w = 19
-		padding = [0x00 for n in range(2) ]
-		p = 8 * len(padding)
 
-		# Pad the cycle with zeros
-		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
-			p+w+p, 		# cycle
-			p,p+w,	# sclk en
-			p-1,p,		# cs
-			0, p+w+p, 	# mosi
-			p,p+w, 		# miso
-			padding + command + padding)
-		
-	
-	def __write_hv_ltc2668(self, portID, slaveID, channelID, value):
-		command = [ 0b00110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
-		return self.__ltc2668_ll(portID, slaveID, 3, 1, command)
-		
-	def __ltc2668_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
-		w = 8 * len(command)
-		padding = [0x00 for n in range(2) ]
-		p = 8 * len(padding)
-
-		# Pad the cycle with zeros
-		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
-			p+w+p, 		# cycle
-			p,p+w, 		# sclk en
-			p-1,p+w+1,	# cs
-			0, p+w+p, 	# mosi
-			p,p+w, 		# miso
-			padding + command + padding)
-		
-	def read_hv_ad7194(self, portID, slaveID, channelID):
-		# Reset
-		self.__ad7194_ll(portID, slaveID, 3, 2, [0xFF for n in range(8) ], 0)
-
-		# Set mode register
-		r = self.__ad7194_ll(portID, slaveID, 3, 2, [0b00001000, 0b00011011, 0b00100100, 0b01100000], 0)
-
-		# Set configuration register
-		r =  self.__ad7194_ll(portID, slaveID, 3, 2, [0b00010000, 0b00000100, 0b00000000 + (channelID << 4), 0b01011000], 0)
-		
-		# Wait for conversion to be ready
-		while True:
-			r = self.__ad7194_ll(portID, slaveID, 3, 2, [0b01000000], 1)
-			if r[1] & 0x80 == 0x00: break
-			sleep(0.1)
-			
-		r = self.__ad7194_ll(portID, slaveID, 3, 2, [0x58], 4)
-		v = (r[1] << 16) + (r[2] << 8) + r[3]
-		
-		return v
-	
-			
-	def __ad7194_ll(self,  portID, slaveID, cfgFunctionID, chipID, command, read_count):
-		command = [0x00] + command
-		w = 8 * len(command)
-		r = 8 * read_count
-		p = 2
-		w_padding = [ 0xFF for n in range(p) ]
-		r_padding = [ 0xFF for n in range(p + read_count) ]
-		p = 8 * p
-
-		# Pad the cycle with zeros
-		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
-			p+w+r+p, 		# cycle
-			p,p+w+r+1, 		# sclk en
-			p-1,p+w+r+1,		# cs
-			0, p+w+r+p, 		# mosi
-			p+w,p+w+r, 		# miso
-			w_padding + command + r_padding)
-		
-	def __m95256_ll(self, portID, slaveID, cfgFunctionID, chipID, command, read_count):
-		w = 8 * len(command)
-		r = 8 * read_count
-		p = 2
-		w_padding = [ 0xFF for n in range(p) ]
-		r_padding = [ 0xFF for n in range(p + read_count) ]
-		p = 8 * p
-
-		# Pad the cycle with zeros
-		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
-			p+w+r+p, 		# cycle
-			p,p+w+r+1, 		# sclk en
-			p-0,p+w+r+0,		# cs
-			0, p+w+r+p, 		# mosi
-			p+w,p+w+r, 		# miso
-			w_padding + command + r_padding)
-		
-	def read_hv_m95256(self, portID, slaveID, address, n_bytes):
-		# Break down reads into 4 byte chunks due to DAQ
-		rr = bytes()
-		for a in range(address, address + n_bytes, 4):
-			count = min([4, address + n_bytes - a])
-			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
-			r = r[1:-1]
-			rr += r
-		return rr
-	
-	def write_hv_m95256(self, portID, slaveID, address, data):
-		while True:
-			# Check if Write In Progress is set and if so, sleep and try again
-			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
-			if r[1] & 0x01 == 0:
-				break
-			sleep(0.010)
-			
-		# cycle WEL
-		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000100], 1)
-		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000110], 1)
-		
-		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
-		while True:
-			# Check if Write In Progress is set and if so, sleep and try again
-			r = self.__m95256_ll(portID, slaveID, 3, 0, [0b00000101], 1)
-			if r[1] & 0x01 == 0:
-				break
-			sleep(0.010)
-		
-		# Disable WEL (it should be automatic but...)
-		self.__m95256_ll(portID, slaveID, 3, 0, [0b00000100], 1)
-			
 		
 	
 
@@ -818,14 +702,6 @@ class Connection:
 
 		return reply	
 
-	## Writes in the FPGA register (Clock frequency, etc...)
-	# @param regNum Identification of the register to be written
-	# @param regValue The value to be written
-	def setSI53xxRegister(self, regNum, regValue):
-		reply = self.sendCommand(0, 0, 0x02, bytes([0b00000000, regNum]))	
-		reply = self.sendCommand(0, 0, 0x02, bytes([0b01000000, regValue]))
-		reply = self.sendCommand(0, 0, 0x02, bytes([0b10000000]))
-		return None
 
 	## Defines all possible commands structure that can be sent to the ASIC and calls for sendCommand to actually transmit the command
 	# @param asicID Identification of the ASIC that will receive the command
@@ -833,17 +709,25 @@ class Connection:
 	# @param value The actual value to be transmitted to the ASIC if it applies to the command type   
 	# @param channel If the command is destined to a specific channel, this parameter sets its ID. 	  
 	def __doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None):
+
+		# Remap the chipID to the spiID
+		#
+		chip_per_module = self.getUnitInfo(portID, slaveID)["c_n_asic_per_fem"]
+		a = chipID // chip_per_module
+		b = chipID % chip_per_module
+		spi_id = a * 256 + b
+
 		nTry = 0
 		while True:
 			try:
-				return self.___doAsicCommand(portID, slaveID, chipID, command, value=value, channel=channel)
+				return self.___doAsicCommand(portID, slaveID, chipID, spi_id, command, value=value, channel=channel)
 			except tofpet2b.ConfigurationError as e:
 				nTry = nTry + 1
 				if nTry >= 5:
 					raise e
 
 
-	def ___doAsicCommand(self, portID, slaveID, chipID, command, value=None, channel=None):
+	def ___doAsicCommand(self, portID, slaveID, chipID, spi_id, command, value=None, channel=None):
 		commandInfo = {
 		#	commandID 	: (code,   ch,   read, data length)
 			"wrChCfg"	: (0b0000, True, False, 125),
@@ -874,7 +758,7 @@ class Connection:
 			bitsToRead = 0
 
 		nBitsToWrite= len(ccBits)
-		cmd = bytes([ chipID, nBitsToWrite, bitsToRead]) + byteX
+		cmd = bytes([ (spi_id >> 8) & 0xFF, spi_id & 0xFF, nBitsToWrite, bitsToRead]) + byteX
 
 		reply = self.sendCommand(portID, slaveID, 0x01, cmd)
 		if len(reply) < 1: raise tofpet2b.ConfigurationErrorBadReply(1, len(reply))
@@ -903,7 +787,7 @@ class Connection:
 		else:
 			# Check what we wrote
 			readCommand = 'rd' + command[2:]
-			readStatus, readValue = self.__doAsicCommand(portID, slaveID, chipID, readCommand, channel=channel)
+			readStatus, readValue = self.___doAsicCommand(portID, slaveID, chipID, spi_id, readCommand, channel=channel)
 			if readValue != value:
 				raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, chipID, value, readValue)
 
@@ -989,15 +873,6 @@ class Connection:
 				
 		return None
 	
-	def getBiasType(self, portID, slaveID):
-		r = self.__getActiveFEBDs()
-		(bias_type, ) = r[(portID, slaveID)]
-		return bias_type
-	
-	def __setAllBiasToZero(self):
-		for portID, slaveID, channelID in self.getActiveBiasChannels():
-			# 0 works for all types of bias mezzanines
-			self.__write_hv_channel(portID, slaveID, channelID, 0, forceAccess=True)
 
 	def __write_hv_channel(self, portID, slaveID, channelID, value, forceAccess=False):
 		cacheKey = (portID, slaveID, channelID)
@@ -1008,14 +883,10 @@ class Connection:
 					return 0
 			except KeyError:
 				pass
-		
-		bias_type = self.getBiasType(portID, slaveID)
-		if bias_type == 1:
-			self.__write_hv_ad5535(portID, slaveID, channelID, value)
-		else:
-			self.__write_hv_ltc2668(portID, slaveID, channelID, value)
+
+		r = bias.set_channel(self, portID, slaveID, channelID, value)
 		self.__hvdac_config_cache[cacheKey] = value
-		return 0
+		return r
 
 
 	## Returns the last value written in the bias voltage channel registers as a dictionary of
@@ -1349,108 +1220,7 @@ class Connection:
 		currentTime = time()
 		return currentTime - currentTimeTag / self.__systemFrequency
 
-	def __max111xx_ll(self, portID, slaveID, cfgFunctionID, chipID, command):
-		w = 8 * len(command)
-		padding = [0xFF for n in range(2) ]
-		p = 8 * len(padding)
 
-		# Pad the cycle with zeros
-		return self.spi_master_execute(portID, slaveID, cfgFunctionID, chipID, 
-			p+w+p, 		# cycle
-			p,p+w, 		# sclk en
-			0,p+w+p,	# cs
-			0, p+w+p, 	# mosi
-			p,p+w, 		# miso
-			padding + command + padding)
-
-	def fe_temp_check_max1111xx(self, portID, slaveID, chipID):
-		m_config1 = 0x00008064  # single end ref; no avg; scan 16; normal power; echo on
-		m_config2 = 0x00008800  # single end channels (0/1 -> 14/15, pdiff_com)
-		m_config3 = 0x00009000  # unipolar convertion for channels (0/1 -> 14/15)
-		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
-
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config1 >> 8) & 0xFF, m_config1 & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config2 >> 8) & 0xFF, m_config2 & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_config3 >> 8) & 0xFF, m_config3 & 0xFF]))
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config1 >> 8) & 0xFF, m_config1 & 0xFF])
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config2 >> 8) & 0xFF, m_config2 & 0xFF])
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_config3 >> 8) & 0xFF, m_config3 & 0xFF])
-		
-		if reply[1] == 0xFF and reply[2] == 0xFF: 
-			return False
-		
-		if not (reply[1] == 0x88 and reply[2] == 0x0): 
-			return False
-
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_control >> 8) & 0xFF, m_control & 0xFF]))
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_control >> 8) & 0xFF, m_control & 0xFF])
-		if not(reply[1] == 0x90 and reply[2] == 0x0): 
-			return False
-		
-		return True
-	
-	def fe_temp_read_max111xx(self, portID, slaveID, chipID, channelID):
-		m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
-		m_repeat = 0x00000000
-		
-		command = m_control + (channelID << 7)
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (command >> 8) & 0xFF, command & 0xFF]))
-		#reply = self.sendCommand(portID, slaveID, 0x04, bytes([chipID, (m_repeat >> 8) & 0xFF, m_repeat & 0xFF]))
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(command >> 8) & 0xFF, command & 0xFF])
-		reply = self.__max111xx_ll(portID, slaveID, 0x02, chipID, [(m_repeat >> 8) & 0xFF, m_repeat & 0xFF])
-		v = reply[1] * 256 + reply[2]
-		u = v & 0b111111111111
-		ch = (v >> 12)
-		assert ch == channelID
-		return u
-	
-	## Initializes the temperature sensors in the FEB/As
-	# Return the number of active sensors found in FEB/As
-	def fe_temp_enumerate_tmp104(self, portID, slaveID):
-		din = [ 3, 0x55, 0b10001100, 0b10010000 ]
-		din = bytes(din)
-		dout = self.sendCommand(portID, slaveID, 0x04, din)
-
-		if len(dout) < 4:
-			# Reply is too short, chain is probably open
-			raise TMP104CommunicationError(portID, slaveID, din, dout)
-		
-		if (dout[1:2] != din[1:2]) or ((dout[3] & 0xF0) != din[3]):
-			# Reply does not match what is expected; a sensor is probably broken
-			raise TMP104CommunicationError(portID, slaveID, din, dout)
-
-		nSensors = dout[3] & 0x0F
-	
-		din = [ 3, 0x55, 0b11110010, 0b01100011]
-		din = bytes(din)
-		dout = self.sendCommand(portID, slaveID, 0x04, din)
-		if len(dout) < 4:
-			raise TMP104CommunicationError(portID, slaveID, din, dout)
-
-		din = [ 2 + nSensors, 0x55, 0b11110011 ]
-		din = bytes(din)
-		dout = self.sendCommand(portID, slaveID, 0x04, din)
-		if len(dout) < (3 + nSensors):
-			raise TMP104CommunicationError(portID, slaveID, din, dout)
-
-		return nSensors
-
-	## Reads the temperature found in the specified FEB/D
-	# @param portID  DAQ port ID where the FEB/D is connected
-	# @param slaveID Slave ID on the FEB/D chain
-	# @param nSensors Number of sensors to read
-	def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
-			din = [ 2 + nSensors, 0x55, 0b11110001 ]
-			din = bytes(din)
-			dout = self.sendCommand(portID, slaveID, 0x04, din)
-			if len(dout) < (3 + nSensors):
-				raise TMP104CommunicationError(portID, slaveID, din, dout)
-
-			temperatures = dout[3:]
-			for i, t in enumerate(temperatures):
-				if t > 127: t = t - 256
-				temperatures[i] = t
-			return temperatures
 		
 	## Returns a 3 element tupple with the number of transmitted, received, and error packets for a given port 
 	# @param port The port for which to get the desired output 
@@ -1509,6 +1279,21 @@ class ErrorInvalidAsicType(Exception):
 class ErrorNoFEB(Exception):
 	def __str__(self):
 		return "No active FEB/D on any port"
+
+class ErrorUnitNotPresent(Exception):
+	def __init__(self, portID, slaveID):
+		self.__portID = portID
+		self.__slaveID = slaveID
+	def __str__(self):
+		return "Unit (%2d, %2d) does not exist" % (self.__portID, self.__slaveID)
+
+class ErrorFEBDNotPresent(Exception):
+	def __init__(self, portID, slaveID):
+		self.__portID = portID
+		self.__slaveID = slaveID
+	def __str__(self):
+		return "Unit (%2d, %2d) does not exist or is not a FEB/D" % (self.__portID, self.__slaveID)
+
 
 ## Exception: testing for ASIC presence in FEB/D has returned a inconsistent result.
 #  Indicates that there's a FEB/A board is not properly plugged or a hardware problem.
