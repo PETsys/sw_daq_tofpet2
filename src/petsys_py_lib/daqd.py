@@ -622,19 +622,24 @@ class Connection:
 			self.write_config_register(portID, slaveID, word_width, base_address, value)
 		return None
 	
-	def spi_master_execute(self, portID, slaveID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data, freq_sel=1, miso_edge="rising"):
+	def spi_master_execute(self, portID, slaveID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data, freq_sel=1, miso_edge="rising", mosi_edge="rising"):
 
 		if miso_edge == "rising":
 			miso_edge = 0
 		elif miso_edge == "falling":
 			miso_edge = 1
 
+		if mosi_edge == "rising":
+			mosi_edge = 0
+		else:
+			mosi_edge = 1
+
 
 		if len(mosi_data) == 0:
 			mosi_data = [ 0x00 ]
 		
 		command = [
-			(miso_edge << 7) | freq_sel,
+			(miso_edge << 7) | (mosi_edge << 6) | freq_sel,
 			(chipID  >> 8) & 0xFF, chipID & 0xFF,
 			cycle_length & 0xFF, (cycle_length >> 8) & 0xFF,
 			sclk_en_on & 0xFF, (sclk_en_on >> 8) & 0xFF,
@@ -649,6 +654,22 @@ class Connection:
 		
 
 		return self.sendCommand(portID, slaveID, 0x02, bytes(command))
+
+	def i2c_master(self, portID, slaveID, enable, busID, scl, sda):
+		word0 = (busID >> 8) & 0xFF
+		word1 = (busID >> 0) & 0xFF
+		word2 = 0x00
+		if enable: word2 |= 0x80
+		if scl != 0: word2 |= 0x02
+		if sda != 0: word2 |= 0x01
+
+		result = self.sendCommand(portID, slaveID, 3, bytes([word0, word1, word2]))
+
+		result = result[0]
+		error = (result & 0xE0) != 0
+		scl = (result & 0x02) >> 1
+		sda = (result & 0x01) >> 0
+		return scl, sda
 			
 
 		
