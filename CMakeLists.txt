@@ -74,7 +74,7 @@ configure_file("src/gui/logo_PETsys.png" "gui/logo_PETsys.png" COPYONLY)
 configure_file("src/gui/logo_PETsys2.png" "gui/logo_PETsys2.png" COPYONLY)
 configure_file("src/online_monitor/launch_monitor" "launch_monitor" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data_with_monitoring" "acquire_sipm_data_with_monitoring" COPYONLY)
-
+configure_file("config.ini" "config.ini" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
 link_libraries(${ROOT_LIBS})
