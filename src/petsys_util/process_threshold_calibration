@@ -7,6 +7,7 @@ from time import sleep
 import ROOT
 from sys import stdout, argv
 from math import sqrt
+import random
 import re
 
 # Create the S-Curve function
@@ -120,6 +121,7 @@ def main(argv):
 		thresholdName = line[4]
 		thresholdValue = int(line[5])
 		v = float(line[6])
+		v += (random.random() - 0.5) * 1E-6 # Apply some ditthering because ROOT fits seem to misbehave when value=error=0
 		noiseProfiles[ (portID, slaveID, chipID, channelID, thresholdName)].Fill(thresholdValue, v)
 	inputFile.close()
 
