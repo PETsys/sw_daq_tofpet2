@@ -281,10 +281,10 @@ class Connection:
 		self.disableCoincidenceTrigger()
 		self.disableAuxIO()
 
-		# Set all bias to zero
-		for portID, slaveID, channelID in self.getActiveBiasChannels():
-			# 0 works for all types of bias mezzanines
-			self.__write_hv_channel(portID, slaveID, channelID, 0, forceAccess=True)
+		# Set all bias to minimum
+		# Setting to zero DAC but will be saturated by mezzanine specific code
+		for key in self.getActiveBiasChannels():
+			self.__write_hv_channel(key, 0, forceAccess=True)
 
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
@@ -895,18 +895,17 @@ class Connection:
 		return None
 	
 
-	def __write_hv_channel(self, portID, slaveID, channelID, value, forceAccess=False):
-		cacheKey = (portID, slaveID, channelID)
+	def __write_hv_channel(self, key, value, forceAccess=False):
 		if not forceAccess:
 			try:
-				lastValue = self.__hvdac_config_cache[cacheKey]
+				lastValue = self.__hvdac_config_cache[key]
 				if value == lastValue:
 					return 0
 			except KeyError:
 				pass
 
-		r = bias.set_channel(self, portID, slaveID, channelID, value)
-		self.__hvdac_config_cache[cacheKey] = value
+		r = bias.set_channel(self, key, value)
+		self.__hvdac_config_cache[key] = value
 		return r
 
 
@@ -921,9 +920,9 @@ class Connection:
 	# @param is a dictionary, as returned by get_hvdac_config
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
-		for portID, slaveID, channelID in self.getActiveBiasChannels():
-			value = config[(portID, slaveID, channelID)]
-			self.__write_hv_channel(portID, slaveID, channelID, value, forceAccess=forceAccess)
+		for key in self.getActiveBiasChannels():
+			value = config[key]
+			self.__write_hv_channel(key, value, forceAccess=forceAccess)
 		
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
@@ -1337,7 +1336,7 @@ class ErrorAsicUnknownConfigurationAfterReset(Exception):
 	def __init__(self, portID, slaveID, chipID, value):
 		self.__data = (portID, slaveID, chipID, value)
 	def __str__(self):
-		return "ASIC at port %2d, slave %2d, asic %02d: unknown configuration after reset %s" % self.data
+		return "ASIC at port %2d, slave %2d, asic %02d: unknown configuration after reset %s" % self.__data
 	
 class TMP104CommunicationError(Exception):
 	def __init__(self, portID, slaveID, din, dout):

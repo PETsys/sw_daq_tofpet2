@@ -5,7 +5,7 @@ from petsys import daqd, config, spi
 import argparse
 import struct
 import sys
-
+import re
 
 def add_calibration_from_rom(connection, portID, slaveID, slot, outputFile):
 	chipID = 0x8000 + 0x100 * slot + 0x0
@@ -60,13 +60,45 @@ def add_calibration_from_rom(connection, portID, slaveID, slot, outputFile):
 		
 		for j in range(n_channels):
 			for i in range(n_x_values):
-				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, 64 * slot + j, x_values[i], v_meas[(portID, slaveID, j)][i], adc_meas[(portID, slaveID, j)][i]))
+				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slot, j, x_values[i], v_meas[(portID, slaveID, j)][i], adc_meas[(portID, slaveID, j)][i]))
 		
 	else:
 		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slot %2d has a PROM with an unknown layout 0x%016x\n" % (portID, slaveID, slot, promLayoutVersion))
 		exit(1)
 		
 	return None
+
+
+def normalizeAndSplit(l):
+	l = re.sub("\s*#.*", "", l)	# Remove comments
+	l = re.sub('^\s*', '', l)	# Remove leading white space
+	l = re.sub('\s*$', '', l)	# Remove trailing whitespace
+	l = re.sub('\s+', '\t', l)	# Normalize whitespace to tabs
+	l = re.sub('\r', '', l)		# Remove \r
+	l = re.sub('\n', '', l)		# Remove \l
+	l = l.split('\t')
+	return l
+
+def add_calibration_table_from_file(inputFileName, portID, slaveID, slot, outputFile):
+	f = open(inputFileName)
+	c = {}
+	x = []
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+
+		if x == []:
+			x = [ int(v) for v in l]
+		else:
+			_, _, channelID = [ int(v) for v in l[0:3] ]
+			y = [ float(v) for v in l[3:] ]
+			assert len(x) == len(y)
+
+			for i in range(len(x)):
+				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slot, channelID, x[i], y[i], 0))
+	f.close()
+	return c
+
 
 
 def main():
@@ -110,13 +142,8 @@ def main():
 			exit(1)
 			
 		print('Reading calibration table "%s" for FEB/D (%d, %d) slot %2d' % (args.filename[i], portID, slaveID, slot))
-		table = config.readBiasCalibrationTable_table(args.filename[i])
-		
-		for (_port, _slave, channelID), data in list(table.items()):
-			for dac_set, v_meas, adc_meas in data:
-				outputFile.write("%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, 64 * slot + channelID, dac_set, v_meas, 0))
-		
-		febd_calibration_type[(portID, slaveID)] = "FILE"
+		add_calibration_table_from_file(args.filename[i], portID, slaveID, slot, outputFile)
+		febd_calibration_type[(portID, slaveID, slot)] = "FILE"
 	
 	for portID, slaveID, slot in list(febd_calibration_type.keys()):
 		if febd_calibration_type[(portID, slaveID, slot)] == "NONE":

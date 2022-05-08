@@ -90,7 +90,6 @@ def list_fem128(conn, portID, slaveID, n):
 	result = []
 	
 	n_fems = conn.getUnitInfo(portID, slaveID)["c_n_fems"]
-	print("DEBUG: %d" % n_fems)
 	for module_id in range(n_fems):
 		spi_id = module_id * 256 + 4
 

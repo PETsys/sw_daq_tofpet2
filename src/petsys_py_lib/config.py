@@ -110,11 +110,6 @@ class Config:
 		# Apply bias voltage settings
 		# 
 		hvdacHwConfig = daqd.get_hvdac_config()
-		# Set all bias channels ~1V (off, but avoid from from amplifier to SiPM)
-		for key in list(hvdacHwConfig.keys()):
-			# Set HVDAC to ~1 V, to avoid flow back from amplifier through SiPM
-				hvdacHwConfig[key] = int(round(1.0 * 2**14 / (50 * 2.048)))
-
 		if bias_enable == APPLY_BIAS_PREBD or bias_enable == APPLY_BIAS_ON:
 			assert (self.__loadMask & LOAD_BIAS_CALIBRATION) != 0
 			assert (self.__loadMask & LOAD_BIAS_SETTINGS) != 0
@@ -318,13 +313,13 @@ def readBiasCalibrationTable_tripplet_list(fn):
 	for l in f:
 		l = normalizeAndSplit(l)
 		if l == ['']: continue
-		portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
-		key = (portID, slaveID, channelID)
+		portID, slaveID, channelID, slotID = [ int(v) for v in l[0:4] ]
+		key = (portID, slaveID, channelID, slotID)
 		if key not in c:
 			c[key] = []
-		dac_set = int(l[3])
-		v_meas = float(l[4])
-		adc_meas = int(l[5])
+		dac_set = int(l[4])
+		v_meas = float(l[5])
+		adc_meas = int(l[6])
 		
 		c[key].append((dac_set, v_meas, adc_meas))
 	return c
@@ -341,11 +336,11 @@ def readBiasCalibrationTable_table(fn):
 		if x == []:
 			x = [ int(v) for v in l]
 		else:
-			portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
-			y = [ float(v) for v in l[3:] ]
+			portID, slaveID, slotID, channelID = [ int(v) for v in l[0:4] ]
+			y = [ float(v) for v in l[4:] ]
 			assert len(x) == len(y)
 			xyz = [ (x[i], y[i], 0) for i in range(len(x)) ]
-			c[(portID, slaveID, channelID)] = xyz
+			c[(portID, slaveID, slotID, channelID)] = xyz
 	f.close()
 	return c
 
@@ -355,8 +350,8 @@ def readSiPMBiasTable(fn):
 	for l in f:
 		l = normalizeAndSplit(l)
 		if l == ['']: continue
-		portID, slaveID, channelID = [ int(v) for v in l[0:3] ]
-		c[(portID, slaveID, channelID)] = [ float(v) for v in l[3:7] ]
+		portID, slaveID, slotID, channelID = [ int(v) for v in l[0:4] ]
+		c[(portID, slaveID, slotID, channelID)] = [ float(v) for v in l[4:8] ]
 	f.close()
 	return c
 

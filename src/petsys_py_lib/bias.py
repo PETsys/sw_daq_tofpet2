@@ -1,4 +1,5 @@
 from . import spi
+from math import ceil
 
 def read_febd_bias_info(conn, portID, slaveID):
 
@@ -19,24 +20,32 @@ def read_febd_bias_info(conn, portID, slaveID):
 
 
 
-def set_channel(conn, portID, slaveID, channelID, value):
+def set_channel(conn, key, value):
+	print("DEBUG", key, value)
+	portID, slaveID, slotID, channelID = key
 	bias_info = conn.getUnitInfo(portID, slaveID)["bias"]
 
-	slot = channelID // 64
-	channelID = channelID % 64
-	_, _, bias_type, _ = bias_info[slot]
+	_, _, bias_type, _ = bias_info[slotID]
 
 	if bias_type == "ad5535rev1":
 		if channelID > 32:
-			chipID = 0x8000 + 0x100 * slot + 0x11
+			chipID = 0x8000 + 0x100 * slotID + 0x11
 		else:
-			chipID = 0x8000 + 0x100 * slot + 0x10
+			chipID = 0x8000 + 0x100 * slotID + 0x10
 		channelID = channelID % 32
+
+		# Impose minimum 1V bias voltage
+		min_dac = int(ceil(2**14 * 1.0 / 200))
+		value = max(value, min_dac)
 
 		spi.ad5535_set_channel(conn, portID, slaveID, chipID, channelID, value)
 
 	elif bias_type == "ltc2668rev1":
-		chipID = 0x8000 + 0x100 * slot + 0x10
+		# Impose minimum 1V bias voltage
+		min_dac = int(ceil(2**16 * 1.0 / 75))
+		value = max(value, min_dac)
+	
+		chipID = 0x8000 + 0x100 * slotID + 0x10
 		spi.ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value)
 
 	return None
@@ -47,7 +56,13 @@ def get_active_channels(conn):
 	for p, s in conn.getActiveFEBDs():
 		bias_info = conn.getUnitInfo(p, s)["bias"]
 		for n, (has_prom, n_channels, bias_type, has_adc) in bias_info.items():
-			r += [ (p, s, 64*n + k) for k in range(n_channels) ]
+			r += [ (p, s, n, k) for k in range(n_channels) ]
 
 	return r
+
+
+
+
+
+	
 

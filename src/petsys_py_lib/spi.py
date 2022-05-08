@@ -303,3 +303,22 @@ def max111xx_read(conn, portID, slaveID, chipID, channelID):
 	ch = (v >> 12)
 	assert ch == channelID
 	return u
+
+def si534x_ll(conn, portID, slaveID, chipID, command):
+	w = 8 * len(command)
+	padding = [0xFF for n in range(2) ]
+	p = 8 * len(padding)
+
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		p+w+p, 		# cycle
+		0,p+w+p, 		# sclk en
+		p,p+w,	# cs
+		0, p+w+p, 	# mosi
+		p,p+w, 		# miso
+		padding + command + padding,
+		miso_edge="falling",
+		freq_sel=4)
+
+def si534x_command(conn, portID, slaveID, chipID, command):
+	return si534x_ll(conn, portID, slaveID, chipID, command)
