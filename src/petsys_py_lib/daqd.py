@@ -1531,7 +1531,7 @@ class ErrorAsicUnknownConfigurationAfterReset(Exception):
 	def __init__(self, portID, slaveID, chipID, value):
 		self.__data = (portID, slaveID, chipID, value)
 	def __str__(self):
-		return "ASIC at port %2d, slave %2d, asic %02d: unknown configuration after reset %s" % self.data
+		return "ASIC at port %2d, slave %2d, asic %02d: unknown configuration after reset %s" % self.__data
 	
 class TMP104CommunicationError(Exception):
 	def __init__(self, portID, slaveID, din, dout):
