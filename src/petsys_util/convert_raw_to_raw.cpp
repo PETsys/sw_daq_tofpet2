@@ -106,6 +106,9 @@ public:
 	
 	void addEvents(float step1, float step2,EventBuffer<RawHit> *buffer) {
 		int N = buffer->getSize();
+
+		long long bufferMinFrameID = buffer->getTMin() / 1024;
+
 		for (int i = 0; i < N; i++) {
 			long long tmpCounter = eventCounter;
 			eventCounter += 1;
@@ -116,7 +119,7 @@ public:
 				brStep1 = step1;
 				brStep2 = step2;
 				
-				brFrameID = hit.frameID;
+				brFrameID = hit.frameID + bufferMinFrameID;
 				brChannelID = hit.channelID;
 				brTacID = hit.tacID;
 				brTCoarse = hit.tcoarse;
