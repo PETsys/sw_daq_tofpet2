@@ -1,5 +1,5 @@
 from math import sqrt
-from . import spi
+from . import info, spi
 
 def lmt86(v):
 	return 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
@@ -86,10 +86,9 @@ def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
 		return temperatures
 
 
-def list_fem128(conn, portID, slaveID, n):
+def list_fem128(conn, portID, slaveID, n_fems):
 	result = []
 	
-	n_fems = conn.getUnitInfo(portID, slaveID)["c_n_fems"]
 	for module_id in range(n_fems):
 		spi_id = module_id * 256 + 4
 
@@ -105,10 +104,9 @@ def list_fem128(conn, portID, slaveID, n):
 		
 	return result
 		
-def list_fem256(conn, portID, slaveID):
+def list_fem256(conn, portID, slaveID, n_fems):
 	result = []
 	
-	n_fems = conn.getUnitInfo(portID, slaveID)["c_n_fems"]
 	for module_id in range(n_fems):
 		spi_id = module_id * 256 + 4
 
@@ -128,15 +126,31 @@ def get_sensor_list(conn):
 	result = []
 	for portID, slaveID in conn.getActiveFEBDs():
 		fem_type = conn.read_config_register(portID, slaveID, 16, 0x0002)
-		
-		if fem_type == 0x0001:
-			result += list_fem128(conn, portID, slaveID, 1)
-		
-		elif fem_type == 0x0011:
-			result += list_fem128(conn, portID, slaveID, 4)
-		
-		elif fem_type == 0x0111:
-			result += list_fem256(conn, portID, slaveID)
+
+		base_pcb, fw_variant, prom_variant  = conn.getUnitInfo(portID, slaveID)
+
+		n_fems = info.fem_per_febd((base_pcb, fw_variant, prom_variant))
+
+		fw_variant = (fw_variant >> 32) & 0xFFFF
+
+		if   fw_variant == 0x0000:
+			# TB64, pass
+			pass
+		elif fw_variant == 0x0001:
+			result += list_fem128(conn, portID, slaveID, n_fems)
+
+		elif fw_variant == 0x0002:
+			# Panda
+			pass
+		elif fw_variant == 0x0011:
+			result += list_fem128(conn, portID, slaveID, n_fems)
+
+		elif fw_variant == 0x0111:
+			result += list_fem256(conn, portID, slaveID, n_fems)
+
+		elif fw_variant == 0x0211:
+			# FEM 512
+			pass
 		else:
 			raise UnknownModuleType()
 			

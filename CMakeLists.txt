@@ -43,6 +43,7 @@ set_target_properties(monitor_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_B
 configure_file("src/petsys_py_lib/__init__.py" "petsys/__init__.py" COPYONLY)
 configure_file("src/petsys_py_lib/tofpet2b.py" "petsys/tofpet2b.py" COPYONLY)
 configure_file("src/petsys_py_lib/tofpet2c.py" "petsys/tofpet2c.py" COPYONLY)
+configure_file("src/petsys_py_lib/info.py" "petsys/info.py" COPYONLY)
 configure_file("src/petsys_py_lib/daqd.py" "petsys/daqd.py" COPYONLY)
 configure_file("src/petsys_py_lib/bitarray_utils.py" "petsys/bitarray_utils.py" COPYONLY)
 configure_file("src/petsys_py_lib/config.py" "petsys/config.py" COPYONLY)

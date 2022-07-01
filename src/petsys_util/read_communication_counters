@@ -2,7 +2,7 @@
 #-*- coding: utf-8 -*-
 #
 
-from petsys import daqd
+from petsys import daqd, info
 from time import sleep
 import sys
 
@@ -15,23 +15,17 @@ for portID in daqd.getActivePorts():
 print("--- CONNECTED UNITSs ---")
 for portID, slaveID in daqd.getActiveUnits():
 	mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad = daqd.getFEBDCount1(portID, slaveID)
-	unit_variant = daqd.read_config_register(portID, slaveID, 16, 0x0022)
 
-	if (daqd.read_config_register(portID, slaveID, 64, 0xFFF8) & 0x1) != 0:
-		# This unit has the version code
-		unit_version = "0x%016X" % daqd.read_config_register(portID, slaveID, 64, 0xFFF0)
-	else:
-		unit_version = "n/a"
+	base_pcb, fw_variant, prom_variant = daqd.getUnitInfo(portID, slaveID)
+	unit_version = "0x%016X" % daqd.read_config_register(portID, slaveID, 64, 0xFFF0)
 
-
-	if daqd.read_config_register(portID, slaveID, 1, 0x0000) == 1:
+	if info.is_febd((base_pcb, fw_variant, prom_variant)):
 		# This is a FEB/D
-		fem_variant = daqd.read_config_register(portID, slaveID, 16, 0x0002)
-		print("Unit (%2d, %2d): FEB/D type:%04X fem:%04X ver:%s\n" % (portID, slaveID, unit_variant, fem_variant, unit_version), end=' ')
+		print("Unit (%2d, %2d): FEB/D type:%04X/%016X ver:%s\n" % (portID, slaveID, base_pcb, fw_variant, unit_version), end=' ')
 
 
-	elif daqd.read_config_register(portID, slaveID, 1, 0x0001) == 1:
-		print("Unit (%2d, %2d): CLK&TGR type:%04X ver:%s\n" % (portID, slaveID, unit_variant, unit_version), end=' ')
+	elif info.is_trigger((base_pcb, fw_variant, prom_variant)):
+		print("Unit (%2d, %2d): CLK&TGR type:%04X/%016X ver:%s\n" % (portID, slaveID, base_pcb, fw_variant, unit_version), end=' ')
 	else:
 		sys.stderr.write("ERROR: UNIT (%2d, %2d) is of unknown type!\n" % (portID, slaveID))
 		exit(1)

@@ -6,7 +6,9 @@
 from . import shm_raw
 from . import tofpet2b
 from . import tofpet2c
+from . import info
 from . import bias
+from . import spi
 import socket
 from random import randrange
 import struct
@@ -21,6 +23,10 @@ from copy import deepcopy
 MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
+
+PROTOCOL_VERSION = 0x100
+
+
 
 # Handles interaction with the system via daqd
 class Connection:
@@ -42,7 +48,8 @@ class Connection:
 		self.__shm = shm_raw.SHM_RAW(self.__shmName)
 
 		self.__activePorts = []
-		self.__activeFEBDs = {}
+		self.__activeUnits = {}
+		self.__activeBiasSlots = {}
 		self.__activeAsics = {}
 
 		self.__asicConfigCache = None
@@ -53,7 +60,6 @@ class Connection:
 		self.__monitorPipe = None
 		
 		self.__temperatureSensorList = {}
-		self.__triggerUnit = None
 
 	def __getSharedMemoryInfo(self):
 		template = "@HH"
@@ -92,56 +98,55 @@ class Connection:
 		return reply
 
 	def getActiveUnits(self):
-		unit_list = set(self.getActiveFEBDs())
-		trigger_unit = self.getTriggerUnit()
-		if trigger_unit is not None:
-			unit_list.add(trigger_unit)
-		return sorted(unit_list)
+		if self.__activeUnits == {}: self.__scanUnits_ll()
+		return sorted(self.__activeUnits.keys())
 
 	def getTriggerUnit(self):
-		if self.__triggerUnit is None:
-			self.__activeFEBDs, self.__triggerUnit = self.__scanUnits_ll()
+		if self.__activeUnits == {}: self.__scanUnits_ll()
+		triggerUnits = [ a for a, d in self.__activeUnits.items() if info.is_trigger(d) ]
 
-		return self.__triggerUnit
+		if len(triggerUnits) == 0:
+			return None
+		elif len(triggerUnits) == 1:
+			return triggerUnits[0]
+		else:
+			raise ErrorTooManyTriggerUnits(triggerUnits)
+
 		
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
-		return sorted(self.__getActiveFEBDs().keys())
+		if self.__activeUnits == {}: self.__scanUnits_ll()
+		febds = [ a for a, d in self.__activeUnits.items() if info.is_febd(d) ]
+		return sorted(febds)
 
 	def getUnitInfo(self, portID, slaveID):
-		self.__getActiveFEBDs()
-
+		if self.__activeUnits == {}: self.__scanUnits_ll()
 		try:
-			return self.__activeFEBDs[(portID, slaveID)]
+			return self.__activeUnits[(portID, slaveID)]
 		except KeyError as e:
 			raise ErrorUnitNotPresent(portID, slaveID)
 	
-	def __getActiveFEBDs(self):
-		if self.__activeFEBDs == {}:
-			self.__activeFEBDs, self.__triggerUnit = self.__scanUnits_ll()
-			
-		return self.__activeFEBDs
 
 	def __scanUnits_ll(self):
-		febds = {}
-		tgr = None
+		activeUnits = {}
+		activeBiasSlots = {}
 		for portID in self.getActivePorts():
 			slaveID = 0
-
 			while True:
-				if self.read_config_register(portID, slaveID, 1, 0x0001) == 1:
-					# This is a CLK&TGR unit
-					tgr = (portID, slaveID)
+				protocol = self.read_config_register(portID, slaveID, 64, 0xFFF8)
+				if protocol != PROTOCOL_VERSION:
+					raise ErrorUnknownProtocol(portID, slaveID, protocol)
 
-				if self.read_config_register(portID, slaveID, 1, 0x0000) == 1:
-					result = {}
-					result["c_fem_type"] = self.read_config_register(portID, slaveID, 16, 0x0002)
-					result["c_n_asic_per_fem"] = self.read_config_register(portID, slaveID, 16, 0x0004)
-					result["c_board_type"] = self.read_config_register(portID, slaveID, 16, 0x0022)
-					result["c_n_fems"] = self.read_config_register(portID, slaveID, 16, 0x0024)
+				base_pcb = self.read_config_register(portID, slaveID, 16, 0x0000)
+				fw_variant = self.read_config_register(portID, slaveID, 64, 0x0008)
+				prom_variant = None
 
-					result["bias"] = bias.read_febd_bias_info(self, portID, slaveID)
-					febds[(portID, slaveID)] = result
+				activeUnits[(portID, slaveID)] = (base_pcb, fw_variant, prom_variant)
+
+				if info.is_febd((base_pcb, fw_variant, prom_variant)):
+					for slotID in range(info.bias_slots((base_pcb, fw_variant, prom_variant))):
+						activeBiasSlots[(portID, slaveID, slotID)] = bias.__read_bias_slot_info(self, portID, slaveID, slotID)
+
 
 
 				if self.read_config_register(portID, slaveID, 1, 0x0400) != 0b0:
@@ -150,7 +155,8 @@ class Connection:
 				else:
 					break
 
-		return febds, tgr
+		self.__activeUnits = activeUnits
+		self.__activeBiasSlots = activeBiasSlots
 
 	def getActiveAsics(self):
 		return sorted(self.__activeAsics.keys())
@@ -161,6 +167,12 @@ class Connection:
 	def getActiveAsicsChannels(self):
 		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
 	
+	def getActiveBiasSlots(self):
+		return sorted(self.__activeBiasSlots.keys())
+
+	def getBiasSlotInfo(self, portID, slaveID, slotID):
+		return self.__activeBiasSlots[(portID, slaveID, slotID)]
+
 	def getActiveBiasChannels(self):
 		return bias.get_active_channels(self)
 
@@ -264,6 +276,35 @@ class Connection:
 			self.write_config_register(portID, slaveID, 64, 0x0214, current)
 
 
+	## Detects if there are any legacy FEM-128 connected to FEB/D 1K
+	## and sets the legacy FEM bit for the respective ports
+	def set_legacy_fem_mode(self):
+		for portID, slaveID in self.getActiveFEBDs():
+			# Only FEB/D 1K supports legacy FEM-128
+			if not info.allows_legacy_module(self.getUnitInfo(portID, slaveID)): continue;
+
+			# FEB/D 1K has 8 ports
+			for module_id in range(8):
+				# Legacy FEM-128 have a MAX111xx ADC at device 4
+				if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
+					# Communication was successful, let's not do anything else
+					continue
+
+				# Communication failed, flip the mode bit for this port and try again
+				port_bit = (1 << module_id)
+				mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
+				mode_vector = mode_vector ^ port_bit
+				self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
+
+				if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
+					# Communication was successful, let's not do anything else
+					continue
+
+				# Communication failed too
+				# Flip the mode bit back to the previous value
+				mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
+				mode_vector = mode_vector ^ port_bit
+				self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
 
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
@@ -313,6 +354,8 @@ class Connection:
 		asicType = {}
 		initialGlobalAsicConfig = {} # Store the default config we're uploading into each FEB/D
 		initialAsicChannelConfig = {}
+
+		self.set_legacy_fem_mode()
 
 		for portID, slaveID in self.getActiveFEBDs():
 
@@ -386,7 +429,6 @@ class Connection:
 			# Generate sync in the unit responsible for CLK and TGR
 			portID, slaveID = self.getTriggerUnit()
 			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
-			portID, slaveID = self.__triggerUnit
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 		
@@ -733,7 +775,7 @@ class Connection:
 
 		# Remap the chipID to the spiID
 		#
-		chip_per_module = self.getUnitInfo(portID, slaveID)["c_n_asic_per_fem"]
+		chip_per_module = info.asic_per_module(self.getUnitInfo(portID, slaveID))
 		a = chipID // chip_per_module
 		b = chipID % chip_per_module
 		spi_id = a * 256 + b
@@ -895,17 +937,17 @@ class Connection:
 		return None
 	
 
-	def __write_hv_channel(self, key, value, forceAccess=False):
+	def __write_hv_channel(self, portID, slaveID, slotID, value, forceAccess=False):
 		if not forceAccess:
 			try:
-				lastValue = self.__hvdac_config_cache[key]
+				lastValue = self.__hvdac_config_cache[(portID, slaveID, slotID)]
 				if value == lastValue:
 					return 0
 			except KeyError:
 				pass
 
-		r = bias.set_channel(self, key, value)
-		self.__hvdac_config_cache[key] = value
+		r = bias.set_channel(self, portID, slaveID, slotID, value)
+		self.__hvdac_config_cache[(portID, slaveID, slotID)] = value
 		return r
 
 
@@ -920,9 +962,9 @@ class Connection:
 	# @param is a dictionary, as returned by get_hvdac_config
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
-		for key in self.getActiveBiasChannels():
-			value = config[key]
-			self.__write_hv_channel(key, value, forceAccess=forceAccess)
+		for portID, slaveID, slotID, channelID in self.getActiveBiasChannels():
+			value = config[(portID, slaveID, slotID, channelID)]
+			self.__write_hv_channel(portID, slaveID, slotID, channelID, value, forceAccess=forceAccess)
 		
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
@@ -1365,3 +1407,22 @@ class UnknownAuxIO(Exception):
 class ErrorAsicLinkDown(Exception):
 	def __str__(self):
 		return "ASIC RX link is unexpectedly down"
+
+class ErrorUnknownProtocol(Exception):
+	def __init__(self, port, slave, protocol):
+		self.__port = port
+		self.__slave = slave
+		self.__protocol = protocol
+
+	def __str__(self):
+		return "Unit (%d, %d) has protocol version 0x%04X but 0x%04X is required" % (self.__port, self.__slave, self.__protocol, PROTOCOL_VERSION)
+
+
+class ErrorTooManyTriggerUnits(Exception):
+	def __init__(self, trigger_list):
+		self.__trigger_list = trigger_list
+
+	def __str__(self):
+		l = [ "(%02d, %02d)" % (p, s) for p, s in self.__trigger_list ]
+		s = (", ").join(l)
+		return "More than one trigger unit has been found: %s" % s

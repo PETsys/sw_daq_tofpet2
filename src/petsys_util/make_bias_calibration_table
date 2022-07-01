@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from petsys import daqd, config, spi
+from petsys import daqd, config, spi, bias
 import argparse
 import struct
 import sys
@@ -114,19 +114,14 @@ def main():
 	outputFile = open(args.o, "w")
 	
 	febd_calibration_type = {}
-	for portID, slaveID in connection.getActiveFEBDs():
+	for portID, slaveID, slot in connection.getActiveBiasSlots():
+		febd_calibration_type[(portID, slaveID, slot)] = "NONE"
+		if bias.has_prom(connection, portID, slaveID, slotID) == False:
+			continue
 
-		bias_info = connection.getUnitInfo(portID, slaveID)["bias"]
-
-
-		for slot, (has_prom, _, _, _) in bias_info.items():
-			febd_calibration_type[(portID, slaveID, slot)] = "NONE"
-			if has_prom == False:
-				continue
-
-			print("FEB/D (%2d, %2d) slot %d has calibration PROM" % (portID, slaveID, slot))
-			add_calibration_from_rom(connection, portID, slaveID, slot, outputFile)
-			febd_calibration_type[(portID, slaveID, slot)] = "ROM"
+		print("FEB/D (%2d, %2d) slot %d has calibration PROM" % (portID, slaveID, slot))
+		add_calibration_from_rom(connection, portID, slaveID, slot, outputFile)
+		febd_calibration_type[(portID, slaveID, slot)] = "ROM"
 		
 
 

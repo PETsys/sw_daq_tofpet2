@@ -106,6 +106,7 @@ def main(argv):
     args = parser.parse_args()
 
     connection = daqd.Connection()
+    connection.set_legacy_fem_mode()
       
     sensor_list = fe_temperature.get_sensor_list(connection)
 
