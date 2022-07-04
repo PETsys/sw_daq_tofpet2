@@ -185,8 +185,9 @@ void *FrameServer::runWorker(void *arg)
 {
 	FrameServer *F = (FrameServer *)arg;
 	printf("INFO: FrameServer::runWorker starting...\n");
-        return F->doWork();
+        void *r = F->doWork();
 	printf("INFO: FrameServer::runWorker finished!\n");
+	return r;
 }
 
 bool FrameServer::parseDataFrame(RawDataFrame *dataFrame)

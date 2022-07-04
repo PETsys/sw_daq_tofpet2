@@ -229,19 +229,19 @@ int UDPFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 			int r = recv(udpSocket, rxBuffer, sizeof(rxBuffer), 0);
 
 			if (r == -1 && (errno = EAGAIN || errno == EWOULDBLOCK)) {
-				continue;
+				// Do nothing, continue with reply = NULL
 			}
 			else if(r == -1) {
 				fprintf(stderr, "ERROR %s (%d) when reading UDP socket\n", strerror(errno), errno);
 				break;
 			}
-
-
-			if(rxBuffer[0] == 0x5A) {
-				if(debugLevel > 2) printf("Worker:: Found a reply frame with %d bytes\n", r);
-				reply = new reply_t;
-				memcpy(reply->buffer, rxBuffer + 1, r - 1);
-				reply->size = r - 1;
+			else {
+				if(rxBuffer[0] == 0x5A) {
+					if(debugLevel > 2) printf("Worker:: Found a reply frame with %d bytes\n", r);
+					reply = new reply_t;
+					memcpy(reply->buffer, rxBuffer + 1, r - 1);
+					reply->size = r - 1;
+				}
 			}
 		}
 		
