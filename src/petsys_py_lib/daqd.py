@@ -145,7 +145,7 @@ class Connection:
 
 				if info.is_febd((base_pcb, fw_variant, prom_variant)):
 					for slotID in range(info.bias_slots((base_pcb, fw_variant, prom_variant))):
-						activeBiasSlots[(portID, slaveID, slotID)] = bias.__read_bias_slot_info(self, portID, slaveID, slotID)
+						activeBiasSlots[(portID, slaveID, slotID)] = bias.read_bias_slot_info(self, portID, slaveID, slotID)
 
 
 
@@ -168,12 +168,14 @@ class Connection:
 		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
 	
 	def getActiveBiasSlots(self):
+		if self.__activeUnits == {}: self.__scanUnits_ll()
 		return sorted(self.__activeBiasSlots.keys())
 
 	def getBiasSlotInfo(self, portID, slaveID, slotID):
 		return self.__activeBiasSlots[(portID, slaveID, slotID)]
 
 	def getActiveBiasChannels(self):
+		if self.__activeUnits == {}: self.__scanUnits_ll()
 		return bias.get_active_channels(self)
 
 	## Disables test pulse 
@@ -324,8 +326,8 @@ class Connection:
 
 		# Set all bias to minimum
 		# Setting to zero DAC but will be saturated by mezzanine specific code
-		for key in self.getActiveBiasChannels():
-			self.__write_hv_channel(key, 0, forceAccess=True)
+		for portID, slaveID, slotID, channelID in self.getActiveBiasChannels():
+			self.__write_hv_channel(portID, slaveID, slotID, channelID, 0, forceAccess=True)
 
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
@@ -937,17 +939,17 @@ class Connection:
 		return None
 	
 
-	def __write_hv_channel(self, portID, slaveID, slotID, value, forceAccess=False):
+	def __write_hv_channel(self, portID, slaveID, slotID, channelID, value, forceAccess=False):
 		if not forceAccess:
 			try:
-				lastValue = self.__hvdac_config_cache[(portID, slaveID, slotID)]
+				lastValue = self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)]
 				if value == lastValue:
 					return 0
 			except KeyError:
 				pass
 
-		r = bias.set_channel(self, portID, slaveID, slotID, value)
-		self.__hvdac_config_cache[(portID, slaveID, slotID)] = value
+		r = bias.set_channel(self, portID, slaveID, slotID, channelID, value)
+		self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)] = value
 		return r
 
 

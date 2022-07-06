@@ -1,7 +1,7 @@
 from . import spi
 from math import ceil
 
-def __read_bias_slot_info(conn, portID, slaveID, slotID):
+def read_bias_slot_info(conn, portID, slaveID, slotID):
 	bias_interface = conn.read_config_register(portID, slaveID, 16, 0x0030)
 	bias_interface = (bias_interface >> (4*slotID)) & 0xF
 

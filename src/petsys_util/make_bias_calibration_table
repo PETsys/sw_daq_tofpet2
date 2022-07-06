@@ -7,12 +7,12 @@ import struct
 import sys
 import re
 
-def add_calibration_from_rom(connection, portID, slaveID, slot, outputFile):
-	chipID = 0x8000 + 0x100 * slot + 0x0
+def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
+	chipID = 0x8000 + 0x100 * slotID + 0x0
 
 	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 8)
 	if data != b"PETSYS  ":
-		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slot %2d PROM does  not contain a calibration table\n" % (portID, slaveID, slot))
+		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slotID %2d PROM does  not contain a calibration table\n" % (portID, slaveID, slotID))
 		exit(1)
 	
 	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0008, 8)
@@ -60,10 +60,10 @@ def add_calibration_from_rom(connection, portID, slaveID, slot, outputFile):
 		
 		for j in range(n_channels):
 			for i in range(n_x_values):
-				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slot, j, x_values[i], v_meas[(portID, slaveID, j)][i], adc_meas[(portID, slaveID, j)][i]))
+				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slotID, j, x_values[i], v_meas[(portID, slaveID, j)][i], adc_meas[(portID, slaveID, j)][i]))
 		
 	else:
-		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slot %2d has a PROM with an unknown layout 0x%016x\n" % (portID, slaveID, slot, promLayoutVersion))
+		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slotID %2d has a PROM with an unknown layout 0x%016x\n" % (portID, slaveID, slotID, promLayoutVersion))
 		exit(1)
 		
 	return None
@@ -79,7 +79,7 @@ def normalizeAndSplit(l):
 	l = l.split('\t')
 	return l
 
-def add_calibration_table_from_file(inputFileName, portID, slaveID, slot, outputFile):
+def add_calibration_table_from_file(inputFileName, portID, slaveID, slotID, outputFile):
 	f = open(inputFileName)
 	c = {}
 	x = []
@@ -95,7 +95,7 @@ def add_calibration_table_from_file(inputFileName, portID, slaveID, slot, output
 			assert len(x) == len(y)
 
 			for i in range(len(x)):
-				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slot, channelID, x[i], y[i], 0))
+				outputFile.write("%d\t%d\t%d\t%d\t%d\t%f\t%d\n" % (portID, slaveID, slotID, channelID, x[i], y[i], 0))
 	f.close()
 	return c
 
@@ -106,7 +106,7 @@ def main():
 	parser.add_argument("-o", type=str, required=True, help="Output file")
 	parser.add_argument("--port", type=int, required=False, action="append", help="Port ID")
 	parser.add_argument("--slave", type=int, required=False, action="append", help="Slave ID")
-	parser.add_argument("--slot", type=int, required=False, action="append", help="Slot index")
+	parser.add_argument("--slotID", type=int, required=False, action="append", help="Slot index")
 	parser.add_argument("--filename", type=str, required=False, action="append", default=[], help="File name")
 	args = parser.parse_args()
 
@@ -114,35 +114,35 @@ def main():
 	outputFile = open(args.o, "w")
 	
 	febd_calibration_type = {}
-	for portID, slaveID, slot in connection.getActiveBiasSlots():
-		febd_calibration_type[(portID, slaveID, slot)] = "NONE"
+	for portID, slaveID, slotID in connection.getActiveBiasSlots():
+		febd_calibration_type[(portID, slaveID, slotID)] = "NONE"
 		if bias.has_prom(connection, portID, slaveID, slotID) == False:
 			continue
 
-		print("FEB/D (%2d, %2d) slot %d has calibration PROM" % (portID, slaveID, slot))
-		add_calibration_from_rom(connection, portID, slaveID, slot, outputFile)
-		febd_calibration_type[(portID, slaveID, slot)] = "ROM"
+		print("FEB/D (%2d, %2d) slot %d has calibration PROM" % (portID, slaveID, slotID))
+		add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile)
+		febd_calibration_type[(portID, slaveID, slotID)] = "ROM"
 		
 
 
 	for i in range(len(args.filename)):
 		portID = args.port[i]
 		slaveID = args.slave[i]
-		slot = args.slot[i]
-		if (portID, slaveID, slot ) not in list(febd_calibration_type.keys()):
-			sys.stderr.write("WARNING: Loading calibration table for FEB/D (%2d, %2d) slot %2d which is not present in the system.\n" % (portID, slaveID, slot))
+		slotID = args.slotID[i]
+		if (portID, slaveID, slotID ) not in list(febd_calibration_type.keys()):
+			sys.stderr.write("WARNING: Loading calibration table for FEB/D (%2d, %2d) slot %2d which is not present in the system.\n" % (portID, slaveID, slotID))
 			
-		elif febd_calibration_type[(portID, slaveID, slot)] == "ROM":
-			sys.stderr.write("ERROR: Calibration file specified for FEB/D (%2d, %2d) slot %2d but this FEB/D has a calibration ROM.\n" % (portID, slaveID, slot))
+		elif febd_calibration_type[(portID, slaveID, slotID)] == "ROM":
+			sys.stderr.write("ERROR: Calibration file specified for FEB/D (%2d, %2d) slot %2d but this FEB/D has a calibration ROM.\n" % (portID, slaveID, slotID))
 			exit(1)
 			
-		print('Reading calibration table "%s" for FEB/D (%d, %d) slot %2d' % (args.filename[i], portID, slaveID, slot))
-		add_calibration_table_from_file(args.filename[i], portID, slaveID, slot, outputFile)
-		febd_calibration_type[(portID, slaveID, slot)] = "FILE"
+		print('Reading calibration table "%s" for FEB/D (%d, %d) slot %2d' % (args.filename[i], portID, slaveID, slotID))
+		add_calibration_table_from_file(args.filename[i], portID, slaveID, slotID, outputFile)
+		febd_calibration_type[(portID, slaveID, slotID)] = "FILE"
 	
-	for portID, slaveID, slot in list(febd_calibration_type.keys()):
-		if febd_calibration_type[(portID, slaveID, slot)] == "NONE":
-			sys.stderr.write("ERROR: FEB/D (%2d, %2d) slot %2d is present but no calibration file has been specified.\n" % (portID, slaveID, slot))
+	for portID, slaveID, slotID in list(febd_calibration_type.keys()):
+		if febd_calibration_type[(portID, slaveID, slotID)] == "NONE":
+			sys.stderr.write("ERROR: FEB/D (%2d, %2d) slot %2d is present but no calibration file has been specified.\n" % (portID, slaveID, slotID))
 			exit(1)
 		
 		
