@@ -549,3 +549,101 @@ def n25q128a_write(conn, portID, slaveID, chipID, offset, data):
 	# Ensure WEL is disabled
 	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
 
+def mx25l12835f_bulk_erase(conn, portID, slaveID, chipID):
+	"""! Bulk erase a N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0xC7], 0)
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID, timeout=300)
+
+	flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x2B  ], 1)
+	if flags[1] & 0x40 != 0:
+		raise EEPROM_EraseError()
+
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	return None
+
+
+def mx25l12835f_64k_erase(conn, portID, slaveID, chipID, sectorOffset, sectorCount):
+	"""! Erase 64KiB sectors on a N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param sectorOffset First sector to be erased
+	@param sectorCount Number of sectors to be erased
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+
+
+	for sector in range(sectorOffset, sectorOffset + sectorCount):
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+		# 64 KiB sector erase takes address in bytes but only at 64 KiB boundaries
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0xD8, sector, 0x00, 0x00 ], 0)
+		generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+		flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x2B  ], 1)
+		if flags[1] & 0x40 != 0:
+			raise EEPROM_EraseError()
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	return None
+
+
+def mx25l12835f_write(conn, portID, slaveID, chipID, offset, data):
+	"""! Write data to N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param address Initial address  where data is to be written to
+	@param data Data to be written to EEPROM
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+
+	for o in range(0, len(data), MAX_PROM_DATA_PACKET_SIZE):
+		d = data[o:o+MAX_PROM_DATA_PACKET_SIZE]
+		d = list(d)
+		l = len(d)
+
+		addr = offset + o
+
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x02, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF ] + d, 0);
+		generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+		flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x2B  ], 1)
+		if flags[1] & 0x20 != 0:
+			raise EEPROM_WriteError()
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+

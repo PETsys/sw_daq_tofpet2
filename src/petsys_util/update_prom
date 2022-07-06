@@ -36,7 +36,10 @@ def main(argv):
 	prom_id = spi.generic_nand_flash_getid(conn, args.port, args.slave, PROM_CHIP_ID)
 	prom_id = list(prom_id[1:4])
 	if prom_id == [ 0xC2, 0x20, 0x18 ]:
-		print("MX25L128 PROM detected.")
+		print("MX25L12835F PROM detected.")
+		prom_bulk_erase = spi.mx25l12835f_bulk_erase
+		prom_64k_erase = spi.mx25l12835f_64k_erase
+		prom_write = spi.mx25l12835f_write
 
 	elif prom_id == [ 0x20, 0xBA, 0x18 ]:
 		print("N25Q128A PROM detected.")
