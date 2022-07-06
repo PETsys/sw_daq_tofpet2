@@ -2,6 +2,8 @@
 # A library of functions to control various SPI devices based on the system SPI master
 #
 
+import time
+
 def ad5535_ll(conn, portID, slaveID, chipID, data):
 	"""! AD5535 DAC SPI low level coding
 
@@ -155,7 +157,7 @@ def ad7194_get_channel(conn, portID, slaveID, chipID, channelID):
 	while True:
 		r = ad7194_ll(conn, portID, slaveID, chipID, [0b01000000], 1)
 		if r[1] & 0x80 == 0x00: break
-		sleep(0.1)
+		time.sleep(0.1)
 
 	r = ad7194_ll(conn, portID, slaveID, chipID, [0x58], 4)
 	v = (r[1] << 16) + (r[2] << 8) + r[3]
@@ -164,94 +166,6 @@ def ad7194_get_channel(conn, portID, slaveID, chipID, channelID):
 
 
 
-def m95256_ll(conn, portID, slaveID, chipID, command, read_count):
-	"""! ST M95256 EEPROM SPI low level coding
-
-	@param conn daqd connection object
-	@param portID FEB/D portID
-	@param slaveID FEB/D slaveID
-	@param chipID SPI slave number
-	@param data Data to be transmitted over the SPI bus.
-
-	@return Data received from the SPI bus returned by spi_master_execute()
-	"""
-
-	w = 8 * len(command)
-	r = 8 * read_count
-	p = 2
-	w_padding = [ 0xFF for n in range(p) ]
-	r_padding = [ 0xFF for n in range(p + read_count) ]
-	p = 8 * p
-
-	# Pad the cycle with zeros
-	return conn.spi_master_execute(portID, slaveID, chipID,
-		p+w+r+p, 		# cycle
-		p,p+w+r+1, 		# sclk en
-		p-0,p+w+r+0,		# cs
-		0, p+w+r+p, 		# mosi
-		p+w,p+w+r, 		# miso
-		w_padding + command + r_padding,
-		freq_sel = 0,
-		miso_edge = "falling")
-
-def m95256_read(conn, portID, slaveID, chipID, address, n_bytes):
-	"""! Read ST M95256 EEPROM
-
-	@param conn daqd connection object
-	@param portID FEB/D portID
-	@param slaveID FEB/D slaveID
-	@param chipID SPI slave number
-	@param address Address from where data is to be read
-	@param n_bytes Number of bytes to be read
-
-	@return Data read from EEPROM
-	"""
-
-
-	# Break down reads into 4 byte chunks due to DAQ
-	rr = bytes()
-	for a in range(address, address + n_bytes, 2):
-		count = min([2, address + n_bytes - a])
-		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
-		r = r[1:-1]
-		rr += r
-	return rr
-
-def m95256_write(conn, portID, slaveID, chipID, address, data):
-	"""! Write ST M95256 EEPROM
-
-	@param conn daqd connection object
-	@param portID FEB/D portID
-	@param slaveID FEB/D slaveID
-	@param chipID SPI slave number
-	@param address Address from where data is to be read
-	@param data Data to be written to EEPROM
-
-	@return None
-	"""
-
-	while True:
-		# Check if Write In Progress is set and if so, sleep and try again
-		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000101], 1)
-		if r[1] & 0x01 == 0:
-			break
-		sleep(0.010)
-
-	# cycle WEL
-	m95256_ll(conn, portID, slaveID, chipID, [0b00000100], 1)
-	m95256_ll(conn, portID, slaveID, chipID, [0b00000110], 1)
-
-	m95256_ll(conn, portID, slaveID, chipID, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
-	while True:
-		# Check if Write In Progress is set and if so, sleep and try again
-		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000101], 1)
-		if r[1] & 0x01 == 0:
-			break
-		sleep(0.010)
-
-	# Disable WEL (it should be automatic but...)
-	m95256_ll(conn, portID, slaveID, chipID, [0b00000100], 1)
-	return None
 
 def max111xx_ll(conn, portID, slaveID, chipID, command):
 	w = 8 * len(command)
@@ -322,3 +236,316 @@ def si534x_ll(conn, portID, slaveID, chipID, command):
 
 def si534x_command(conn, portID, slaveID, chipID, command):
 	return si534x_ll(conn, portID, slaveID, chipID, command)
+
+
+##
+## EEPROMS
+## Many SPI EEPROMs of a given typpe have similiar protocols for reading
+##
+
+# Maximum data read/write size the system can handle
+MAX_PROM_DATA_PACKET_SIZE = 4
+
+class EEPROM_Exception(Exception):
+	pass
+
+class EEPROM_Timeout(EEPROM_Exception):
+	pass
+
+class EEPROM_EraseError(EEPROM_Exception):
+	pass
+
+class EEPROM_WriteError(EEPROM_Exception):
+	pass
+
+## 256K NOR
+## Currently only M95256 is used
+
+def m95256_ll(conn, portID, slaveID, chipID, command, read_count):
+	"""! ST M95256 low level coding
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param data Data to be transmitted over the SPI bus.
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+
+	w = 8 * len(command)
+	r = 8 * read_count
+	p = 2
+	w_padding = [ 0xFF for n in range(p) ]
+	r_padding = [ 0xFF for n in range(p + read_count) ]
+	p = 8 * p
+
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		p+w+r+p, 		# cycle
+		p,p+w+r+1, 		# sclk en
+		p-0,p+w+r+0,		# cs
+		0, p+w+r+p, 		# mosi
+		p+w,p+w+r, 		# miso
+		w_padding + command + r_padding,
+		freq_sel = 0,
+		miso_edge = "falling")
+
+def m95256_read(conn, portID, slaveID, chipID, address, n_bytes):
+	"""! Read ST M95256 EEPROM
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param address Initial address from where data is to be read
+	@param n_bytes Number of bytes to be read
+
+	@return Data read from EEPROM
+	"""
+
+
+	# Break down reads into 4 byte chunks due to DAQ
+	rr = bytes()
+	for a in range(address, address + n_bytes, 2):
+		count = min([2, address + n_bytes - a])
+		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
+		r = r[1:-1]
+		rr += r
+	return rr
+
+def m95256_write(conn, portID, slaveID, chipID, address, data):
+	"""! Write ST M95256 EEPROM
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param address Initial address  where data is to be written to
+	@param data Data to be written to EEPROM
+
+	@return None
+	"""
+
+	while True:
+		# Check if Write In Progress is set and if so, sleep and try again
+		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000101], 1)
+		if r[1] & 0x01 == 0:
+			break
+		time.sleep(0.010)
+
+	# cycle WEL
+	m95256_ll(conn, portID, slaveID, chipID, [0b00000100], 1)
+	m95256_ll(conn, portID, slaveID, chipID, [0b00000110], 1)
+
+	m95256_ll(conn, portID, slaveID, chipID, [0b00000010, (address >> 8) & 0xFF, address & 0xFF] + data, 0)
+	while True:
+		# Check if Write In Progress is set and if so, sleep and try again
+		r = m95256_ll(conn, portID, slaveID, chipID, [0b00000101], 1)
+		if r[1] & 0x01 == 0:
+			break
+		time.sleep(0.010)
+
+	# Disable WEL (it should be automatic but...)
+	m95256_ll(conn, portID, slaveID, chipID, [0b00000100], 1)
+	return None
+
+
+##
+## 128 Mbit NAND
+## Currently MX25L12835F and N25Q128A are being used
+
+
+def generic_nand_flash_ll(conn, portID, slaveID, chipID, command, read_count):
+	"""! Generic SPI NAND flash low level coding
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param data Data to be transmitted over the SPI bus.
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+
+	w = 8 * len(command)
+	r = 8 * read_count
+	p = 2
+	w_padding = [ 0xFF for n in range(p) ]
+	r_padding = [ 0xFF for n in range(p + read_count) ]
+	p = 8 * p
+
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		p+w+r+p, 		# cycle
+		p,p+w+r+1, 		# sclk en
+		p-0,p+w+r+0,		# cs
+		0, p+w+r+p, 		# mosi
+		p+w,p+w+r, 		# miso
+		w_padding + command + r_padding,
+		freq_sel = 0,
+		miso_edge = "falling")
+
+
+def generic_nand_flash_getid(conn, portID, slaveID, chipID):
+	"""! Get generic SPI NAND flash identification information
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+
+	@return Data read from Flash
+	"""
+
+	return generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x9F], 3)
+
+def generic_nand_flash_read(conn, portID, slaveID, chipID, offset, count):
+	"""! Read data from generic SPI NAND flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param address Initial address from where data is to be read
+	@param count Number of bytes to be read
+
+	@return Read data
+	"""
+
+	d = bytes()
+	for addr in range(offset, offset + count, MAX_PROM_DATA_PACKET_SIZE):
+		c = min(MAX_PROM_DATA_PACKET_SIZE, count, offset + count - addr)
+		r = generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x03, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF], c)
+		r = r[1:-1]
+		d += r
+
+	return d
+
+
+def generic_nand_flash_wait_write(conn, portID, slaveID, chipID, timeout=1):
+	"""! Wait for any pending write operations on a generic SPI NAND flash to complete
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+
+	@return None
+	"""
+
+	t0 = time.time()
+	while (time.time() - t0) < timeout:
+		# Check if Write In Progress is set and if so, time.sleep and try again
+		r = generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x05], 1)
+		if r[1] & 0x01 == 0:
+			return None
+		time.sleep(0.010)
+
+	raise EEPROM_Timeout()
+
+
+def n25q128a_bulk_erase(conn, portID, slaveID, chipID):
+	"""! Bulk erase a N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	# Clear flags register
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x50], 0)
+
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0xC7], 0)
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID, timeout=300)
+
+	flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x70  ], 1)
+	if flags[1] & 0x20 != 0:
+		raise EEPROM_EraseError()
+
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	return None
+
+
+def n25q128a_64k_erase(conn, portID, slaveID, chipID, sectorOffset, sectorCount):
+	"""! Erase 64KiB sectors on a N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param sectorOffset First sector to be erased
+	@param sectorCount Number of sectors to be erased
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	# Clear flags register
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x50], 0)
+
+
+	for sector in range(sectorOffset, sectorOffset + sectorCount):
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+		# 64 KiB sector erase takes address in bytes but only at 64 KiB boundaries
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0xD8, sector, 0x00, 0x00 ], 0)
+		generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+		flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x70  ], 1)
+		if flags[1] & 0x20 != 0:
+			raise EEPROM_EraseError()
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	return None
+
+
+def n25q128a_write(conn, portID, slaveID, chipID, offset, data):
+	"""! Write data to N25Q128A flash
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param address Initial address  where data is to be written to
+	@param data Data to be written to EEPROM
+
+	@return None
+	"""
+
+	# Wait for any pending operations
+	generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+	# Clear flags register
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x50], 0)
+
+	for o in range(0, len(data), MAX_PROM_DATA_PACKET_SIZE):
+		d = data[o:o+MAX_PROM_DATA_PACKET_SIZE]
+		d = list(d)
+		l = len(d)
+
+		addr = offset + o
+
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x06], 0)
+		generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x02, (addr >> 16) & 0xFF, (addr >> 8) & 0xFF, addr & 0xFF ] + d, 0);
+		generic_nand_flash_wait_write(conn, portID, slaveID, chipID)
+		flags = generic_nand_flash_ll(conn, portID, slaveID, chipID, [ 0x70  ], 1)
+		if flags[1] & 0x10 != 0:
+			raise EEPROM_WriteError()
+
+	# Ensure WEL is disabled
+	generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
+
