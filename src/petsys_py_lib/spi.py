@@ -218,6 +218,35 @@ def max111xx_read(conn, portID, slaveID, chipID, channelID):
 	assert ch == channelID
 	return u
 
+
+def ltc2984_ll(conn, portID, slaveID, chipID, command, rd):
+                w = 8 * len(command)
+                padding = [0x00 for n in range(2) ]
+                p = 8 * len(padding)
+
+
+                # Pad the cycle with zeros
+                return conn.spi_master_execute(portID, slaveID, chipID,
+                        p+w+rd+p,               # cycle
+                        p,p+rd+w,               # sclk en
+                        p-1,p+w+rd+1,   # cs
+                        0, p+w+p,       # mosi
+                        p+w,p+w+rd,             # miso
+                        padding + command + padding,
+                        freq_sel = 4, miso_edge="falling")
+
+def ltc2984_write(conn, portID, slaveID, chipID, addr, n, value):
+        cmd = (addr << (n*8)) | value
+        cmd = [ 0x02 ] + [ (cmd >> (8*k)) & 0xFF for k in range(n+1, -1, -1) ]
+        ltc2984_ll(conn, portID, slaveID, chipID, cmd, 0)
+
+def ltc2984_read(conn, portID, slaveID, chipID, addr, n):
+        cmd = addr
+        cmd = [ 0x03] + [ (cmd >> (8*k)) & 0xFF for k in range(1, -1, -1) ]
+        r = ltc2984_ll(conn, portID, slaveID, chipID, cmd, 8*n)
+        return r
+
+
 def si534x_ll(conn, portID, slaveID, chipID, command):
 	w = 8 * len(command)
 	padding = [0xFF for n in range(2) ]
