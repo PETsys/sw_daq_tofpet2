@@ -14,7 +14,7 @@ def main(argv):
 	parser.add_argument("--slave", default=0, help="Unit slaveID ID")
 	parser.add_argument("--bin", type=str, required=True, help="BIN file name")
 	parser.add_argument("--force", default=False, action="store_true", help="Force updating")
-	parser.add_argument("--soft-update", dest="soft_update", default=False, action="store_true", help="Load a soft update keeping a golden image")
+	parser.add_argument("--method", required=True, choices=["soft", "alternate"], help="Update method")
 	args = parser.parse_args()
 
 
@@ -60,7 +60,7 @@ def main(argv):
 
 	current_active_image_addr = get_active_image_addr(conn, args.port, args.slave, PROM_CHIP_ID)
 
-	if args.soft_update:
+	if args.method == "soft":
 		if current_active_image_addr != None:
 			sys.stderr.write("ERROR: PROM has a boot sector at 0x0, not a golden image.\n")
 			return 1
@@ -384,3 +384,4 @@ class LegacyWrapper:
 
 if __name__ == '__main__':
 	sys.exit(main(sys.argv))
+
