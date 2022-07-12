@@ -4,7 +4,7 @@ import sys
 import argparse
 import time
 import math
-from petsys import daqd, spi
+from petsys import daqd, spi, boot
 
 PROM_CHIP_ID = 0xFFEF
 
@@ -14,20 +14,20 @@ def main(argv):
 	parser.add_argument("--slave", default=0, help="Unit slaveID ID")
 	parser.add_argument("--bin", type=str, required=True, help="BIN file name")
 	parser.add_argument("--force", default=False, action="store_true", help="Force updating")
-	parser.add_argument("--method", required=True, choices=["soft", "alternate"], help="Update method")
+	parser.add_argument("--method", required=True, choices=["soft", "alternate", "unprotect"], help="Update method")
 	args = parser.parse_args()
 
 
 
 	conn = daqd.Connection()
-	protocol = conn.read_config_register(args.port, args.slave, 64, 0xFFF8)
 
 	legacyFirmware = False
+	protocol = conn.read_config_register(args.port, args.slave, 64, 0xFFF8)
 	if (protocol & 0x7FFFFFFFFFFFFFFF) < 0x100:
 		# Firmware running on the FPGA is generally too old for this software
 		# but for PROM updating we support this as special case.
 		print("Using legacy protocol.")
-		conn = LegacyWrapper(conn)
+		conn = boot.LegacyWrapper(conn)
 		legacyFirmware = True
 
 
@@ -58,14 +58,19 @@ def main(argv):
 	spi.MAX_PROM_DATA_PACKET_SIZE = 256
 
 
-	current_active_image_addr = get_active_image_addr(conn, args.port, args.slave, PROM_CHIP_ID)
+	current_active_image_addr = boot.get_active_image_addr(conn, args.port, args.slave, PROM_CHIP_ID)
 
-	if args.method == "soft":
+	if args.method == "unprotect":
+		# Unprotect the PROM
+		print("Unprotecting PROM.")
+		set_golden_image_protection(conn, args.port, args.slave, PROM_CHIP_ID, False)
+
+	elif args.method == "soft":
 		if current_active_image_addr != None:
 			sys.stderr.write("ERROR: PROM has a boot sector at 0x0, not a golden image.\n")
 			return 1
 
-
+		print("Protecting golden image area...")
 		set_golden_image_protection(conn, args.port, args.slave, PROM_CHIP_ID, True)
 		next_image_addr = 0x800000
 
@@ -212,7 +217,7 @@ def main(argv):
 
 
 		print("Updating boot sector...")
-		boot_sector = make_boot_sector(next_image_addr)
+		boot_sector = boot.make_boot_sector(next_image_addr)
 		prom_64k_erase(conn, args.port, args.slave, PROM_CHIP_ID, 0, 1)
 		prom_write(conn, args.port, args.slave, PROM_CHIP_ID, 0x0, boot_sector)
 		d = spi.generic_nand_flash_read(conn, args.port, args.slave, PROM_CHIP_ID, 0x0, len(boot_sector))
@@ -225,100 +230,7 @@ def main(argv):
 	return 0
 
 
-def get_active_image_addr(conn, portID, slaveID, chipID):
-	d = spi.generic_nand_flash_read(conn,  portID, slaveID, chipID, 0x0, 256)
 
-	boot_sector_addr = (d[22*4+0] << 24) | (d[22*4+1] << 16) | (d[22*4+2] << 8) | d[22*4+3];
-	boot_sector_addr &= 0xFFFFFF
-
-
-	if d == make_boot_sector(boot_sector_addr):
-		# Boot sector matches the boot sector by this software
-		return boot_sector_addr
-
-	else:
-		# Boot sector contains something else (eg, complete image written via JTAG)
-		return None
-
-def make_boot_sector(boot_addr):
-	boot_sector = [
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0x000000BB,
-		0x11220044,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xAA995566,
-		0x20000000,
-		0x3003E001,
-		0x0000000B,
-		0x30008001,
-		0x00000012,
-		0x20000000,
-		0x30022001,
-		0x00000000,
-		0x30020001,
-		boot_addr,
-		0x30008001,
-		0x0000000F,
-		0x20000000,
-		0x30008001,
-		0x00000007,
-		0x20000000,
-		0x20000000,
-		0x30026001,
-		0x00000000,
-		0x30012001,
-		0x02003FE5,
-		0x3001C001,
-		0x00000000,
-		0x30018001,
-		0x03647093,
-		0x30008001,
-		0x00000009,
-		0x20000000,
-		0x3000C001,
-		0x00000001,
-		0x3000A001,
-		0x00000101,
-		0x3000C001,
-		0x00001000,
-		0x30030001,
-		0x00001000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x20000000,
-		0x30002001,
-		0x00000000,
-		0x30008001,
-		0x00000001,
-		0x20000000,
-
-		# This should be illegal in a true image
-		# but it's fine for a simple boot sector
-		0xFFFFFFFF,
-		0xFFFFFFFF
-		#0x30004065,
-		#0x00000000
-	]
-
-
-	s = []
-	for word in boot_sector:
-		s += [ (word >> 24) & 0xFF, (word >> 16) & 0xFF, (word >> 8) & 0xFF, word & 0xFF ]
-
-	return bytes(s)
 
 
 def set_golden_image_protection(conn, portID, slaveID, chipID, protect):
@@ -342,45 +254,6 @@ def set_golden_image_protection(conn, portID, slaveID, chipID, protect):
 	# Ensure WEL is disabled
 	spi.generic_nand_flash_ll(conn, portID, slaveID, chipID, [0x04], 0)
 	return None
-
-class LegacyWrapper:
-	def __init__(self, conn):
-		self.__conn = conn
-
-	def read_config_register(self, portID, slaveID, word_width, base_address):
-		return self.__conn.read_config_register(portID, slaveID, word_width, base_address)
-
-	def write_config_register(self, portID, slaveID, word_width, base_address, value):
-		return self.__conn.write_config_register(portID, slaveID, word_width, base_address, value)
-
-	#
-	# Implement legacy firmware SPI master protocol
-	# freq_sel, miso_edge and mosi_edge are ignored
-	def spi_master_execute(self, portID, slaveID, chipID, cycle_length, sclk_en_on, sclk_en_off, cs_on, cs_off, mosi_on, mosi_off, miso_on, miso_off, mosi_data, freq_sel=1, miso_edge="rising", mosi_edge="rising"):
-
-		if chipID == 0xFFEF:
-			cfgFunctionID = 0x03
-			chipID = 0xFF
-
-
-
-		if len(mosi_data) == 0:
-			mosi_data = [ 0x00 ]
-
-		command = [ chipID,
-			cycle_length & 0xFF, (cycle_length >> 8) & 0xFF,
-			sclk_en_on & 0xFF, (sclk_en_on >> 8) & 0xFF,
-			sclk_en_off & 0xFF, (sclk_en_off >> 8) & 0xFF,
-			cs_on & 0xFF, (cs_on >> 8) & 0xFF,
-			cs_off & 0xFF, (cs_off >> 8) & 0xFF,
-			mosi_on & 0xFF, (mosi_on >> 8) & 0xFF,
-			mosi_off & 0xFF, (mosi_off >> 8) & 0xFF,
-			miso_on & 0xFF, (miso_on >> 8) & 0xFF,
-			miso_off & 0xFF, (miso_off >> 8) & 0xFF
-			] + mosi_data
-
-		return self.__conn.sendCommand(portID, slaveID, cfgFunctionID, bytes(command))
-
 
 if __name__ == '__main__':
 	sys.exit(main(sys.argv))

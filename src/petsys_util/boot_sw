@@ -4,7 +4,7 @@ import sys
 import argparse
 import time
 import math
-from petsys import daqd, spi
+from petsys import daqd, spi, boot
 
 PROM_CHIP_ID = 0xFFEF
 BOOT_OFFSET = 0x800000
@@ -20,7 +20,15 @@ def main(argv):
 
 
 	conn = daqd.Connection()
-	#protocol = conn.read_config_register(args.port, args.slave, 64, 0xFFF8)
+
+	legacyFirmware = False
+	protocol = conn.read_config_register(args.port, args.slave, 64, 0xFFF8)
+	if (protocol & 0x7FFFFFFFFFFFFFFF) < 0x100:
+		# Firmware running on the FPGA is generally too old for this software
+		# but for PROM updating we support this as special case.
+		print("Using legacy protocol.")
+		conn = boot.LegacyWrapper(conn)
+		legacyFirmware = True
 
 	boot_status = conn.read_config_register(args.port, args.slave, 32, 0x02A0)
 	if (boot_status & 0xFF00) != 0:
@@ -29,18 +37,10 @@ def main(argv):
 			sys.stderr.write("Use --force to force booting into update image.\n")
 			return 1
 	
-	boot_header = make_image_header()
-	l = len(boot_header)
-	d = spi.generic_nand_flash_read(conn, args.port, args.slave, PROM_CHIP_ID, BOOT_OFFSET, l)
-	if d != boot_header:
-		sys.stderr.write("ERROR: 0x%08X does not contain an image!\n" % BOOT_OFFSET)
-		return 2
 
-	boot_sector_marker = bytes([ 0xFF for k in range(8) ])
-	d = spi.generic_nand_flash_read(conn, args.port, args.slave, PROM_CHIP_ID, BOOT_OFFSET+248, 8)
-	if d == boot_sector_marker:
-		sys.stderr.write("ERROR: 0x%08X contains a boot sector, not a boot image!\n")
-		return 2
+	if not boot.check_image(conn, args.port, args.slave, PROM_CHIP_ID, BOOT_OFFSET):
+		sys.stderr.write("ERROR: PROM address 0x%08X does not contain an image\n", BOOT_OFFSET)
+		return 1
 
 	conn.write_config_register(args.port, args.slave, 32, 0x02C8, 0x800000)
 	conn.write_config_register(args.port, args.slave, 1, 0x299, 0b1)
@@ -56,31 +56,6 @@ def main(argv):
 	boot_status = conn.read_config_register(args.port, args.slave, 32, 0x02A0)
 
 	return 0
-
-def make_image_header():
-	boot_sector = [
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0x000000BB,
-		0x11220044,
-		0xFFFFFFFF,
-		0xFFFFFFFF,
-		0xAA995566,
-		0x20000000
-	]
-
-	s = []
-	for word in boot_sector:
-		s += [ (word >> 24) & 0xFF, (word >> 16) & 0xFF, (word >> 8) & 0xFF, word & 0xFF ]
-	return bytes(s)
-
-
 
 if __name__ == '__main__':
 	sys.exit(main(sys.argv))
