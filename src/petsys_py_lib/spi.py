@@ -287,8 +287,125 @@ class EEPROM_EraseError(EEPROM_Exception):
 class EEPROM_WriteError(EEPROM_Exception):
 	pass
 
+## 8K NOR
+## M95080 SPI EEPROM
+
+def m95080_ll(conn, portID, slaveID, spiID, command, read_count):
+    """! ST m95080 low level coding
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param spiID SPI slave number
+    @param data Data to be transmitted over the SPI bus.
+
+    @return Data received from the SPI bus returned by spi_master_execute()
+    """
+    w = 8 * len(command)
+    r = 8 * read_count
+    p = 1
+    w_padding = [ 0xFF for n in range(p) ]
+    r_padding = [ 0xFF for n in range(p + read_count) ]
+    p = 8 * p
+
+    # Pad the cycle with zeros
+    return conn.spi_master_execute(portID, slaveID, spiID,
+        p+w+r+p, 		# cycle
+        p,w+r+p+1, 		# sclk en
+        p-1,p+w+r+0,    # cs
+        0, p+w+r+p, 	# mosi
+        p+w, w+r+p,		# miso
+        w_padding + command + r_padding, #mosi data
+        freq_sel = 0,
+        miso_edge = "falling", mosi_edge = "rising")
+
+def m95080_wip(conn, portID, slaveID, spiID, MAX_TRIES = 5):
+    """! Return ST m95080 EEPROM Write in Progress Status
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param spiID SPI slave number
+    @param MAX_TRIES maximun number of retry
+
+    @return bool
+    """
+    # Check if Write In Progress is set and if so, sleep and try again
+    n = 0
+    while (n < MAX_TRIES):
+        n += 1
+        r = m95080_ll(conn, portID, slaveID, spiID, [0b00000101], 1)
+        if r[1] & 0x01 == 0:
+            return False
+        time.sleep(0.010)
+
+    return True
+
+def m95080_read(conn, portID, slaveID, spiID, address, n_bytes):
+    """! Read ST m95080 EEPROM
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param spiID SPI slave number
+    @param address Initial address from where data is to be read
+    @param n_bytes Number of bytes to be read
+
+    @return Data read from EEPROM
+    """
+    #Check Write in Progress
+    if not m95080_wip(conn, portID, slaveID, spiID):
+        pass
+    else:
+        return False
+
+    # Break down reads into MAX_PROM_DATA_PACKET_SIZE byte chunks due to DAQ
+    rr = bytes()
+    for a in range(address, address + n_bytes, 1):
+        count = min([1, address + n_bytes - a])
+        r = m95080_ll(conn, portID, slaveID, spiID, [0b00000011, (a >> 8) & 0xFF, a & 0xFF], count)
+        r = r[1:-1]
+        rr += r
+    return rr
+
+
+def m95080_write(conn, portID, slaveID, spiID, address, data):
+    """! Write ST m95080 EEPROM
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param spiID SPI slave number
+    @param address Initial address  where data is to be written to
+    @param data Data to be written to EEPROM
+
+    @return bool
+    """
+    n_bytes = len(data)
+    # Break down reads into MAX_PROM_DATA_PACKET_SIZE byte chunks due to DAQ
+    for a in range(address, address + n_bytes, 1):
+        count = min([1, address + n_bytes - a])
+
+        #Check Write in Progress
+        if not m95080_wip(conn, portID, slaveID, spiID):
+            pass
+        else:
+            return False
+
+        #Write Enable
+        m95080_ll(conn, portID, slaveID, spiID, [0b00000110], 0)
+
+        #Write
+        first_byte = a - address
+        packet = data[first_byte:first_byte+count] 
+        m95080_ll(conn, portID, slaveID, spiID, [0b00000010, (a >> 8) & 0xFF, a & 0xFF] + packet, 0)
+
+    return True
+
+
+
 ## 256K NOR
-## Currently only M95256 is used
+## M95256 SPI EEPROM
 
 def m95256_ll(conn, portID, slaveID, chipID, command, read_count):
 	"""! ST M95256 low level coding
