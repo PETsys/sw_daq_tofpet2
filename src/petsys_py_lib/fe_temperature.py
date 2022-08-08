@@ -1,5 +1,5 @@
 from math import sqrt
-from . import info, spi
+from . import info, spi, fe_eeprom
 
 def lmt86(v):
 	return 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
@@ -7,11 +7,20 @@ def lmt86(v):
 def lmt70(v):
 	return 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
 
+def get_max111xx_spiID(module_id):
+    return module_id * 256 + 4
 class UnknownTemperatureSensorType(Exception):
 	pass
 
 class UnknownModuleType(Exception):
 	pass
+
+class TMP104CommunicationError(Exception):
+	#!Implement This As You Wish Ricardo; Maybe pass custom error message as argument?
+    def __init__(self, portID, slaveID, din, dout):
+        self.portID, self.slaveID, self.din, self.dout = portID, slaveID, din, dout
+        self.message = "Error Message goes here!"
+        super().__init__(self.message)
 
 class max111xx_sensor:
 	def __init__(self, conn, portID, slaveID, spi_id, channel_id, location, chip_type):
@@ -27,7 +36,7 @@ class max111xx_sensor:
 		elif chip_type == "LMT70":
 			self.__function = lambda u: lmt70(u*2.5/4.096)
 		else:
-			raise UnknownTemperatureSensor()
+			raise UnknownTemperatureSensorType()
 		
 		
 	def get_location(self):
@@ -86,77 +95,94 @@ def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
 		return temperatures
 
 
-def list_fem128(conn, portID, slaveID, n_fems):
-	result = []
-	
-	for module_id in range(n_fems):
-		spi_id = module_id * 256 + 4
+def list_fem128(conn, portID, slaveID, module_id):
+    result = []
+    
+    spi_id = get_max111xx_spiID(module_id)
 
-		if not spi.max111xx_check(conn, portID, slaveID, spi_id):
-			continue
-		
-		result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 3, (portID, slaveID, module_id, 0, "asic"), "LMT86"))
-		result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 2, (portID, slaveID, module_id, 0, "sipm"), "LMT70"))
+    if not spi.max111xx_check(conn, portID, slaveID, spi_id):
+        return result
+    
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 3, (portID, slaveID, module_id, 0, "asic"), "LMT86"))
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 2, (portID, slaveID, module_id, 0, "sipm"), "LMT70"))
 
-		result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 0, (portID, slaveID, module_id, 1, "asic"), "LMT86"))
-		result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 1, (portID, slaveID, module_id, 1, "sipm"), "LMT70"))
-		
-		
-	return result
-		
-def list_fem256(conn, portID, slaveID, n_fems):
-	result = []
-	
-	for module_id in range(n_fems):
-		spi_id = module_id * 256 + 4
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 0, (portID, slaveID, module_id, 1, "asic"), "LMT86"))
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 1, (portID, slaveID, module_id, 1, "sipm"), "LMT70"))
+        
+        
+    return result
+        
+def list_fem256(conn, portID, slaveID, module_id):
+    result = []
 
-		if not spi.max111xx_check(conn, portID, slaveID, spi_id):
-			continue
-		
-		for i in range(4):		
-			result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT86"))
-			result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+0, (portID, slaveID, module_id, i, "sipm"), "LMT70"))
-		
-	return result
-	
+    spi_id = get_max111xx_spiID(module_id)
 
+    if not spi.max111xx_check(conn, portID, slaveID, spi_id):
+        return result
+    
+    for i in range(4):		
+        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT86"))
+        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+0, (portID, slaveID, module_id, i, "sipm"), "LMT70"))
+        
+    return result
+    
+def list_from_eeprom(conn, portID, slaveID, module_id):
+    result = []
 
+    spi_id = get_max111xx_spiID(module_id)
 
-def get_sensor_list(conn):
-	result = []
-	for portID, slaveID in conn.getActiveFEBDs():
-		fem_type = conn.read_config_register(portID, slaveID, 16, 0x0002)
+    adc_ch_cfg_size = fe_eeprom.S_CFG_BYTES_PER_CH
+    eeprom = fe_eeprom.m95080_eeprom(conn, portID, slaveID, module_id)
+    s_cfg_adr = fe_eeprom.m95080_eeprom.PROM_TEMPLATE['s_cfg'][0]
+    s_cfg_len = fe_eeprom.m95080_eeprom.PROM_TEMPLATE['s_cfg'][1]
 
-		base_pcb, fw_variant, prom_variant  = conn.getUnitInfo(portID, slaveID)
+    for adc_ch, adr in enumerate(range(s_cfg_adr, s_cfg_adr + s_cfg_len, adc_ch_cfg_size)):
+        ch_cfg = [x for x in eeprom.read(adr,adc_ch_cfg_size)]
+        if ch_cfg == [0xFF for x in range(adc_ch_cfg_size)]: continue
+        location = ch_cfg[0]
+        device   = next(key for key, value in fe_eeprom.DEVICE_TO_BYTE.items() if value == ch_cfg[1]) #Reverse dict lookup ("byte_to_device")
+        s_type   = next(key for key, value in fe_eeprom.SENSOR_TO_BYTE.items() if value == ch_cfg[2]) #Reverse dict lookup ("byte_to_sensor")
+        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, adc_ch, (portID, slaveID, module_id, location, device), s_type))
 
-		n_fems = info.fem_per_febd((base_pcb, fw_variant, prom_variant))
+    return result
 
-		fw_variant = (fw_variant >> 32) & 0xFFFF
+def get_sensor_list(conn,debug=False):
+    result = []
+    for portID, slaveID in conn.getActiveFEBDs():
+        fem_type = conn.read_config_register(portID, slaveID, 16, 0x0002)
 
-		if   fw_variant == 0x0000:
-			# TB64, pass
-			pass
-		elif fw_variant == 0x0001:
-			result += list_fem128(conn, portID, slaveID, n_fems)
+        base_pcb, fw_variant, prom_variant  = conn.getUnitInfo(portID, slaveID)
 
-		elif fw_variant == 0x0002:
-			# Panda
-			pass
-		elif fw_variant == 0x0011:
-			result += list_fem128(conn, portID, slaveID, n_fems)
+        n_fems  = info.fem_per_febd((base_pcb, fw_variant, prom_variant))
 
-		elif fw_variant == 0x0111:
-			result += list_fem256(conn, portID, slaveID, n_fems)
+        fw_variant = (fw_variant >> 32) & 0xFFFF
 
-		elif fw_variant == 0x0211:
-			# FEM 512
-			pass
-		else:
-			raise UnknownModuleType()
-			
-			
-	return result
-			
-			
-		
-	
+        for module_id in range(n_fems):
+            eeprom = fe_eeprom.m95080_eeprom(conn,portID,slaveID,module_id)
+            if eeprom.detect() and eeprom.is_programmed():
+                if debug: print(f'INFO: EEPROM Detected @ moduleID {portID},{slaveID},{module_id}')
+                if debug: print(f'INFO: ({portID},{slaveID},{module_id}) has been previously PROGRAMMED. Generating list from memory.')
+                result += list_from_eeprom(conn, portID, slaveID, module_id)
+            elif fw_variant == 0x0000:
+                # TB64, pass
+                pass
+            elif fw_variant == 0x0001:
+                result += list_fem128(conn, portID, slaveID, module_id)
+
+            elif fw_variant == 0x0002:
+                # Panda
+                pass
+            elif fw_variant == 0x0011:
+                result += list_fem128(conn, portID, slaveID, module_id)
+
+            elif fw_variant == 0x0111:
+                result += list_fem256(conn, portID, slaveID, module_id)
+
+            elif fw_variant == 0x0211:
+                # FEM 512
+                pass
+            else:
+                raise UnknownModuleType()
+            
+            
+    return result

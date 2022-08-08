@@ -4,6 +4,8 @@
 
 import time
 
+class ADCException(Exception): pass
+
 def ad5535_ll(conn, portID, slaveID, chipID, data):
 	"""! AD5535 DAC SPI low level coding
 
@@ -99,6 +101,80 @@ def ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value):
 	"""
 	command = [ 0b00110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
 	return ltc2668_ll(conn, portID, slaveID, chipID, command)
+
+
+def ltc2418_ll(conn, portID, slaveID, chipID, command):
+	"""! LTC2418 ADC SPI low level coding
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param data Data to be transmitted over the SPI bus.
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+	w = 8 * len(command)
+	padding = [0x00 for n in range(3) ]
+	p = 8 * len(padding)
+
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		w+p+1, 		# cycle
+		0,w+p+1,    # sclk en
+		0,w+p+1,	# cs
+		0, w+p, 	# mosi
+		0, w+p, 		# miso
+		command + padding,
+		freq_sel = 0,
+		miso_edge = "falling",
+		mosi_edge = "rising")
+
+
+def ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 2):
+	"""! LTC2418 ADC SPI read channel
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param channel ADC channel to be read
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+	CONVERSION_TIME = 0.17 #Conversion should take at most 164ms
+	
+	# EN  = 1 to change channel
+    # SGL = 1 for single-ended mode
+	base_cmd = 0b10110000  # 1 0 EN SGL OS A2 A1 A0
+	os       = 8 * (channel %2) # ODD/SIGN
+	adr      = channel // 2     # A2 A1 A0
+	command  = [base_cmd + os + adr]
+
+	#Change Channel
+	r = ltc2418_ll(conn, portID, slaveID, chipID, command)
+	time.sleep(CONVERSION_TIME)
+
+	#Get Reading for desired channel
+	n = 0
+	while True:
+		n +=1
+		r = ltc2418_ll(conn, portID, slaveID, chipID, command)
+		eoc = (int.from_bytes(r[1:-1], "big") >> 31) & 0x1
+		if eoc == 0:
+			break;
+		if n == MAX_TRIES:
+			raise ADCException("End Of Conversion failed.")
+		time.sleep(CONVERSION_TIME)
+	
+
+	read_bytes = int.from_bytes(r[1:-1], "big")
+	signal     = (read_bytes >> 29) & 0x1       #1  bit
+	value      = (read_bytes >>  6) & 0x7FFFFF  #23 bits
+	readback   = (read_bytes >>  1) & 0x1F      #5  bits
+		
+	return signal, value, readback
+
 
 
 def ad7194_ll(conn,  portID, slaveID, chipID, command, read_count):

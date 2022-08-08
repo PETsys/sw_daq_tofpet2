@@ -9,23 +9,29 @@ import re
 
 def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 	chipID = 0x8000 + 0x100 * slotID + 0x0
+	offset = 0
 
 	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 8)
 	if data != b"PETSYS  ":
-		sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slotID %2d PROM does  not contain a calibration table\n" % (portID, slaveID, slotID))
-		exit(1)
+		if [x for x in spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 16)] == bias.BIAS_32P_MAGIC:
+			print(f'INFO: BIAS_32P detecteted @ (portID, slaveID, slotID) = ({portID},{slaveID},{slotID})')
+			offset = 4
+			promLayoutVersion = 0x01
+		else:
+			sys.stderr.write("ERROR: FEBD (portID %d, slaveID %d) slotID %2d PROM does not contain a valid header. \n" % (portID, slaveID, slotID))
+			exit(1)
 	
-	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0008, 8)
-	promLayoutVersion, = struct.unpack("<Q", data)
+	if offset == 0:
+		data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0008, 8)
+		promLayoutVersion, = struct.unpack("<Q", data)
 	
 	if promLayoutVersion == 0x01:
 		measuredVoltageFullScale = 100.0
 		
-		
-		data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0010, 8)
+		data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0010 + offset, 8)
 		n_channels, = struct.unpack("<Q", data)
 
-		data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0018, 8)
+		data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0018 + offset, 8)
 		n_x_values, = struct.unpack("<Q", data)
 		
 		address = 0x0020
@@ -33,7 +39,7 @@ def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 		v_meas = {}
 		adc_meas = {}
 		for i in range(n_x_values):
-			data = spi.m95256_read(connection, portID, slaveID, chipID, 0x020 + 2*i, 2)
+			data = spi.m95256_read(connection, portID, slaveID, chipID, 0x020 + 2*i + offset, 2)
 			address += 2
 			v, =  struct.unpack("<H", data)
 			x_values[i] = v
@@ -41,7 +47,7 @@ def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 		for j in range(n_channels):
 			ch_v_meas = [ 0.0 for i in range(n_x_values) ]
 			for i in range(n_x_values):
-				data = spi.m95256_read(connection, portID, slaveID, chipID, address, 4)
+				data = spi.m95256_read(connection, portID, slaveID, chipID, address + offset, 4)
 				address += 4
 				v, =  struct.unpack("<I", data)
 				v = v * measuredVoltageFullScale / (2**32)
@@ -51,7 +57,7 @@ def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 		for j in range(n_channels):
 			ch_adc_meas = [ 0 for i in range(n_x_values) ]
 			for i in range(n_x_values):
-				data = spi.m95256_read(connection, portID, slaveID, chipID, address, 4)
+				data = spi.m95256_read(connection, portID, slaveID, chipID, address + offset, 4)
 				address += 4
 				v, =  struct.unpack("<I", data)
 				ch_adc_meas[i] = v
