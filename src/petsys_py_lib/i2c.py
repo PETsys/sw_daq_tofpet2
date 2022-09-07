@@ -1,22 +1,16 @@
 import time
 
-class UnexpectedState(Exception):
-	def __init__(self, portID, slaveID, busID, signal, expected_state, read_state):
+class BusError(Exception):
+	def __init__(self, portID, slaveID, busID):
 		self.__portID = portID
 		self.__slaveID = slaveID
 		self.__busID = busID
-		self.__signal = signal
-		self.__expected_state = expected_state
-		self.__read_state = read_state
 
 	def __str__(self):
-		return "I2C bus (%2d %2d %2d) %s should be %d but is %d" % (
+		return "I2C bus (%2d %2d %2d) error" % (
 			self.__portID,
 			self.__slaveID,
-			self.__busID,
-			self.__signal,
-			self.__expected_state,
-			self.__read_state
+			self.__busID
 			)
 
 class NoAck(Exception):
@@ -26,78 +20,73 @@ class NoAck(Exception):
 		self.__busID = busID
 
 	def __str__(self):
-		return "I2C bus (%2d %2d %2d) %s ACK failed" % (
+		return "I2C bus (%2d %2d %2d) ACK failed" % (
 			self.__portID,
 			self.__slaveID,
 			self.__busID
 			)
 
 
-def set_i2c_bus(conn, portID, slaveID, enable, busID, scl, sda, check_sda=True):
-	scl_o, sda_o = conn.i2c_master(portID, slaveID, enable, busID, scl, sda)
-	# We need to write twice because it seems i2c_master is reading too fast
-	scl_o, sda_o = conn.i2c_master(portID, slaveID, enable, busID, scl, sda)
-
-	#if scl_o != scl:
-		#raise UnexpectedState(portID, slaveID, busID, "scl", scl, scl_o)
-
-	#if check_sda and (sda_o != sda):
-		#raise UnexpectedState(portID, slaveID, busID, "sda", sda, sda_o)
-
-	return scl_o, sda_o
+def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value):
 
 
-def start(conn, portID, slaveID, busID):
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 1)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 0)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 0)
+	sequence = []
+	ack = []
 
-def stop(conn, portID, slaveID, busID):
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 0)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 1)
+	sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
 
+	# Write chip address byte
+	for n in range(7, -1, -1):
+		sda = (chipID >> n) & 0x1
+		sda = sda << 1
+		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-def repeat_start(conn, portID, slaveID, busID):
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 0)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 1)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 1)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 0)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 0)
-	
+	sequence += [ 0b0110, 0b0111, 0b0110 ]
+	ack += [ len(sequence) - 2 ]
 
-def write_bit(conn, portID, slaveID, busID, sda):
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, sda)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, sda)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, sda)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, sda)
+	## Write register address
+	for n in range(7, -1, -1):
+		sda = (regID >> n) & 0x1
+		sda = sda << 1
+		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-def read_bit(conn, portID, slaveID, busID):
-	
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 1, check_sda=False)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 1, check_sda=False)
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 1, 1, check_sda=False)
-	r = sda
-	scl, sda = set_i2c_bus(conn, portID, slaveID, True, busID, 0, 1, check_sda=False)
-	return r
+	sequence += [ 0b0110, 0b0111, 0b0110 ]
+	ack += [ len(sequence) - 2 ]
 
-def write_byte(conn, portID, slaveID, busID, value):
-
+	# Write register value
 	for n in range(7, -1, -1):
 		sda = (value >> n) & 0x1
-		write_bit(conn, portID, slaveID, busID, sda)
+		sda = sda << 1
+		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-	sda = read_bit(conn, portID, slaveID, busID)
-	if sda != 0:
+	sequence += [ 0b0110, 0b0111, 0b0110 ]
+	ack += [ len(sequence) - 2 ]
+
+	sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
+
+
+	t0 = time.time()
+	reply = conn.i2c_master(portID, slaveID, busID, sequence)
+	dt = time.time() - t0
+
+	#print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
+	#print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
+
+	#print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
+	#print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
+	#print("\nACK    ", ("").join([ "|" if k in ack else " " for k in range(len(reply)) ]) )
+	#print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else " " for x in reply ]) )
+	#print([ "%02X" % x for x in reply ])
+	#print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
+	#print("%4.0f us" % (1e6 * 3*9 * 10e-6))
+	#print("%4.0f us" % (1e6 * dt))
+
+	error =  [ (x & 0xE0) != 0 for x in reply ]
+	if True in error:
+		# Generate a no-check stop condition to relase the bus
+		conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
+		raise BusError(portID, slaveID, busID)
+
+	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack ]
+	if False in ack:
 		raise NoAck(portID, slaveID, busID)
-
-	return None
-	
-
-def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value):
-	start(conn, portID, slaveID, busID)
-	write_byte(conn, portID, slaveID, busID, chipID)
-	write_byte(conn, portID, slaveID, busID, regID)
-	write_byte(conn, portID, slaveID, busID, value)
-	stop(conn, portID, slaveID, busID)
-	
-	

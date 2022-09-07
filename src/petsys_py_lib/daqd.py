@@ -699,21 +699,33 @@ class Connection:
 
 		return self.sendCommand(portID, slaveID, 0x02, bytes(command))
 
-	def i2c_master(self, portID, slaveID, enable, busID, scl, sda):
+	## Performs an I2C transtions
+	# @param portID  DAQ port ID where the FEB/D is connected
+	# @param slaveID Slave ID on the FEB/D chain
+	# @param busID ID of I2C bus
+	# @param s Byte sequence containing the operations
+	def i2c_master(self, portID, slaveID, busID, s):
+		# Contents of s
+		# bit 0: State to set SCL (0 pull down, 1 high-Z)
+		# bit 1: State to set SCA (0 pull down, 1 hight-Z)
+		# bit 2: Check that SCL went to the desired state
+		# bit 3: Check that SDA went to the desired state (should be 0 for read bits)
+
+		# return a sequenceof bytes with same length of 0
+		# bit 0: state of SCL
+		# bit 1: state of SDA
+		# Bits 7-4: 0x0 when OK, 0xE during a bus error
+
 		word0 = (busID >> 8) & 0xFF
 		word1 = (busID >> 0) & 0xFF
-		word2 = 0x00
-		if enable: word2 |= 0x80
-		if scl != 0: word2 |= 0x02
-		if sda != 0: word2 |= 0x01
 
-		result = self.sendCommand(portID, slaveID, 3, bytes([word0, word1, word2]))
+		r = self.sendCommand(portID, slaveID, 3, bytes([word0, word1] + s))
 
-		result = result[0]
-		error = (result & 0xE0) != 0
-		scl = (result & 0x02) >> 1
-		sda = (result & 0x01) >> 0
-		return scl, sda
+		status = r[0]
+		error = (status & 0xE0) != 0
+
+		return r
+
 			
 
 		
