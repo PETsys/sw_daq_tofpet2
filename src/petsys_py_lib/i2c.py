@@ -31,7 +31,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 
 
 	sequence = []
-	ack = []
+	ack_position = []
 
 	sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
 
@@ -42,7 +42,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
 	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack += [ len(sequence) - 2 ]
+	ack_position += [ len(sequence) - 2 ]
 
 	## Write register address
 	for n in range(7, -1, -1):
@@ -51,7 +51,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
 	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack += [ len(sequence) - 2 ]
+	ack_position += [ len(sequence) - 2 ]
 
 	# Write register value
 	for n in range(7, -1, -1):
@@ -60,7 +60,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
 	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack += [ len(sequence) - 2 ]
+	ack_position += [ len(sequence) - 2 ]
 
 	sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
 
@@ -70,7 +70,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 	dt = time.time() - t0
 
 	error =  [ (x & 0xE0) != 0 for x in reply ]
-	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack ]
+	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
 
 	## This code is useful for debugging the bus
 	if debug_error and ((True in error) or (False in ack)):
@@ -79,7 +79,7 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debu
 
 		print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
 		print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
-		print("\nACK    ", ("").join([ "|" if k in ack else " " for k in range(len(reply)) ]) )
+		print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
 		print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else " " for x in reply ]) )
 		print([ "%02X" % x for x in reply ])
 		print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
