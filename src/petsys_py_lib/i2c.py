@@ -27,7 +27,7 @@ class NoAck(Exception):
 			)
 
 
-def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value):
+def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debug_error=False):
 
 
 	sequence = []
@@ -69,24 +69,27 @@ def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value):
 	reply = conn.i2c_master(portID, slaveID, busID, sequence)
 	dt = time.time() - t0
 
-	#print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
-	#print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
-
-	#print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
-	#print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
-	#print("\nACK    ", ("").join([ "|" if k in ack else " " for k in range(len(reply)) ]) )
-	#print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else " " for x in reply ]) )
-	#print([ "%02X" % x for x in reply ])
-	#print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
-	#print("%4.0f us" % (1e6 * 3*9 * 10e-6))
-	#print("%4.0f us" % (1e6 * dt))
-
 	error =  [ (x & 0xE0) != 0 for x in reply ]
+	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack ]
+
+	## This code is useful for debugging the bus
+	if debug_error and ((True in error) or (False in ack)):
+		print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
+		print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
+
+		print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
+		print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
+		print("\nACK    ", ("").join([ "|" if k in ack else " " for k in range(len(reply)) ]) )
+		print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else " " for x in reply ]) )
+		print([ "%02X" % x for x in reply ])
+		print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
+		print("%4.0f us" % (1e6 * 3*9 * 10e-6))
+		print("%4.0f us" % (1e6 * dt))
+
 	if True in error:
 		# Generate a no-check stop condition to relase the bus
 		conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
 		raise BusError(portID, slaveID, busID)
 
-	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack ]
 	if False in ack:
 		raise NoAck(portID, slaveID, busID)
