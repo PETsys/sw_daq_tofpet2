@@ -4,6 +4,24 @@
 
 import time
 
+def spi_reg_ll(conn, portID, slaveID, chipID, command, read_count):
+        w = 0
+        r = 16
+        p = 2
+        w_padding = [ 0xFF for n in range(p) ]
+        r_padding = [ 0xFF for n in range(p + read_count) ]
+        p = 8 * p
+
+        # Pad the cycle with zeros
+        return conn.spi_master_execute(portID, slaveID, chipID,
+                p+w+r+p,          # cycle
+                p,p+w+r,          # sclk en
+                p-1,p+w+r+1,      # cs
+                0, p+w+r+p,       # mosi
+                p+w-0,p+w+r-0,    # miso #? I don't understand the need for the -1
+                w_padding + command + r_padding, miso_edge = "falling")
+
+
 class ADCException(Exception): pass
 
 def ad5535_ll(conn, portID, slaveID, chipID, data):

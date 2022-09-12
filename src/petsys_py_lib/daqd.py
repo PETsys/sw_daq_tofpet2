@@ -9,6 +9,7 @@ from . import tofpet2c
 from . import info
 from . import bias
 from . import spi
+from . import fe_power
 import socket
 from random import randrange
 import struct
@@ -341,7 +342,7 @@ class Connection:
 			
 			
 		# Power on ASICs
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0213, 0b11) 
+		for portID, slaveID in self.getActiveFEBDs(): fe_power.set_fem_power(self, portID, slaveID, "on")
 		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
@@ -725,10 +726,6 @@ class Connection:
 		error = (status & 0xE0) != 0
 
 		return r
-
-			
-
-		
 	
 
 	## Sends a command to the FEB/D
