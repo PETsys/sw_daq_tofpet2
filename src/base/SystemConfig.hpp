@@ -83,10 +83,12 @@ namespace PETSYS {
 		};
 
 		inline bool isCoincidenceAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return coincidenceTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
 		inline bool isMultiHitAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return multihitTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
