@@ -8,7 +8,7 @@ namespace PETSYS {
 	class AbstractEventBuffer {
 	public:
 		AbstractEventBuffer(AbstractEventBuffer *parent) 
-		: parent(parent), bufferSeqN(parent->bufferSeqN), bufferTMin(parent->bufferTMin) 
+			: parent(parent), bufferSeqN(parent->bufferSeqN), bufferTMin(parent->bufferTMin), bufferTMax(parent->bufferTMax)
 		{
 		};
 		
