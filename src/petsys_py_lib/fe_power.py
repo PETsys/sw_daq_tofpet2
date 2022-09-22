@@ -1,3 +1,5 @@
+# kate: indent-mode: python; indent-pasted-text false; indent-width 4; replace-tabs: on;
+
 from . import i2c, spi
 from time import sleep
 from itertools import chain

@@ -15,7 +15,7 @@
 
 using namespace PETSYS;
 
-enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT };
+enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL };
 
 class DataFileWriter {
 private:
@@ -60,7 +60,7 @@ private:
 public:
 	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int eventFractionToWrite) {
 		this->frequency = frequency;
-		this->fileType = fileType;
+		this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
 
@@ -101,7 +101,7 @@ public:
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
-		else {
+		else if (fileType == FILE_TEXT) {
 			dataFile = fopen(fName, "w");
 			assert(dataFile != NULL);
 			indexFile = NULL;
@@ -117,7 +117,7 @@ public:
 			fclose(dataFile);
 			fclose(indexFile);
 		}
-		else {
+		else if (fileType == FILE_TEXT) {
 			fclose(dataFile);
 		}
 	}
@@ -185,7 +185,7 @@ public:
 				};
 				fwrite(&eo, sizeof(eo), 1, dataFile);
 			}
-			else {
+			else if (fileType == FILE_TEXT) {
 				fprintf(dataFile, "%lld\t%f\t%d\n",
 					((long long)(hit.time * Tps)) + tMin,
 					hit.energy * Eunit,
