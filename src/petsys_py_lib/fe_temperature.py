@@ -4,6 +4,9 @@ from . import info, spi, fe_eeprom
 def lmt86(v):
 	return 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
 
+def lmt87(v):
+	return 30-(13.582-sqrt(184.470724+0.01732*(2230.8-v)))/0.00866
+
 def lmt70(v):
 	return 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
 
@@ -121,7 +124,7 @@ def list_fem256(conn, portID, slaveID, module_id):
         return result
     
     for i in range(4):		
-        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT86"))
+        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT87"))
         result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+0, (portID, slaveID, module_id, i, "sipm"), "LMT70"))
         
     return result

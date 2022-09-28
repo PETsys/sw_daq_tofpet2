@@ -8,7 +8,7 @@ from . import spi, info
 #################################
 
 DEVICE_TO_BYTE = {'asic' : 0xAA, 'sipm' : 0xBB}
-SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT70': 0xBB}
+SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB}
 
 FEM_PARAMETERS = {  
                     'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107, 29, 77, 96, 165, 101, 77, 72, 252, 163, 63, 202]  },
@@ -28,10 +28,10 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
                             2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
                             3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
-                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
-                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86']
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
                             ] 
                 }                 
 
