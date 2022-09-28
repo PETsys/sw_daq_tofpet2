@@ -2,100 +2,102 @@ from math import sqrt
 from . import info, spi, fe_eeprom
 
 def lmt86(v):
-	return 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
+    return 30-(10.888-sqrt(118.548544+0.01388*(1777.3-v)))/0.00694
 
 def lmt87(v):
-	return 30-(13.582-sqrt(184.470724+0.01732*(2230.8-v)))/0.00866
+    return 30-(13.582-sqrt(184.470724+0.01732*(2230.8-v)))/0.00866
 
 def lmt70(v):
-	return 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
+    return 205.5894-0.1814103*v-3.325395*10**-6*(v)**2-1.809628*10**-9*(v)**3
 
 def get_max111xx_spiID(module_id):
     return module_id * 256 + 4
 class UnknownTemperatureSensorType(Exception):
-	pass
+    pass
 
 class UnknownModuleType(Exception):
-	pass
+    pass
 
 class TMP104CommunicationError(Exception):
-	#!Implement This As You Wish Ricardo; Maybe pass custom error message as argument?
+    #!Implement This As You Wish Ricardo; Maybe pass custom error message as argument?
     def __init__(self, portID, slaveID, din, dout):
         self.portID, self.slaveID, self.din, self.dout = portID, slaveID, din, dout
         self.message = "Error Message goes here!"
         super().__init__(self.message)
 
 class max111xx_sensor:
-	def __init__(self, conn, portID, slaveID, spi_id, channel_id, location, chip_type):
-		self.__conn = conn
-		self.__portID = portID
-		self.__slaveID = slaveID
-		self.__spi_id = spi_id
-		self.__channel_id = channel_id
-		
-		self.__location = location
-		if chip_type == "LMT86":
-			self.__function = lambda u: lmt86(u*2.5/4.096)
-		elif chip_type == "LMT70":
-			self.__function = lambda u: lmt70(u*2.5/4.096)
-		else:
-			raise UnknownTemperatureSensorType()
-		
-		
-	def get_location(self):
-		return self.__location
-	
-	def get_temperature(self):
-		u = spi.max111xx_read(self.__conn, self.__portID, self.__slaveID, self.__spi_id, self.__channel_id)
-		return self.__function(u)
+    def __init__(self, conn, portID, slaveID, spi_id, channel_id, location, chip_type):
+        self.__conn = conn
+        self.__portID = portID
+        self.__slaveID = slaveID
+        self.__spi_id = spi_id
+        self.__channel_id = channel_id
+        
+        self.__location = location
+        if chip_type == "LMT86":
+            self.__function = lambda u: lmt86(u*2.5/4.096)
+        elif chip_type == "LMT87":
+            self.__function = lambda u: lmt87(u*2.5/4.096)
+        elif chip_type == "LMT70":
+            self.__function = lambda u: lmt70(u*2.5/4.096)
+        else:
+            raise UnknownTemperatureSensorType()
+        
+        
+    def get_location(self):
+        return self.__location
+    
+    def get_temperature(self):
+        u = spi.max111xx_read(self.__conn, self.__portID, self.__slaveID, self.__spi_id, self.__channel_id)
+        return self.__function(u)
 
 ## Initializes the temperature sensors in the FEB/As
 # Return the number of active sensors found in FEB/As
 def fe_temp_enumerate_tmp104(self, portID, slaveID):
-	din = [ 3, 0x55, 0b10001100, 0b10010000 ]
-	din = bytes(din)
-	dout = self.sendCommand(portID, slaveID, 0x04, din)
+    din = [ 3, 0x55, 0b10001100, 0b10010000 ]
+    din = bytes(din)
+    dout = self.sendCommand(portID, slaveID, 0x04, din)
 
-	if len(dout) < 4:
-		# Reply is too short, chain is probably open
-		raise TMP104CommunicationError(portID, slaveID, din, dout)
+    if len(dout) < 4:
+        # Reply is too short, chain is probably open
+        raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-	if (dout[1:2] != din[1:2]) or ((dout[3] & 0xF0) != din[3]):
-		# Reply does not match what is expected; a sensor is probably broken
-		raise TMP104CommunicationError(portID, slaveID, din, dout)
+    if (dout[1:2] != din[1:2]) or ((dout[3] & 0xF0) != din[3]):
+        # Reply does not match what is expected; a sensor is probably broken
+        raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-	nSensors = dout[3] & 0x0F
+    nSensors = dout[3] & 0x0F
 
-	din = [ 3, 0x55, 0b11110010, 0b01100011]
-	din = bytes(din)
-	dout = self.sendCommand(portID, slaveID, 0x04, din)
-	if len(dout) < 4:
-		raise TMP104CommunicationError(portID, slaveID, din, dout)
+    din = [ 3, 0x55, 0b11110010, 0b01100011]
+    din = bytes(din)
+    dout = self.sendCommand(portID, slaveID, 0x04, din)
+    if len(dout) < 4:
+        raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-	din = [ 2 + nSensors, 0x55, 0b11110011 ]
-	din = bytes(din)
-	dout = self.sendCommand(portID, slaveID, 0x04, din)
-	if len(dout) < (3 + nSensors):
-		raise TMP104CommunicationError(portID, slaveID, din, dout)
+    din = [ 2 + nSensors, 0x55, 0b11110011 ]
+    din = bytes(din)
+    dout = self.sendCommand(portID, slaveID, 0x04, din)
+    if len(dout) < (3 + nSensors):
+        raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-	return nSensors
+    return nSensors
 
 ## Reads the temperature found in the specified FEB/D
 # @param portID  DAQ port ID where the FEB/D is connected
 # @param slaveID Slave ID on the FEB/D chain
 # @param nSensors Number of sensors to read
 def fe_temp_read_tmp104(self, portID, slaveID, nSensors):
-		din = [ 2 + nSensors, 0x55, 0b11110001 ]
-		din = bytes(din)
-		dout = self.sendCommand(portID, slaveID, 0x04, din)
-		if len(dout) < (3 + nSensors):
-			raise TMP104CommunicationError(portID, slaveID, din, dout)
+        din = [ 2 + nSensors, 0x55, 0b11110001 ]
+        din = bytes(din)
+        dout = self.sendCommand(portID, slaveID, 0x04, din)
+        if len(dout) < (3 + nSensors):
+            raise TMP104CommunicationError(portID, slaveID, din, dout)
 
-		temperatures = dout[3:]
-		for i, t in enumerate(temperatures):
-			if t > 127: t = t - 256
-			temperatures[i] = t
-		return temperatures
+        temperatures = dout[3:]
+        for i, t in enumerate(temperatures):
+            if t > 127: t = t - 256
+            temperatures[i] = t
+        return temperatures
 
 
 def list_fem128(conn, portID, slaveID, module_id):
