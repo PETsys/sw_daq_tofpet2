@@ -126,7 +126,7 @@ def list_fem256(conn, portID, slaveID, module_id):
         return result
     
     for i in range(4):		
-        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT87"))
+        result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+4, (portID, slaveID, module_id, i, "asic"), "LMT86"))
         result.append(max111xx_sensor(conn, portID, slaveID, spi_id, i+0, (portID, slaveID, module_id, i, "sipm"), "LMT70"))
         
     return result
@@ -149,6 +149,7 @@ def list_from_eeprom(conn, portID, slaveID, module_id):
         s_type   = next(key for key, value in fe_eeprom.SENSOR_TO_BYTE.items() if value == ch_cfg[2]) #Reverse dict lookup ("byte_to_sensor")
         result.append(max111xx_sensor(conn, portID, slaveID, spi_id, adc_ch, (portID, slaveID, module_id, location, device), s_type))
 
+    spi.max111xx_check(conn, portID, slaveID, spi_id)
     return result
 
 def get_sensor_list(conn,debug=False):

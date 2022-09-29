@@ -16,7 +16,7 @@ def expand_ranges(s): #Magical input parser
 
 def main(argv):
     parser = argparse.ArgumentParser(description='EEPROM Programming utility for Petsys Front-End-Modules')
-    parser.add_argument("--fem",        type=str, required=True ,  choices=list(fe_eeprom.fem_parameters.keys()), 
+    parser.add_argument("--fem",        type=str, required=True ,  choices=list(fe_eeprom.FEM_PARAMETERS.keys()), 
                         help="FEM Type on the system (all must be the same)")
     parser.add_argument("--serial",     type=str, required=False,                        
                         help="Comma separated list of SNs (eg: 1,7,2-5,6)")
