@@ -259,7 +259,8 @@ def ad7194_get_channel(conn, portID, slaveID, chipID, channelID):
 	return v
 
 
-
+# kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off;
+# vim: tabstop=8 shiftwidth=8
 
 def max111xx_ll(conn, portID, slaveID, chipID, command):
 	w = 8 * len(command)

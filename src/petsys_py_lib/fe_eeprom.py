@@ -1,3 +1,6 @@
+# kate: indent-mode: python; indent-pasted-text false; indent-width 4; replace-tabs: on;
+# vim: tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
+
 from datetime import datetime
 from . import spi, info
 
