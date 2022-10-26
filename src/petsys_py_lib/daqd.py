@@ -577,6 +577,9 @@ class Connection:
 		data = self.__socket.recv(2)
 		assert len(data) == 2
 
+	def stopAcquisition(self):
+		self.__setAcquisitionMode(0)
+
 	def __getAsicLinkConfiguration(self, portID, slaveID):
 		nLinks = 1 + self.read_config_register(portID, slaveID, 2, 0x0100)
 		if nLinks == 1:
@@ -1177,10 +1180,13 @@ class Connection:
 		data = struct.pack(template, 0x03, n);
 		self.__socket.send(data)
 
-		template = "@HII"
+		template = "@HIII"
 		n = struct.calcsize(template)
 		data = self.__socket.recv(n);
-		n, wrPointer, rdPointer = struct.unpack(template, data)
+		n, wrPointer, rdPointer, amAcquiring = struct.unpack(template, data)
+
+		if amAcquiring == 0:
+			raise ErrorAcquisitionStopped()
 
 		return wrPointer, rdPointer
 
@@ -1438,3 +1444,6 @@ class ErrorTooManyTriggerUnits(Exception):
 		l = [ "(%02d, %02d)" % (p, s) for p, s in self.__trigger_list ]
 		s = (", ").join(l)
 		return "More than one trigger unit has been found: %s" % s
+
+class ErrorAcquisitionStopped(Exception):
+	pass

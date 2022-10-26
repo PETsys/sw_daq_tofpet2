@@ -112,10 +112,11 @@ int Client::doAcqOnOff()
 
 int Client::doGetDataFrameWriteReadPointer()
 {
-	struct { uint16_t length; uint32_t wrPointer; uint32_t rdPointer; }  header;
+	struct { uint16_t length; uint32_t wrPointer; uint32_t rdPointer; uint32_t acqStatus; }  header;
 	header.length = sizeof(header);
 	header.wrPointer = frameServer->getDataFrameWritePointer();
 	header.rdPointer = frameServer->getDataFrameReadPointer();
+	header.acqStatus = frameServer->amAcquiring() ? 1 : 0;
 
 	int status = send(socket, &header, sizeof(header), MSG_NOSIGNAL);
 	if(status < sizeof(header)) return -1;

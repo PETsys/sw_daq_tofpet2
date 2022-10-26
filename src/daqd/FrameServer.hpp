@@ -39,7 +39,8 @@ public:
 	
 	virtual void startAcquisition(int mode);
 	virtual void stopAcquisition();
-	
+	bool amAcquiring();
+
 	virtual uint64_t getPortUp() = 0;
 	virtual uint64_t getPortCounts(int port, int whichCount) = 0;
 
@@ -59,7 +60,6 @@ protected:
 	static const int CommandTimeout = 250; // ms
 	
 	bool parseDataFrame(RawDataFrame *dataFrame);
-	bool amAcquiring();
 	
 	int debugLevel;
 	
