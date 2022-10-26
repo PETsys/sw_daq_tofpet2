@@ -91,11 +91,11 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 		sleep(counter_sharing * T)
 
 		count_high = {}
-		for portID, slaveID, chipID, channelID in activeChannels:
-			v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
-			v = v[0]
-			v = v / COUNT_MAX
-			count_high[(portID, slaveID, chipID, channelID)] = v
+		for portID, slaveID, chipID in activeAsics:
+			vv = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID, 64)
+			for channelID, v in enumerate(vv):
+				v = v / COUNT_MAX
+				count_high[(portID, slaveID, chipID, channelID)] = v
 
 
 		adjustmentMade = False
@@ -159,12 +159,12 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 			s = next_read_start_time - time()
 			if s > 0: sleep(s)
 			next_read_start_time = time() + counter_sharing*T + 1E-3
-			for portID, slaveID, chipID, channelID in activeChannels:
-				# Write out fraction of discriminator active time
-				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
-				v = v[0]
-				v = v / COUNT_MAX
-				outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
+			for portID, slaveID, chipID in activeAsics:
+				vv = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID, 64)
+				for channelID, v in enumerate(vv):
+					# Write out fraction of discriminator active time
+					v = v / COUNT_MAX
+					outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
 
 		stdout.write(".")
 		stdout.flush()
@@ -210,12 +210,12 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 			s = next_read_start_time - time()
 			if s > 0: sleep(s)
 			next_read_start_time = time() + counter_sharing*T + 1E-3
-			for portID, slaveID, chipID, channelID in activeChannels:
-				# Write out event frequency
-				v = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID + channelID, 1)
-				v = v[0]
-				v = v / T
-				outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
+			for portID, slaveID, chipID in activeAsics:
+				vv = daqd.read_mem_ctrl(portID, slaveID, 5, 24, 64*chipID, 64)
+				for channelID, v in enumerate(vv):
+					# Write out event frequency
+					v = v / T
+					outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
 				
 		stdout.write(".")
 		stdout.flush()
