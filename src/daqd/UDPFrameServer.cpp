@@ -156,7 +156,9 @@ void *UDPFrameServer::doWork()
 					pthread_mutex_unlock(&m->lock);
 					
 					memcpy(dataFrame->data, p, frameSize * sizeof(uint64_t));
+					p += frameSize;
 					if(!m->parseDataFrame(dataFrame)) break;
+					if(dataFrame->getFrameID() < minimumFrameID) continue;
 					
 					pthread_mutex_lock(&m->lock);					
 					if(dataFrame != devNull) {
@@ -164,7 +166,6 @@ void *UDPFrameServer::doWork()
 					}
 					pthread_cond_signal(&m->condDirtyDataFrame);
 					pthread_mutex_unlock(&m->lock);
-					p += frameSize;
 					
 				} while(p < dataBuffer + nWords);
 				

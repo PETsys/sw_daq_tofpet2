@@ -17,6 +17,7 @@ static const uint16_t commandSetSorter = 0x09;
 static const uint16_t commandSetTrigger = 0x10;
 static const uint16_t commandSetIdleTimeCalculation = 0x11;
 static const uint16_t commandSetGateEnable = 0x12;
+static const uint16_t commandSetMinimumFrameID = 0x13;
 
 }
 #endif

@@ -336,8 +336,9 @@ void *DAQFrameServer::doWork()
 
 		// Store data if we are in acquisition mode and
 		// - Frame is not lost
+		// - Frame IS greater than minimum frame ID set by acquisition
 		// - Frame is lost but frameID is a multiple of 128 (forward at least 1% so the process does not freeze)
-		if((acquisitionMode != 0) && (!frameLost || ((expectedFrameID % 128) == 0))) {
+		if((acquisitionMode != 0) && (!frameLost || ((expectedFrameID % 128) == 0)) && (expectedFrameID >= minimumFrameID)) {
 			pthread_mutex_lock(&lock);
 			if(!isFull(dataFrameWritePointer, dataFrameReadPointer)) {
 				dst = &shmPtr[dataFrameWritePointer % MaxRawDataFrameQueueSize];

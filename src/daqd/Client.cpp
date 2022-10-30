@@ -68,7 +68,9 @@ int Client::handleRequest()
 		actionStatus = doSetIdleTimeCalculation();
 	else if(cmdHeader.type == commandSetGateEnable)
 		actionStatus = doSetGateEnable();
-	
+	else if(cmdHeader.type == commandSetMinimumFrameID)
+		actionStatus = doSetMinimumFrameID();
+
 	if(actionStatus == -1) {
 		fprintf(stderr, "Error handling client %d, command was %u\n", socket, unsigned(cmdHeader.type));
 		return -1;
@@ -225,6 +227,17 @@ int Client::doSetGateEnable()
 	memcpy(&mode, socketBuffer + sizeof(CmdHeader_t), sizeof(mode));
 	int32_t reply = frameServer->setGateEnable(mode);
 	
+	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
+	if(status < sizeof(reply)) return -1;
+	return 0;
+}
+
+int Client::doSetMinimumFrameID()
+{
+	uint64_t minimumFrameID;
+	memcpy(&minimumFrameID, socketBuffer + sizeof(CmdHeader_t), sizeof(minimumFrameID));
+	int32_t reply = frameServer->setMinimumFrameID(minimumFrameID);
+
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
 	if(status < sizeof(reply)) return -1;
 	return 0;

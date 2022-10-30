@@ -29,6 +29,7 @@ private:
 	int doSetTrigger();
 	int doSetIdleTimeCalculation();
 	int doSetGateEnable();
+	int doSetMinimumFrameID();
 };
 
 }

@@ -48,6 +48,7 @@ public:
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setIdleTimeCalculation(unsigned mode);
 	virtual int setGateEnable(unsigned mode);
+	virtual int setMinimumFrameID(unsigned long long frameID);
 	
 	static void allocateSharedMemory(const char * shmName, int &shmfd, RawDataFrame * &shmPtr);
 	static void freeSharedMemory(const char * shmName, int shmfd, RawDataFrame *shmPtr);
@@ -64,6 +65,8 @@ protected:
 	int debugLevel;
 	
 	int8_t *feTypeMap;
+
+	unsigned long long minimumFrameID;
 	
 	const char *shmName;
 	int shmfd;
