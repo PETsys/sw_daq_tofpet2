@@ -1153,6 +1153,84 @@ class Connection:
 		self.checkAsicRx()
 
 		return None
+
+        ## Acquires data and decodes it into a bytes buffer
+        # @param acquisitionTime Acquisition time in seconds
+	# @return A bytes buffer containing events as per shw_raw_py.cpp/unpacked_event_t
+	def acquireAsBytes(self, acquisitionTime):
+		frameLength = 1024.0 / self.__systemFrequency
+		nRequiredFrames = int(acquisitionTime / frameLength)
+
+		self.__synchronizeDataToConfig()
+		wrPointer, rdPointer = (0, 0)
+		while wrPointer == rdPointer:
+			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+
+		bs = self.__shm.getSizeInFrames()
+		index = rdPointer % bs
+		startFrame = self.__shm.getFrameID(index)
+		stopFrame = startFrame + nRequiredFrames
+
+		t0 = time()
+		nBlocks = 0
+		currentFrame = startFrame
+		nFrames = 0
+		lastUpdateFrame = currentFrame
+		data = bytes()
+
+		while currentFrame < stopFrame:
+			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+			while wrPointer == rdPointer:
+				wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+
+			nFramesInBlock = abs(wrPointer - rdPointer)
+			if nFramesInBlock > bs:
+				nFramesInBlock = 2*bs - nFramesInBlock
+
+			# Don't use more frames than needed
+			framesToTarget = stopFrame - currentFrame
+			if nFramesInBlock > framesToTarget:
+				nFramesInBlock = framesToTarget
+
+
+			# Do not feed more than bs/2 frame blocks to writeRaw in a single call
+			# Because the entire frame block won't be freed until writeRaw is done, we can end up in a situation
+			# where writeRaw owns all frames and daqd has no buffer space, even if writeRaw has already processed
+			# some/most of the frame block
+			if nFramesInBlock > bs/2:
+                                nFramesInBlock = bs/2
+
+			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
+
+			#data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
+			#pin.write(data); pin.flush()
+
+			#data = pout.read(n2)
+			#rdPointer,  = struct.unpack(template2, data)
+
+			data += self.__shm.events_as_bytes(rdPointer, wrPointer)
+			rdPointer = wrPointer
+
+
+			index = (rdPointer + bs - 1) % bs
+			currentFrame = self.__shm.getFrameID(index)
+
+			self.__setDataFrameReadPointer(rdPointer)
+
+			nFrames = currentFrame - startFrame + 1
+			nBlocks += 1
+			if (currentFrame - lastUpdateFrame) * frameLength > 0.1:
+				t1 = time()
+				stdout.write("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)\r" % (nFrames, t1-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+				stdout.flush()
+				lastUpdateFrame = currentFrame
+		t1 = time()
+		print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+
+		# Check ASIC link status at end of acquisition
+		self.checkAsicRx()
+
+		return data
 	
 	def checkAsicRx(self):
 		bad_rx_found = False
