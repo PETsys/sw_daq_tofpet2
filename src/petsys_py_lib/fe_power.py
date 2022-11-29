@@ -5,17 +5,17 @@ from . import i2c, spi
 from time import sleep
 from itertools import chain
 
-DS44XX_ADR  = { "vdd1" : [0x96, 0xF8], # [chipID, regID]
-                "vdd2" : [0x90, 0xF8], # [chipID, regID]
-                "vdd3" : [0x90, 0xF9]} # [chipID, regID]
+DS44XX_ADR  = { "vdd1" : [0x90, 0xF8, 0x4], # [chipID, regID, muxID]
+                "vdd2" : [0x90, 0xF8, 0x5], # [chipID, regID, muxID]
+                "vdd3" : [0x90, 0xF9, 0x5]} # [chipID, regID, muxID]
 
 VDD1_TARGET = 1.4
 VDD2_TARGET = 2.75
 VDD3_TARGET = 3.25
 
-VDD1_PRESET = {"min" : 0x80 + 0x1F, "max": 0x00 + 0x1F, "baseline": 155}
-VDD2_PRESET = {"min" : 0x80 + 0x7F, "max": 0x00 + 0x7F, "baseline": 35}
-VDD3_PRESET = {"min" : 0x80 + 0x7F, "max": 0x00 + 0x7F, "baseline": 70}
+VDD1_PRESET = {"min" : 0x80 + 0x7F, "max": 0x00 + 0x7F, "baseline": 12}
+VDD2_PRESET = {"min" : 0x80 + 0x7F, "max": 0x00 + 0x7F, "baseline": 0x80 + 23}
+VDD3_PRESET = {"min" : 0x80 + 0x7F, "max": 0x00 + 0x7F, "baseline": 45}
 
 class RSenseReadError(Exception):
     def __init__(self, portID, slaveID, busID, adcID):
@@ -37,7 +37,7 @@ def chk_power_good(conn, portID, slaveID, busID):
     pg_lst = [ (x >> (busID-1)) & 0x1 for x in read_power_good(conn, portID, slaveID)]
     if pg_lst != [1, 1, 1]:
         fem_power_8k(conn, portID, slaveID, "off")
-        print(f'FATAL ERROR: Power Good Check FAILED @ busID {busID}! pg_reg = {pg_lst} !')
+        print(f'ERROR: Power Good Check FAILED @ busID {busID}! pg_reg = {pg_lst} !')
         exit(1)
     return pg_lst
 
@@ -75,7 +75,9 @@ def read_sense(conn, portID, slaveID, busID, debug = False, gnd_max_filter = 0.1
 def set_dac(conn, portID, slaveID, busID, rail, setting):
     chipID = DS44XX_ADR[rail][0]
     regID  = DS44XX_ADR[rail][1]
-    i2c.ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, setting, debug_error=True)
+    muxID  = DS44XX_ADR[rail][2]
+    i2c.PI4MSD5V9540B_set_register(conn, portID, slaveID, busID, 0xE0, muxID, debug_error=False)
+    i2c.ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, setting, debug_error=False)
 
 def set_all_dacs(conn, portID, slaveID, busID, vdd1, vdd2, vdd3):
     set_dac(conn, portID, slaveID, busID, "vdd1", vdd1) # VDD1
@@ -106,16 +108,16 @@ def ramp_up_rail(conn, portID, slaveID, busID, rail, range_to_iterate, max, targ
 
 
 def fem_power_8k(conn, portID, slaveID, power):
-    busID_lst = []
-    for testID in [1,2,3,4]:
-        for reading in read_sense(conn, portID, slaveID, testID):
-            if reading[3] < 0.1:
-                busID_lst.append(testID)
-                break;
-    print(f"INFO: Found the following active busIDs = {busID_lst}")
     if power == "on":
         #Initialize DC-DC blocks
         print("INFO: Initializing DCDC blocks.")
+        busID_lst = []
+        for testID in [1,2,3,4]:
+            for reading in read_sense(conn, portID, slaveID, testID):
+                if reading[3] < 0.1:
+                    busID_lst.append(testID)
+                    break;
+        print(f"INFO: Found the following active busIDs = {busID_lst}")
         for busID in busID_lst:
             set_all_dacs(conn, portID, slaveID, busID, VDD1_PRESET["baseline"], VDD2_PRESET["baseline"], VDD3_PRESET["baseline"])
         #Power ON and stabilize
@@ -127,32 +129,34 @@ def fem_power_8k(conn, portID, slaveID, power):
         #Ramp up rails bus by bus
         for busID in busID_lst:
             print(f"INFO: Ramping up busID {busID}.")
-            vdd1_iterable = chain(range(VDD1_PRESET["baseline"], 0x80 + 1, -2), range(1, VDD1_PRESET["max"] + 1, 2))
-            vdd2_iterable =       range(VDD2_PRESET["baseline"], VDD2_PRESET["max"] + 1,  5)  
-            vdd3_iterable =       range(VDD3_PRESET["baseline"], VDD3_PRESET["max"] + 1,  5)
+            vdd1_iterable =       range(VDD1_PRESET["baseline"], VDD1_PRESET["max"] + 1,  4)
+            vdd2_iterable = chain(range(VDD2_PRESET["baseline"], 0x80 + 1, -2), range(1, VDD2_PRESET["max"] + 1, 4))
+            vdd3_iterable =       range(VDD3_PRESET["baseline"], VDD3_PRESET["max"] + 1,  4)
 
             vdd1_setpoint = ramp_up_rail(conn, portID, slaveID, busID, "vdd1", vdd1_iterable, VDD1_PRESET["max"], VDD1_TARGET)
             vdd2_setpoint = ramp_up_rail(conn, portID, slaveID, busID, "vdd2", vdd2_iterable, VDD2_PRESET["max"], VDD2_TARGET)
             vdd3_setpoint = ramp_up_rail(conn, portID, slaveID, busID, "vdd3", vdd3_iterable, VDD3_PRESET["max"], VDD3_TARGET)
 
             #Ramp up VDD1 again
-            if vdd1_setpoint < 0x80:
-                vdd1_iterable2 = range(vdd1_setpoint, VDD1_PRESET["max"] + 1, 1)
-            else:
-                vdd1_iterable2 = chain(range(vdd1_setpoint, 0x80 + 1, -2), range(1, VDD1_PRESET["max"] + 1, 2)) 
+            vdd1_iterable2 = range(vdd1_setpoint, VDD1_PRESET["max"] + 1, 1)
             vdd1_setpoint = ramp_up_rail(conn, portID, slaveID, busID, "vdd1", vdd1_iterable2, VDD1_PRESET["max"], VDD1_TARGET)
             
-            #read_sense(conn, portID, slaveID, busID, debug = True, gnd_max_filter=2.51)
+            #read_sense(conn, portID, slaveID, busID, debug = True)
         #Check Power Goods
-        chk_power_good(conn, portID, slaveID, busID)
+        for busID in busID_lst:
+            chk_power_good(conn, portID, slaveID, busID)
         print("INFO: Power is ON.")
 
-        return vdd1_setpoint, vdd2_setpoint, vdd3_setpoint
     
     elif power == "off":
         conn.write_config_register(portID, slaveID, 2, 0x0213, 0)
-        for busID in busID_lst:
-            set_all_dacs(conn, portID, slaveID, busID, 0, 0, 0)
+        for busID in [1,2,3,4]:
+            try:
+                set_all_dacs(conn, portID, slaveID, busID, 0, 0, 0)
+            except:
+                print(f"WARNING: FAILED TO COMMUNICATE WITH DCDC MODULE {busID}. IF A MODULE IS PRESENT CONTACT SUPPORT.")
+            else:
+                print(f"INFO: Shutting down DCDC module {busID}")
         print("INFO: Power is OFF.")
 
 def fem_power_original(conn, portID, slaveID, power):
