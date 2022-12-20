@@ -1,28 +1,44 @@
+# kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off;
+# vim: tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab
+
 #
 # A library of functions to control various SPI devices based on the system SPI master
 #
 
 import time
 
-def spi_reg_ll(conn, portID, slaveID, chipID, command, read_count):
-        w = 0
-        r = 16
-        p = 2
-        w_padding = [ 0xFF for n in range(p) ]
-        r_padding = [ 0xFF for n in range(p + read_count) ]
-        p = 8 * p
+def spi_reg_ll(conn, portID, slaveID, chipID, data_out):
+	p = 2
+	padding = [ 0xFF for n in range(p) ]
+	p = 8 * p
+	w = len(data_out) * 8
 
-        # Pad the cycle with zeros
-        return conn.spi_master_execute(portID, slaveID, chipID,
-                p+w+r+p,          # cycle
-                p,p+w+r,          # sclk en
-                p-1,p+w+r+1,      # cs
-                0, p+w+r+p,       # mosi
-                p+w-0,p+w+r-0,    # miso #? I don't understand the need for the -1
-                w_padding + command + r_padding, miso_edge = "falling")
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		p+w+p,          # cycle
+		p,p+w,          # sclk en
+		p-1,p+w+1,      # cs
+		0, p+w+p,       # mosi
+		p,p+w,
+		padding + data_out + padding, miso_edge = "falling")
 
+def spi_reg(conn, portID, slaveID, chipID, l, data_out):
+	data_out = [ (data_out >> k) & 0xFF for k in range(0, l, 8) ]
+	data_out = data_out[::-1]
+	
+
+	r = spi_reg_ll(conn, portID, slaveID, chipID, data_out)
+	
+	
+	r = r[1:-1]
+	#print(r)
+	r = [ v << (l - 8 - 8*k) for k, v in enumerate(r) ]
+	r = sum(r)
+	
+	return r
 
 class ADCException(Exception): pass
+class DACException(Exception): pass
 
 def ad5535_ll(conn, portID, slaveID, chipID, data):
 	"""! AD5535 DAC SPI low level coding
@@ -117,8 +133,23 @@ def ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value):
 
 	@return Data received from the SPI bus returned by spi_master_execute()
 	"""
+	
+	# Do multiple attempts at setting the DAC if needed
+	for attempt in range(2):
+		if ltc2668_set_channel_(conn, portID, slaveID, chipID, channelID, value):
+			return True
+	raise DACException("LTC2668 set failed")
+	
+def ltc2668_set_channel_(conn, portID, slaveID, chipID, channelID, value):	
 	command = [ 0b00110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
-	return ltc2668_ll(conn, portID, slaveID, chipID, command)
+	ltc2668_ll(conn, portID, slaveID, chipID, command)
+
+	# Read the result of the previous command to check it was sent properly
+	command2 = [ 0b11110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
+	r = ltc2668_ll(conn, portID, slaveID, chipID, command2)
+	r = [ r[2], r[3], r[1] ]
+	
+	return command == r
 
 
 def ltc2418_ll(conn, portID, slaveID, chipID, command):
@@ -149,7 +180,7 @@ def ltc2418_ll(conn, portID, slaveID, chipID, command):
 		mosi_edge = "rising")
 
 
-def ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 2):
+def ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 10):
 	"""! LTC2418 ADC SPI read channel
 
 	@param conn daqd connection object
@@ -158,42 +189,60 @@ def ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 2):
 	@param chipID SPI slave number
 	@param channel ADC channel to be read
 
-	@return Data received from the SPI bus returned by spi_master_execute()
+	@return Data returned by ADC
 	"""
-	CONVERSION_TIME = 0.17 #Conversion should take at most 164ms
+	MAX_CONVERSION_TIME = 0.17 #Conversion should take at most 164ms
 	
 	# EN  = 1 to change channel
-    # SGL = 1 for single-ended mode
+	# SGL = 1 for single-ended mode
 	base_cmd = 0b10110000  # 1 0 EN SGL OS A2 A1 A0
 	os       = 8 * (channel %2) # ODD/SIGN
 	adr      = channel // 2     # A2 A1 A0
 	command  = [base_cmd + os + adr]
+	
+	expected_readback = command[0] & 0x1F 
 
 	#Change Channel
 	r = ltc2418_ll(conn, portID, slaveID, chipID, command)
-	time.sleep(CONVERSION_TIME)
 
 	#Get Reading for desired channel
-	n = 0
+	t0 = time.time()
 	while True:
-		n +=1
 		r = ltc2418_ll(conn, portID, slaveID, chipID, command)
-		eoc = (int.from_bytes(r[1:-1], "big") >> 31) & 0x1
-		if eoc == 0:
-			break;
-		if n == MAX_TRIES:
-			raise ADCException("End Of Conversion failed.")
-		time.sleep(CONVERSION_TIME)
-	
-
-	read_bytes = int.from_bytes(r[1:-1], "big")
-	signal     = (read_bytes >> 29) & 0x1       #1  bit
-	value      = (read_bytes >>  6) & 0x7FFFFF  #23 bits
-	readback   = (read_bytes >>  1) & 0x1F      #5  bits
 		
+		read_bytes = int.from_bytes(r[1:-1], "big")
+		signal     = (read_bytes >> 29) & 0x1       #1  bit
+		value      = (read_bytes >>  6) & 0x7FFFFF  #23 bits
+		readback   = (read_bytes >>  1) & 0x1F      #5  bits
+		eoc        = (read_bytes >> 31) & 0x1
+
+
+		if eoc == 0 and (readback == expected_readback):
+			break
+			
+		if (time.time() - t0) > (MAX_TRIES*MAX_CONVERSION_TIME):
+			raise ADCException("End Of Conversion failed.")
+			
+		time.sleep(0.2*MAX_CONVERSION_TIME)
+
 	return signal, value, readback
 
+def ltc2418_read2(conn, portID, slaveID, chipID, channel, MAX_TRIES = 10):
+	"""! LTC2418 ADC SPI read channel
 
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param channel ADC channel to be read
+
+	@return Data returned by ADC"""
+	
+	signal, value, readback = ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES)
+	if signal != 1:
+		value = -value
+	return value
+	
 
 def ad7194_ll(conn,  portID, slaveID, chipID, command, read_count):
 	"""! AD7194 ADC SPI low level coding
@@ -215,7 +264,7 @@ def ad7194_ll(conn,  portID, slaveID, chipID, command, read_count):
 	p = 8 * p
 
 	# Pad the cycle with zeros
-	return conn.spi_master_execute(portID, slaveID, chipID,
+	r = conn.spi_master_execute(portID, slaveID, chipID,
 		p+w+r+p, 		# cycle
 		p,p+w+r+1, 		# sclk en
 		p-1,p+w+r+1,		# cs
@@ -224,6 +273,8 @@ def ad7194_ll(conn,  portID, slaveID, chipID, command, read_count):
 		w_padding + command + r_padding,
 		freq_sel=1,
 		miso_edge="falling")
+	
+	return r
 
 
 def ad7194_get_channel(conn, portID, slaveID, chipID, channelID):
@@ -259,8 +310,6 @@ def ad7194_get_channel(conn, portID, slaveID, chipID, channelID):
 	return v
 
 
-# kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off;
-# vim: tabstop=8 shiftwidth=8
 
 def max111xx_ll(conn, portID, slaveID, chipID, command):
 	w = 8 * len(command)

@@ -30,7 +30,7 @@ class DACMaximumReached(Exception):
         super().__init__(self.message)
 
 def read_power_good(conn, portID, slaveID):
-    cfg_reg = spi.spi_reg_ll(conn, portID, slaveID, 0x901B, [ 0x00 ], 16)   # {2'b00, !switch1, leds_oe, vdd3_pg, vdd2_pg, vdd1_pg }
+    cfg_reg = spi.spi_reg_ll(conn, portID, slaveID, 0x901B, [ 0x00, 0x00 ])   # {2'b00, !switch1, leds_oe, vdd3_pg, vdd2_pg, vdd1_pg }
     return [cfg_reg[2] & 0x0F, (cfg_reg[2] >> 4) & 0x0F, cfg_reg[1] & 0x0F] # [vdd1_pg, vdd2_pg, vdd3_pg]
 
 def chk_power_good(conn, portID, slaveID, busID):
