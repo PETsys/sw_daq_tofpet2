@@ -239,18 +239,21 @@ int main(int argc, char *argv[])
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
 	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, FILE_ROOT, eventFractionToWrite);
-	
-	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
+
+	int stepIndex = 0;
+	while(reader->getNextStep()) {
 		float step1, step2;
-		reader->getStepValue(stepIndex, step1, step2);
-		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
+		reader->getStepValue(step1, step2);
+
+		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
-		reader->processStep(stepIndex, true,
+		reader->processStep(true,
 				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<RawHit>()
 				));
 		
 		dataFileWriter->closeStep(step1, step2);
+		stepIndex += 1;
 	}
 
 	delete dataFileWriter;

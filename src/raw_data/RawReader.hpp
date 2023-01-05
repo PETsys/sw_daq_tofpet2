@@ -37,24 +37,25 @@ namespace PETSYS {
 		bool isTOT();
 		double getFrequency();
 		int getTriggerID();
-		int getNSteps();
-		void getStepValue(int n, float &step1, float &step2);
-		void processStep(int n, bool verbose, EventSink<RawHit> *pipeline);
-		void processLastStep(bool verbose, EventSink<RawHit> *pipeline);
+
+		bool getNextStep();
+		void getStepValue(float &step1, float &step2);
+		void processStep(bool verbose, EventSink<RawHit> *pipeline);
 
 	private:
 		RawReader();
 		void processRange(unsigned long begin, unsigned long end, bool verbose, EventSink<RawHit> *pipeline);
 
-		struct Step {
-                        float step1;
-                        float step2;
-                        unsigned long long stepBegin;
-                        unsigned long long stepEnd;
-			long long stepFirstFrame;
-			long long stepLastFrame;
-                };
-                std::vector<Step> steps;
+		FILE *indexFile;
+		bool indexIsTemp;
+
+		float stepValue1, stepValue2;
+		unsigned long long stepBegin;
+		unsigned long long stepEnd;
+		unsigned long long getStepBegin();
+		unsigned long long getStepEnd();
+
+
 		int dataFile;
 		char *dataFileBuffer;
 		char *dataFileBufferPtr;
