@@ -69,7 +69,6 @@ void DAQFrameServer::stopAcquisition()
 	for(auto card = cards.begin(); card != cards.end(); card++) {
 		(*card)->setAcquistionOnOff(false);
 	}
-
 }
 
 int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int bufferSize, int commandLength)
@@ -92,7 +91,7 @@ int DAQFrameServer::sendCommand(int portID, int slaveID, char *buffer, int buffe
 
 	uint16_t sentSN = (unsigned(buffer[0]) << 8) + unsigned(buffer[1]);
 	
-	const int MAX_PACKET_WORDS = 8;
+	const int MAX_PACKET_WORDS = 256;
 	int packetLength = 2 + ceil(commandLength / 8.0);
 	if(packetLength > MAX_PACKET_WORDS) {
 		fprintf(stderr, "Error in DAQFrameServer::sendCommand(): packet length %d is too large.\n", packetLength);
@@ -208,27 +207,19 @@ bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
 {
 	while(!die) {
 		int nWords;
-		// If we are comming back from a bad frame, let's dump until we read an idle
-		if(lastFrameWasBad) {
-			if(!card->lookForWords(IDLE_WORD, true)) continue;
-		}
-
 		lastFrameWasBad = true;
-		// Look for a non-filler
-		if(!card->lookForWords(IDLE_WORD, false)) continue;
 
 		// Read 3 words which should be a HEADER_WORD and the two first words of a frame
-		nWords = card->getWords(dst, 3);
-		if (nWords != 3) continue;
-		if(dst[0] != HEADER_WORD) continue;
+		nWords = card->getWords(dst, 2);
+		//fprintf(stderr, "DEBUG %016llx %016llx\n", dst[0], dst[1]);
+		if (nWords != 2) continue;
 
-		uint64_t frameSource = (dst[1] >> 54) & 0x400;
-		uint64_t frameType = (dst[1] >> 51) & 0x7;
-		uint64_t frameSize = (dst[1] >> 36) & 0x7FFF;
-		uint64_t frameID = (dst[1] ) & 0xFFFFFFFFF;
-		uint64_t nEvents = dst[2] & 0xFFFF;
-		bool frameLost = (dst[2] & 0x10000) != 0;
-
+		uint64_t frameSource = (dst[0] >> 54) & 0x400;
+		uint64_t frameType = (dst[0] >> 51) & 0x7;
+		uint64_t frameSize = (dst[0] >> 36) & 0x7FFF;
+		uint64_t frameID = (dst[0]) & 0xFFFFFFFFF;
+		uint64_t nEvents = dst[1] & 0xFFFF;
+		bool frameLost = (dst[1] & 0x10000) != 0;
 
 		if((frameType != 0x1) || (frameSource != 0)) {
 			fprintf(stderr, "Bad frame header: %04lx %04lx\n", frameType, frameSource);
@@ -245,11 +236,12 @@ bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
 			continue;
 		}
 
-		// Read the rest of the expected event words plus the TRAILER_WORD
-		nWords = card->getWords(dst+3, nEvents + 2);
-		if(nWords != (nEvents + 2)) continue;
-		if(dst[frameSize+1] != TRAILER_WORD) continue;
-		if(dst[frameSize+2] != IDLE_WORD) continue;
+		// Read the rest of the expected event words
+
+		if (nEvents != 0) {
+			nWords = card->getWords(dst+2, nEvents);
+			if(nWords != (nEvents)) continue;
+		}
 
 		// If we got here, we got a good data frame
 		lastFrameWasBad = false;
@@ -264,165 +256,35 @@ bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
 
 void *DAQFrameServer::doWork()
 {
-	int nCards = cards.size();
-
-	bool cfValid[nCards];
-
-	// Initial fill with frame data
-	size_t bs = MaxRawDataFrameSize + 4;
-	for(int i = 0; i < nCards; i++) {
-		cfValid[i] = getFrame(cards[i], cfData + bs * i);
-	}
-	if(die) return NULL;
-
-	long long expectedFrameID = 1LL<<62;
-	for(int i = 0; i < nCards; i++) {
-		uint64_t *words = cfData + bs*i + 1;
-                long long frameID = words[0] & 0xFFFFFFFFF;
-		if(frameID < expectedFrameID) expectedFrameID = frameID;
-	}
-
-	// Read frames from various cards until they're all at the expected frameID or ahead
-	for(int i = 0; i < nCards; i++) {
-		uint64_t *words = cfData + bs*i + 1;
-		long long frameID = words[0] & 0xFFFFFFFFF;
-		while(frameID < expectedFrameID) {
-			cfValid[i] = getFrame(cards[i], cfData + i);
-			if(die) return NULL;
-			frameID = words[0] & 0xFFFFFFFFF;
-		}
-        }
-
 	while(!die) {
-		// Fill out the cards' buffer for any consumed frames
-		for(int i = 0; i < nCards; i++) {
-			if(!cfValid[i]) {
-				cfValid[i] = getFrame(cards[i], cfData + bs*i);
-				if(die) return NULL;
-			}
-		}
-
-		// WARNING The following is a failsafe which should never be needed
-		// Consider removing this code
-		// Read frames from various cards until they're all at the expected frameID or ahead
-		for(int i = 0; i < nCards; i++) {
-			uint64_t *words = cfData + bs*i + 1;
-			long long frameID = words[0] & 0xFFFFFFFFF;
-
-			while(frameID < expectedFrameID) {
-				cfValid[i] = getFrame(cards[i], cfData + bs*i);
-				if(die) return NULL;
-				frameID = words[0] & 0xFFFFFFFFF;
-			}
-
-		}
-
-		// Check if output frame will be a lost frame
-		bool frameLost = false;
-		for(int i = 0; i < nCards; i++) {
-			uint64_t *words = cfData + bs*i + 1;
-	                long long frameID = words[0] & 0xFFFFFFFFF;
-
-
-			if(frameID != expectedFrameID) {
-				frameLost = true;
-				continue;
-			}
-
-			frameLost |= (words[1] & 0x10000) != 0;
-		}
+		if(acquisitionMode == 0) continue;
 
 		RawDataFrame *dst = NULL;
-
-		// Store data if we are in acquisition mode and
-		// - Frame is not lost
-		// - Frame IS greater than minimum frame ID set by acquisition
-		// - Frame is lost but frameID is a multiple of 128 (forward at least 1% so the process does not freeze)
-		if((acquisitionMode != 0) && (!frameLost || ((expectedFrameID % 128) == 0)) && (expectedFrameID >= minimumFrameID)) {
 			pthread_mutex_lock(&lock);
 			if(!isFull(dataFrameWritePointer, dataFrameReadPointer)) {
 				dst = &shmPtr[dataFrameWritePointer % MaxRawDataFrameQueueSize];
 			}
 			pthread_mutex_unlock(&lock);
-		}
 
-		if(dst != NULL) {
-			uint64_t *dst_data = dst->data;
-			if(frameLost) {
-				// This frame is lost for some reason so just assemble an empty frame
-				// with the correct frameID and the lostFrame flat set
-				dst_data[0] = (2LL << 36) | expectedFrameID;
-				dst_data[1] = 1 << 16;
-			}
-			else {
-				uint64_t nEvents = 0;
+		if(dst == NULL) continue;
+		getFrame(cards[0], dst->data);
 
-				uint64_t *cfNextPtr[nCards];
-				uint64_t *cfEndPtr[nCards];
-				unsigned short cfNextTCoarse[nCards];
+		
+		// Do not store frames older than minimumFrameID
+		if(dst->getFrameID() < minimumFrameID) continue;
+		
+		// Store data if we are in acquisition mode and
+		// - Frame is not lost
+		// - Frame is lost but frameID is a multiple of 128 (forward at least 1% so the process does not freeze)
+		if(dst->getFrameLost() && (dst->getFrameID() % 128 != 0)) continue;
 
-				for(int i = 0; i < nCards; i++) {
-					uint64_t *words = cfData + bs*i + 1;
-					cfNextPtr[i] = words + 2;
-					cfEndPtr[i] = cfNextPtr[i] + (words[1] & 0xFFFF);
-
-					cfNextTCoarse[i] = (cfNextPtr[i] != cfEndPtr[i]) ? ((*cfNextPtr[i]) >> 30 % 1024) : 0xFFFF;
-				}
-
-				while(true) {
-					// Pick the source with the oldest event (lowest time tag)
-					int selCard = -1;
-					unsigned short selTCoarse = 0xFFFF;
-					for(int i = 0; i < nCards; i++) {
-						if(cfNextPtr[i] != cfEndPtr[i])
-							if(cfNextTCoarse[i] <= selTCoarse) {
-								selTCoarse = cfNextTCoarse[i];
-								selCard = i;
-							}
-					}
-
-					if(selCard == -1) {
-						// Nothing was selected which means all sources were exausted
-						break;
-					}
-
-					uint64_t cardID_shifted = (uint64_t(selCard) << (63 - daqCardPortBits));
-					uint64_t eventWord = (*cfNextPtr[selCard]);
-					dst_data[nEvents + 2] = cardID_shifted | eventWord;
-
-					// Update output event count
-					if(nEvents  < (MaxRawDataFrameSize-2)) nEvents += 1;
-
-					// Update the source
-					cfNextPtr[selCard] += 1;
-					cfNextTCoarse[selCard] = (cfNextPtr[selCard] != cfEndPtr[selCard]) ? ((*cfNextPtr[selCard]) >> 30 % 1024) : 0xFFFF;
-				}
-
-				// Write the frame headers
-				dst_data[0] = ((nEvents+2) << 36) | expectedFrameID;
-				dst_data[1] = nEvents;
-			}
-
-			// Update the shared memory pointers to signal a new frame has been written
+			 // Update the shared memory pointers to signal a new frame has been written
 			pthread_mutex_lock(&lock);
 			dataFrameWritePointer = (dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
 			pthread_mutex_unlock(&lock);
-		}
-
-		for(int i = 0; i < nCards; i++) {
-			// Mark all sources with the correct frameID as invalid since they were consumed
-			uint64_t *words = cfData + bs*i + 1;
-			long long frameID = words[0] & 0xFFFFFFFFF;
-			if(frameID == expectedFrameID) {
-				cfValid[i] = false;
-			}
-		}
-
-		expectedFrameID += 1;
-
-
 
 	}
+
 	return NULL;
 }
 

@@ -79,8 +79,9 @@ struct bar_t {
 	void __iomem *addr;
 };
 
+#define NUM_PARTITION 32
 #define MAX_TLP_SIZE 256
-#define BUF_SIZE 262144
+#define BUF_SIZE 2048*8*NUM_PARTITION
 
 /* Private structure */
 struct psdaq_dev_t {
@@ -92,8 +93,8 @@ struct psdaq_dev_t {
 	size_t tlp_size;
 	char *dma_buf;
 	dma_addr_t dma_hwaddr;
-	size_t dma_fill;
-	size_t dma_used;
+	size_t dma_wr_pointer;
+	size_t dma_rd_pointer;
 };
 #define READ_BAR0_REG(reg) readl(psdaq_dev->bar[0].addr + 4*reg)
 #define WRITE_BAR0_REG(reg, val) writel(val, psdaq_dev->bar[0].addr + 4*reg)
@@ -101,6 +102,9 @@ struct psdaq_dev_t {
 
 static struct class *psdaq_dev_class;
 static unsigned device_counter = 0;
+
+//static unsigned print_counter = 100;
+
 
 static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
 {
@@ -154,6 +158,15 @@ static void psdaq_initcard(struct pci_dev *pdev, struct psdaq_dev_t *psdaq_dev)
 	WRITE_BAR0_REG(3, psdaq_dev->tlp_size/4);          // Write: Write DMA TLP Size register with defined default value
 	WRITE_BAR0_REG(4, psdaq_dev->tlp_count);           // Write: Write DMA TLP Count register with defined default value
 	WRITE_BAR0_REG(5, 0x00000000);          // Write: Write DMA TLP Pattern register with default value (0x0)
+
+
+	// Setting up the circular buffer
+	WRITE_BAR0_REG(25, 0x40000000 | (psdaq_dev->tlp_count/NUM_PARTITION));	// Disable DMA and interrupts; Buffer divided into n partitions
+	WRITE_BAR0_REG(26, psdaq_dev->tlp_size/4);			// DMA TLP Size
+	WRITE_BAR0_REG(27, psdaq_dev->dma_hwaddr);        		// DMA starting address
+	WRITE_BAR0_REG(28, NUM_PARTITION);        			// number of partitions
+	WRITE_BAR0_REG(29, 0);        					// reseting read pointer
+	printk(KERN_INFO"Reset Rd_Pointer\n");
 }
 
 
@@ -216,8 +229,8 @@ static int psdaq_dev_probe( struct pci_dev *pdev,  const struct pci_device_id *i
 		err = -ENOMEM;
 		goto failure_dma_allocation;
 	}
-	psdaq_dev->dma_fill = 0;
-	psdaq_dev->dma_used = 0;
+	psdaq_dev->dma_wr_pointer = 0;
+	psdaq_dev->dma_rd_pointer = 0;
 
 	psdaq_initcard(pdev, psdaq_dev);
 
@@ -287,6 +300,9 @@ static void psdaq_dev_remove( struct pci_dev *pdev)
 	int i;
 	struct psdaq_dev_t *psdaq_dev = pci_get_drvdata(pdev);
 
+	WRITE_BAR0_REG(25, 0x40000000 | (psdaq_dev->tlp_count/NUM_PARTITION));	// Stop DMA
+	printk(KERN_INFO"DMA Stop\n");
+
 	device_destroy(psdaq_dev_class, psdaq_dev->dev);
 	cdev_del(&psdaq_dev->cdev);
 	unregister_chrdev_region(psdaq_dev->dev, 1);
@@ -321,8 +337,8 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 	struct psdaq_dev_t *psdaq_dev = file->private_data;
 
 	int err;
-	size_t available, n;
-	if (psdaq_dev->dma_used == psdaq_dev->dma_fill) {
+/*	size_t available, n;
+	if (psdaq_dev->dma_rd_pointer == psdaq_dev->dma_wr_pointer) {
 		WRITE_BAR0_REG(0, 1);            // Write: DCSR (offset 0) with value of 1 (Reset Device)
 		WRITE_BAR0_REG(0, 0);            // Write: DCSR (offset 0) with value of 0 (Make Active)
 		WRITE_BAR0_REG(1, 0x00800080 | 0x00000001);   // Start DMA
@@ -331,18 +347,112 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 			udelay(2);
 		} while((READ_BAR0_REG(1) & 0x100) == 0);
 
-		psdaq_dev->dma_used = 0;
-		psdaq_dev->dma_fill = psdaq_dev->tlp_count * psdaq_dev->tlp_size;
+		psdaq_dev->dma_rd_pointer = 0;
+		psdaq_dev->dma_wr_pointer = psdaq_dev->tlp_count * psdaq_dev->tlp_size;
 	}
 
 
 
-	available = psdaq_dev->dma_fill - psdaq_dev->dma_used;
+	available = psdaq_dev->dma_wr_pointer - psdaq_dev->dma_rd_pointer;
 	n = (count  < available) ? count : available;
-	err = copy_to_user(buf, (psdaq_dev->dma_buf)+(psdaq_dev->dma_used), n);
+	err = copy_to_user(buf, (psdaq_dev->dma_buf)+(psdaq_dev->dma_rd_pointer), n);
 	if(err) return -EFAULT;
-	psdaq_dev->dma_used += n;
+	psdaq_dev->dma_rd_pointer += n;
+*/
+
+	size_t block_size, offset, n;
+	long int i = 0;
+	uint64_t *frame;
+	uint64_t header;
+	unsigned nwords;
+
+	WRITE_BAR0_REG(25, 0xC0000000 | (psdaq_dev->tlp_count/NUM_PARTITION));	// Start DMA
+	block_size = psdaq_dev->tlp_count/NUM_PARTITION * psdaq_dev->tlp_size;
+/*	if (print_counter != 0) {
+		printk(KERN_INFO"addr %lx hw_addr %llx partition size %x\n", psdaq_dev->dma_buf, psdaq_dev->dma_hwaddr, BUF_SIZE/NUM_PARTITION);
+		print_counter -= 1;
+	}
+*/
+	n = 0;
+	while(n < count) {
+
+		if((n + BUF_SIZE/NUM_PARTITION) > count) {
+			// This read will not fit in output buffer
+			// Cut it short and return the number of bytes already read
+/*			if (print_counter != 0) {
+				printk(KERN_INFO"too big\n");
+				print_counter -= 1;
+			}
+*/			break;
+		}
+
+		// must have watchdog or else it will stuck at exit
+		if (i == 10000) {			// watchdog
+			WRITE_BAR0_REG(25, 0x40000000 | (psdaq_dev->tlp_count/NUM_PARTITION));	// Stop DMA
+/*			if (print_counter != 0) {
+				printk(KERN_INFO"watchdog triggered\n");
+				print_counter -= 1;
+			}
+*/			break;
+		}
+		i += 1;
+
+		// Check for new data
+		// Step 1: If empty, re-read write pointer
+		if(psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer) {
+			psdaq_dev->dma_wr_pointer = READ_BAR0_REG(29);
+/*			if (print_counter != 0) {
+				printk(KERN_INFO"write %ld read %ld\n", psdaq_dev->dma_wr_pointer, psdaq_dev->dma_rd_pointer);
+				print_counter -= 1;
+			}
+*/		}
+
+		// Step 2: If still emtpy, sleep and try again
+		if(psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer) {
+			udelay(2);
+/*			if (print_counter != 0) {
+				printk(KERN_INFO"updating\n");
+				print_counter -= 1;
+			}
+*/			continue;
+		}
+	
+		offset = psdaq_dev->dma_rd_pointer % NUM_PARTITION;
+		frame = (uint64_t *)((psdaq_dev->dma_buf)+(offset*BUF_SIZE/NUM_PARTITION));
+
+		header = frame[0];
+		nwords = (header >> 36) & 0x7FFF;
+/*		if (print_counter != 0) {
+			printk(KERN_INFO"frame[00] %016llx\n", header);
+			for(i = 1; i < nwords; i++)		
+				printk(KERN_INFO"frame[%02d] %016llx\n", i, frame[i]);
+			print_counter -= 1;
+		}
+*/		err = copy_to_user(buf+n, (psdaq_dev->dma_buf)+(offset*BUF_SIZE/NUM_PARTITION), nwords*sizeof(uint64_t));
+		if(err) goto handle_fault;
+		
+		psdaq_dev->dma_rd_pointer = (psdaq_dev->dma_rd_pointer + 1) % (2*NUM_PARTITION);
+//		n += BUF_SIZE/NUM_PARTITION;		
+//		n += nwords;		
+		n += nwords*sizeof(uint64_t);		
+//		n += 1;		
+
+		// read all partitions already
+		if(psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer) {
+			break;
+		}
+
+	}
+	WRITE_BAR0_REG(29, psdaq_dev->dma_rd_pointer);
 	return n;
+
+
+handle_fault:
+	WRITE_BAR0_REG(25, 0x40000000 | (psdaq_dev->tlp_count/NUM_PARTITION));	// Stop DMA
+	WRITE_BAR0_REG(29, psdaq_dev->dma_rd_pointer);
+	printk(KERN_INFO"Send Rd_Pointer on fault\n");
+	return -EFAULT;
+	
 }
 
 static ssize_t psdaq_file_write (struct file *file, __user const char *buf, size_t count, loff_t *off)

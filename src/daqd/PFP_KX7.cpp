@@ -42,7 +42,8 @@ using namespace PETSYS;
 
 static const unsigned DMA_TRANS_BYTE_SIZE = 262144;  // max for USER_FIFO_THRESHOLD 262128
 static const unsigned BUFFER_SIZE = DMA_TRANS_BYTE_SIZE / 8;
-static const unsigned N_BUFFER = 8;
+static const unsigned N_BUFFER = 2;
+static const unsigned RDWR_POINTER_LENGTH = 1;       // 1 to 5
 
 PFP_KX7 * PFP_KX7::openCard(int index)
 {
@@ -64,7 +65,8 @@ PFP_KX7 * PFP_KX7::openCard(int index)
 PFP_KX7::PFP_KX7(int fd)
 : fd(fd)
 {
-	uint32_t fw_flags;
+	uint32_t fw_flags, fpga_temp;
+	float temp_value;
 	bool pfp_kx7old = true;
 
 	ReadWithoutCheck(base_addr0 + (statusReg+75) * 4, &fw_flags, 1);
@@ -91,6 +93,10 @@ PFP_KX7::PFP_KX7(int fd)
 		pfp_kx7old = true;
 	}
 
+	ReadWithoutCheck(base_addr0 + (statusReg+78) * 4, &fpga_temp, 1);
+	fpga_temp = fpga_temp & 0xFFF0;		// extracting bits 15 downto 4
+	temp_value = fpga_temp/16 * 503.975/4096 - 273.15;
+	printf("PFP KX7 temp = %f.\n", temp_value);
 
 	if(pfp_kx7old) {
 		uint32_t ExtClkFreq;
@@ -117,7 +123,7 @@ PFP_KX7::PFP_KX7(int fd)
 	}
 
 	// setting up firmware configuration
-	// Filler Activated (26); Disable Interrupt (24); Disable AXI Stream (21)
+	// Filler Activated (27); Disable Interrupt (24); Disable AXI Stream (21)
 	// Use User FIFO Threshold (16); User FIFO Threshold in 64B word addressing (11 -> 0)
 	uint32_t word32;
 	word32 = 0x19000000;  // sorter disable, with filler
@@ -137,7 +143,7 @@ PFP_KX7::PFP_KX7(int fd)
 	}	
 
 	// setting up DMA configuration
-	// DMA Start toggle (26); DMA Size in 16B word addressing (23 -> 0)
+	// DMA Start toggle (27); DMA Size in 16B word addressing (23 -> 0)
 	word32 = 0x08000000 + DMA_TRANS_BYTE_SIZE / 16;
 	WriteWithoutCheck(base_addr0 + DMAConfigReg * 4, &word32, 1);
 
@@ -295,16 +301,15 @@ void PFP_KX7::clearReplyQueue()
 	int count = 0;
 
 	while(true) {
-
 		uint32_t rxWrPointer;
 		ReadAndCheck(base_addr0 + rxWrPointerReg * 4 , &rxWrPointer, 1);
 
-		if((rxWrPointer & 31) == (rxRdPointer & 31)) break;
+		if((rxWrPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH)-1)) == (rxRdPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH)-1))) break;
 
 		if(count % 100 == 99) fprintf(stderr, "WARNING: Resetting RX pointers (try = %d)\n", count);
 
 		rxRdPointer = rxWrPointer;
-		rxRdPointer &= 31;
+		rxRdPointer &= uint32_t(pow(2, RDWR_POINTER_LENGTH)-1);
 		rxRdPointer |= 0xFACE9100;
 		WriteAndCheck(base_addr0 + rxRdPointerReg * 4 , &rxRdPointer, 1);
 
@@ -316,7 +321,7 @@ void PFP_KX7::clearReplyQueue()
 
 int PFP_KX7::sendCommand(uint64_t *packetBuffer, int packetBufferSize)
 {
-	if(packetBufferSize > 64) {
+	if(packetBufferSize > 128) {
 		fprintf(stderr, "ERROR in PFP_KX7::sendCommand(...) packetBufferSize %d is too large.\n", packetBufferSize);
 		return -1;
 	}
@@ -336,18 +341,18 @@ int PFP_KX7::sendCommand(uint64_t *packetBuffer, int packetBufferSize)
 
 
 		// until there is space to write the command
-	} while( ((txWrPointer & 16) != (txRdPointer & 16)) && ((txWrPointer & 15) == (txRdPointer & 15)) );
-	
-	uint32_t wrSlot = txWrPointer & 15;
-	status = WriteAndCheck(base_addr0 + wrSlot * 16 * 4 , (uint32_t *)packetBuffer, (packetBufferSize * 2));
+	} while((txWrPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH-1))) != (txRdPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH-1))));
+
+	uint32_t wrSlot = txWrPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH-1)-1);
+	status = WriteAndCheck(base_addr0 + wrSlot * uint32_t(pow(2, 9-RDWR_POINTER_LENGTH)) * 4 , (uint32_t *)packetBuffer, (packetBufferSize * 2));
 		
 	txWrPointer += 1;
-	txWrPointer = txWrPointer & 31;	// There are only 16 slots, but we use another bit for the empty/full condition
+	txWrPointer &= uint32_t(pow(2, RDWR_POINTER_LENGTH)-1);
 	txWrPointer |= 0xCAFE1500;
 	
 	status = WriteAndCheck(base_addr0 + txWrPointerReg * 4 , &txWrPointer, 1);
-	return 0;
 
+	return 0;
 }
 
 int PFP_KX7::recvReply(uint64_t *packetBuffer, int packetBufferSize)
@@ -368,14 +373,18 @@ int PFP_KX7::recvReply(uint64_t *packetBuffer, int packetBufferSize)
 		}		
 
 		// until there a reply to read
-	} while((rxWrPointer & 31) == (rxRdPointer & 31));
-	uint32_t rdSlot = rxRdPointer & 15;
-	
-	status = ReadAndCheck(base_addr0 + (768 + rdSlot * 16) * 4 , (uint32_t *)packetBuffer, 16);
+	} while((rxWrPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH)-1)) == (rxRdPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH)-1)));
+	uint32_t rdSlot = rxRdPointer & uint32_t(pow(2, RDWR_POINTER_LENGTH-1)-1);
+
+	int preLoadSize = 4;
+	status = ReadAndCheck(base_addr0 + (768 + rdSlot * uint32_t(pow(2, 9-RDWR_POINTER_LENGTH))) * 4 , (uint32_t *)packetBuffer, preLoadSize);
+	int packetSize = ceil(float(packetBuffer[1])/8);
+	packetSize -= (preLoadSize/2-2);
+	status = ReadAndCheck(base_addr0 + (768 + rdSlot * uint32_t(pow(2, 9-RDWR_POINTER_LENGTH)) + preLoadSize) * 4 , (uint32_t *)(packetBuffer+preLoadSize/2), packetSize*2);
 	rxRdPointer += 1;
-	rxRdPointer = rxRdPointer & 31;	// There are only 16 slots, but we use another bit for the empty/full condition
+	rxRdPointer &= uint32_t(pow(2, RDWR_POINTER_LENGTH)-1);
 	rxRdPointer |= 0xFACE9100;
-	
+
 	status = WriteAndCheck(base_addr0 + rxRdPointerReg * 4 , &rxRdPointer, 1);
 
 	return 8;
@@ -420,6 +429,7 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 
 int PFP_KX7::setAcquistionOnOff(bool enable)
 {
+	fprintf(stderr, "calling PFP_KX7::setAcquistionOnOff()\n");
 	uint32_t data[1];
 	int status;
 	
@@ -460,6 +470,7 @@ int PFP_KX7::setAcquistionOnOff(bool enable)
 	}
 	
 	
+	fprintf(stderr, "returning PFP_KX7::setAcquistionOnOff()\n");
 	return status;	
 }
 
