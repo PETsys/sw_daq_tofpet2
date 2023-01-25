@@ -29,7 +29,7 @@ struct BlockHeader  {
 	float step2;	
 	uint32_t wrPointer;
 	uint32_t rdPointer;
-	int32_t endOfStep;
+	int32_t blockType;
 };
 
 
@@ -50,15 +50,18 @@ int main(int argc, char *argv[])
 	  
 	char fNameRaw[1024];
 	char fNameIdx[1024];
+	char fNameTmp[1024];
 
 
 	if(strcmp(outputFilePrefix, "/dev/null") == 0) {
 		sprintf(fNameRaw, "%s", outputFilePrefix);
 		sprintf(fNameIdx, "%s", outputFilePrefix);
+		sprintf(fNameTmp, "%s", outputFilePrefix);
 	}
 	else {
 		sprintf(fNameRaw, "%s.rawf", outputFilePrefix);
 		sprintf(fNameIdx, "%s.idxf", outputFilePrefix);
+		sprintf(fNameTmp, "%s.tmpf", outputFilePrefix);
 	}
 	
 	FILE * dataFile = fopen(fNameRaw, "wb");
@@ -73,6 +76,13 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Could not open '%s' for writing: %s\n", fNameIdx, strerror(errno));
 		return 1;
 	}
+
+	FILE * tempFile = fopen(fNameTmp, "wb");
+	if(tempFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for writing: %s\n", fNameTmp, strerror(errno));
+		return 1;
+	}
+
 	fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
 	
 	// Write a 64 byte header
@@ -114,6 +124,29 @@ int main(int argc, char *argv[])
 
 		step1 = blockHeader.step1;
 		step2 = blockHeader.step2;
+
+		if(blockHeader.blockType == 0) {
+			// First block in a step
+
+			stepAllFrames = 0;
+			stepEvents = 0;
+			stepMaxFrame = 0;
+			stepLostFramesN = 0;
+			stepLostFrames0 = 0;
+			lastFrameID = -1;
+			stepFirstFrameID = -1;
+			lastFrameType = FRAME_TYPE_UNKNOWN;
+
+			if(!acqStdMode) calEventSet.clear();
+
+			stepStartOffset = ftell(dataFile);
+
+			r = fprintf(tempFile, "%f\t%f\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset);
+			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			r = fflush(tempFile);
+			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+
+		}
 		
 		unsigned bs = shm->getSizeInFrames();
 		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
@@ -192,12 +225,12 @@ int main(int argc, char *argv[])
 			}
 
 			// Do not write sequences of normal empty frames, unless we're closing a step
-			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
 				continue;
 			}
 
 			// Do not write sequences of all lost frames, unless we're closing a step
-			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
 				continue;
 			}
 			lastFrameType = frameType;
@@ -210,7 +243,7 @@ int main(int argc, char *argv[])
 	        
 		}		
 		
-		if(blockHeader.endOfStep != 0) {
+		if(blockHeader.blockType == 2) {
 			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk 
 			if(!acqStdMode){
 				multiset<uint64_t>::iterator eventIt = calEventSet.begin();
@@ -239,26 +272,31 @@ int main(int argc, char *argv[])
 			
 			int r = fflush(dataFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+
 			r = fprintf(indexFile, "%ld\t%ld\t%lld\t%lld\t%f\t%f\n", stepStartOffset, ftell(dataFile), stepFirstFrameID, lastFrameID, blockHeader.step1, blockHeader.step2);
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(indexFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
-			stepStartOffset = ftell(dataFile);
 
-			stepAllFrames = 0;
-			stepEvents = 0;
-			stepMaxFrame = 0;
-			stepLostFramesN = 0;
-			stepLostFrames0 = 0;
-			lastFrameID = -1;
-			stepFirstFrameID = -1;
-			lastFrameType = FRAME_TYPE_UNKNOWN;
+			r = fprintf(tempFile, "%ld\n", ftell(dataFile));
+			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			r = fflush(tempFile);
+			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 		}
 		
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
 		fflush(stdout);
 	}
 
+	// Write a fake step to mark end of data
+	r = fprintf(tempFile, "%f\t%f\t%llu\t%llu\n", 0.0, 0.0, ULLONG_MAX, ULLONG_MAX);
+	if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+	r = fflush(tempFile);
+	if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+
+	fclose(tempFile);
+	unlink(fNameTmp);
+	fclose(indexFile);
 	fclose(dataFile);
 	return 0;
 }

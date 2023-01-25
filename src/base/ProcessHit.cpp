@@ -22,10 +22,12 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	EventBuffer<Hit> * outBuffer = new EventBuffer<Hit>(N, inBuffer);
 
 	int triggerID = eventStream->getTriggerID();
+	float clockPeriod = 1./eventStream->getFrequency()*1e12;
 
 	bool useTDC = systemConfig->useTDCCalibration();
 	bool useQDC = systemConfig->useQDCCalibration();
 	bool useEnergyCal = systemConfig->useEnergyCalibration();
+	bool useTimeOffsetCal = systemConfig->useTimeOffsetCalibration();
 	bool useXYZ = systemConfig->useXYZ();
 	//intf("%d\n", N);
 	u_int64_t lReceived = 0;
@@ -66,6 +68,10 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			if(useTDC) {
 				float q_T = ( -ct.a1 + sqrtf((ct.a1 * ct.a1) - (4.0f * (ct.a0 - in.tfine) * ct.a2))) / (2.0f * ct.a2) ;
 				out.time = double(in.time) - q_T - ct.t0;
+				if(useTimeOffsetCal)
+					out.time -= double(cc.t0)/clockPeriod; 
+				
+				
 				if(ct.a1 == 0) eventFlags |= 0x2;
 			}
 			if(!in.qdcMode) {

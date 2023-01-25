@@ -39,9 +39,7 @@ static void normalizeLine(char *line) {
 
 
 RawReader::RawReader() :
-        steps(vector<Step>()),
-	dataFile(-1)
-
+	dataFile(-1), indexFile(NULL)
 {
 	assert(dataFileBufferSize >= MaxRawDataFrameSize * sizeof(uint64_t));
 	dataFileBuffer = new char[dataFileBufferSize];
@@ -53,27 +51,43 @@ RawReader::~RawReader()
 {
 	delete [] dataFileBuffer;
 	close(dataFile);
+
+	if(indexFile != NULL) fclose(indexFile);
 }
 
 RawReader *RawReader::openFile(const char *fnPrefix)
 {
+	RawReader *reader = new RawReader();
+
 	char fName[1024];
-	sprintf(fName, "%s.idxf", fnPrefix);
-	FILE *idxFile = fopen(fName, "r");
-	if(idxFile == NULL)  {
-		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
-                exit(1);
+
+	// Try to open temp index file
+	sprintf(fName, "%s.tmpf", fnPrefix);
+	reader->indexFile = fopen(fName, "r");
+	reader->indexIsTemp = true;
+
+	// Fallback to open regular index file
+	if(reader->indexFile == NULL) {
+		sprintf(fName, "%s.idxf", fnPrefix);
+		reader->indexFile = fopen(fName, "r");
+		if(reader->indexFile == NULL)  {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
+		}
+
+		reader->indexIsTemp = false;
 	}
 
+
 	sprintf(fName, "%s.rawf", fnPrefix);
-	int rawFile = open(fName, O_RDONLY);
-	if(rawFile == -1) {
+	reader->dataFile = open(fName, O_RDONLY);
+	if(reader->dataFile == -1) {
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
                 exit(1);
 	}
 
 	uint64_t header[8];
-	ssize_t r = read(rawFile, (void *)header, sizeof(uint64_t)*8);
+	ssize_t r = read(reader->dataFile, (void *)header, sizeof(uint64_t)*8);
 	if(r < 1) {
 		fprintf(stderr, "Could not read from '%s': %s\n", fName, strerror(errno));
 		exit(1);
@@ -83,8 +97,6 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 		exit(1);
 	}
 
-	RawReader *reader = new RawReader();
-	reader->dataFile = rawFile;
 	reader->frequency = header[0] & 0xFFFFFFFFUL;
 	if ((header[2] & 0x8000) != 0) { 
 		reader->triggerID = header[2] & 0x7FFF; 
@@ -119,18 +131,8 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 		for(unsigned long gChannelID = 0; gChannelID < MAX_NUMBER_CHANNELS; gChannelID++)
 			reader->qdcMode[gChannelID] = (header[0] & 0x100000000UL) != 0;
 	}
-	
 
-	Step step;
-	while(fscanf(idxFile, "%llu\t%llu\t%lld\t%lld\t%f\t%f", &step.stepBegin, &step.stepEnd, &step.stepFirstFrame, &step.stepLastFrame, &step.step1, &step.step2) == 6) {
-		reader->steps.push_back(step);
-	}
 	return reader;
-}
-
-int RawReader::getNSteps()
-{
-	return steps.size();
 }
 
 double RawReader::getFrequency()
@@ -160,13 +162,6 @@ int RawReader::getTriggerID()
 	return triggerID;
 }
 
-void RawReader::getStepValue(int n, float &step1, float &step2)
-{
-	Step step = steps[n];
-	step1 = step.step1;
-	step2 = step.step2;
-}
-
 int RawReader::readFromDataFile(char *buf, int count)
 {
 	int rval = 0;
@@ -174,8 +169,29 @@ int RawReader::readFromDataFile(char *buf, int count)
 		// Read from file if needed
 		if(dataFileBufferPtr == dataFileBufferEnd) {
 			int r = read(dataFile, dataFileBuffer, dataFileBufferSize);
-			// We should be able to read at least 1 byte here
-			assert(r >= 1);
+			if(r < 0) {
+				return -1;
+			}
+
+			if(r == 0) {
+				if(getStepEnd() == ULLONG_MAX) {
+					// We're in follow mode, so let's just retry again
+					continue;
+				}
+				else {
+					// We're not in follow mode (any more)
+					// Make one mode attempt since we may have switched from follow to normal mode
+					// after the previous read attempt
+
+					r = read(dataFile, dataFileBuffer, dataFileBufferSize);
+					if(r < 0) {
+						return -1;
+					}
+
+				}
+			}
+
+
 			dataFileBufferPtr = dataFileBuffer;
 			dataFileBufferEnd = dataFileBuffer + r;
 
@@ -191,14 +207,66 @@ int RawReader::readFromDataFile(char *buf, int count)
 		dataFileBufferPtr += count2;
 		buf += count2;
 		rval += count2;
+
+		// We arrived at this point without actually adding data in this iteration
+		// Give and let the upper layer handle whatever data we have
+		if(count2 == 0) break;
+
 	};
 	return rval;
 }
 
-void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
-{
-	Step step = steps[n];
+bool  RawReader::getNextStep() {
 
+	if(!indexIsTemp) {
+		int r = fscanf(indexFile, "%llu\t%llu\t%*lld\t%*lld\t%f\t%f\n", &stepBegin, &stepEnd, &stepValue1, &stepValue2);
+		if(r == 4)
+			return true;
+	}
+
+	else {
+
+		while(fscanf(indexFile, "%f\t", &stepValue1) < 1);
+		while(fscanf(indexFile, "%f\t", &stepValue2) < 1);
+		while(fscanf(indexFile, "%llu\t", &stepBegin) < 1);
+		stepEnd = ULLONG_MAX;
+
+		if(stepBegin < ULLONG_MAX)
+			return true;
+	}
+
+
+	return false;
+}
+
+void  RawReader::getStepValue(float &step1, float &step2)
+{
+	step1 = stepValue1;
+	step2 = stepValue2;
+
+}
+
+unsigned long long RawReader::getStepBegin() {
+	return stepBegin;
+}
+
+unsigned long long RawReader::getStepEnd() {
+	if(stepEnd < ULLONG_MAX)
+		return stepEnd;
+
+	if(!indexIsTemp)
+		return stepEnd;
+
+	unsigned long long readValue;
+	int r = fscanf(indexFile, "%llu\n", &readValue);
+	if(r == 1)
+		stepEnd = readValue;
+
+	return stepEnd;
+}
+
+void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
+{
 	auto pool = new ThreadPool<UndecodedHit>();
 	auto mysink = new Decoder(this, sink);
 	mysink->pushT0(0);
@@ -210,18 +278,19 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	
 	long long lastFrameID = -1;
 	bool lastFrameWasLost0 = false;
-	long long nFrameLost0 = 0;
-	long long nFrameLostN = 0;
+	long long nFrames = 0;
+	long long nFramesLost0 = 0;
+	long long nFramesLostN = 0;
 	long long nEventsNoLost = 0;
 	long long nEventsSomeLost = 0;
 	
 	// Set file handle to start of step
-	lseek(dataFile, step.stepBegin, SEEK_SET);
-	off_t currentPosition = step.stepBegin;
+	lseek(dataFile, getStepBegin(), SEEK_SET);
+	off_t currentPosition = getStepBegin();
 	// Reset file buffer pointers
 	dataFileBufferPtr = dataFileBuffer;
 	dataFileBufferEnd = dataFileBuffer;
-	while (currentPosition < step.stepEnd) {
+	while (currentPosition < getStepEnd()) {
 		int r;
 		// Read frame header
 		r = readFromDataFile((char*)((dataFrame->data)+0), 2*sizeof(uint64_t));
@@ -238,6 +307,7 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		currentPosition += r;
 
 		long long frameID = dataFrame->getFrameID();
+		if(lastFrameID == -1) lastFrameID = frameID - 1;
 		bool frameLost = dataFrame->getFrameLost();
 		
 		// Blocksize
@@ -258,18 +328,23 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 		}
 		
 		
-		// Account skipped frames with all events lost
+		// Account skipped frames
 		if (frameID != lastFrameID + 1) {
 			// We have skipped frames...
+			nFrames += (frameID - lastFrameID) - 1;
+
 			if(lastFrameWasLost0) {
 				// ... and they indicate lost frames
-				nFrameLost0 += (frameID - lastFrameID) - 1;
+				nFramesLost0 += (frameID - lastFrameID) - 1;
 			}
 		}
-		
+
+		// Increament frame counter
+		nFrames += 1;
+
 		// Account frames with lost data
-		if(frameLost && N == 0) nFrameLost0 += 1;
-		if(frameLost && N != 0) nFrameLostN += 1;
+		if(frameLost && N == 0) nFramesLost0 += 1;
+		if(frameLost && N != 0) nFramesLostN += 1;
 		
 		if(frameLost) 
 			nEventsSomeLost += N;
@@ -300,14 +375,14 @@ void RawReader::processStep(int n, bool verbose, EventSink<RawHit> *sink)
 	mysink->finish();
 	if(verbose) {
 		fprintf(stderr, "RawReader report\n");
-		fprintf(stderr, "step values: %f %f\n", step.step1, step.step2);
+		fprintf(stderr, "step values: %f %f\n", stepValue1, stepValue2);
 		fprintf(stderr, " data frames\n");
-		fprintf(stderr, " %10lld total\n", step.stepLastFrame - step.stepFirstFrame);
-		fprintf(stderr, " %10lld (%4.1f%%) were missing all data\n", nFrameLost0, 100.0 * nFrameLost0 / (step.stepLastFrame - step.stepFirstFrame));
-		fprintf(stderr, " %10lld (%4.1f%%) were missing some data\n", nFrameLostN, 100.0 * nFrameLost0 / (step.stepLastFrame - step.stepFirstFrame));
+		fprintf(stderr, " %10lld total\n", nFrames);
+		fprintf(stderr, " %10lld (%4.1f%%) were missing all data\n", nFramesLost0, 100.0 * nFramesLost0 / (nFrames));
+		fprintf(stderr, " %10lld (%4.1f%%) were missing some data\n", nFramesLostN, 100.0 * nFramesLost0 / (nFrames));
 		fprintf(stderr, " events\n");
 		fprintf(stderr, " %10lld total\n", nEventsNoLost + nEventsSomeLost);
-		long long goodFrames = step.stepLastFrame - step.stepFirstFrame - nFrameLost0 - nFrameLostN;
+		long long goodFrames = nFrames - nFramesLost0 - nFramesLostN;
 		fprintf(stderr, " %10.1f events per frame avergage\n", 1.0 * nEventsNoLost / goodFrames);
 		sink->report();
 	}

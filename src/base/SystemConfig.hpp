@@ -14,7 +14,7 @@ namespace PETSYS {
 		static const u_int64_t LOAD_QDC_CALIBRATION	= 0x0000000000000004ULL;
 		static const u_int64_t LOAD_ENERGY_CALIBRATION	= 0x0000000000000008ULL;
 		static const u_int64_t LOAD_MAPPING		= 0x0000000000000010ULL;
-	
+		static const u_int64_t LOAD_TIMEALIGN_CALIBRATION = 0x000000000000020ULL;
 
 		struct TacConfig {
 			float t0;
@@ -68,6 +68,7 @@ namespace PETSYS {
 		inline bool useTDCCalibration() { return hasTDCCalibration; };
 		inline bool useQDCCalibration() { return hasQDCCalibration; };
 		inline bool useEnergyCalibration() { return hasEnergyCalibration; };
+		inline bool useTimeOffsetCalibration() { return hasTimeOffsetCalibration; };
 		inline bool useXYZ() { return hasXYZ; };
 		
 		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID) {
@@ -82,10 +83,12 @@ namespace PETSYS {
 		};
 
 		inline bool isCoincidenceAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return coincidenceTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
 		inline bool isMultiHitAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return multihitTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
@@ -97,12 +100,14 @@ namespace PETSYS {
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
 		static void loadQDCCalibration(SystemConfig *config, const char *fn);
 		static void loadEnergyCalibration(SystemConfig *config, const char *fn);
+		static void loadTimeOffsetCalibration(SystemConfig *config, const char *fn);
 		static void loadChannelMap(SystemConfig *config, const char *fn);
 		static void loadTriggerMap(SystemConfig *config, const char *fn);
 		
 		bool hasTDCCalibration;
 		bool hasQDCCalibration;
 		bool hasEnergyCalibration;
+		bool hasTimeOffsetCalibration;
 		bool hasXYZ;
 		
 		ChannelConfig **channelConfig;

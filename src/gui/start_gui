@@ -323,7 +323,7 @@ class GUI:
     def on_menuHelpAbout_activate(self, menuHelpAbout): 
         about = Gtk.AboutDialog.new()
         about.set_transient_for(self.MainWindow)
-        about.set_version("v2019.03.07")
+       # about.set_version("v2019.03.07")
         about.set_logo(GdkPixbuf.Pixbuf.new_from_file("gui/logo_PETsys2.png"))
         about.set_website("http://www.petsyselectronics.com")
         about.set_website_label("petsyselectronics.com")

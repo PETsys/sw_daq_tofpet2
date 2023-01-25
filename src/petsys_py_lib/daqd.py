@@ -1089,6 +1089,18 @@ class Connection:
 		stopFrame = startFrame + nRequiredFrames
 
 		t0 = time()
+
+		# Send start of step block (with wrPointer = rdPointer)
+		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 0)
+		for pin, pout in workers:
+			pin.write(data); pin.flush()
+
+		for pin, pout in workers:
+			data = pout.read(n2)
+		rdPointer,  = struct.unpack(template2, data)
+		self.__setDataFrameReadPointer(rdPointer)
+
+
 		nBlocks = 0
 		currentFrame = startFrame
 		nFrames = 0
@@ -1117,7 +1129,7 @@ class Connection:
 
 			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
-			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
+			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
 			for pin, pout in workers:
 				pin.write(data); pin.flush()
 			
@@ -1140,7 +1152,8 @@ class Connection:
 		t1 = time()
 		print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
 
-		data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
+		# Send end of step block (with wrPointer = rdPointer)
+		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 2)
 		for pin, pout in workers:
 			pin.write(data); pin.flush()
 

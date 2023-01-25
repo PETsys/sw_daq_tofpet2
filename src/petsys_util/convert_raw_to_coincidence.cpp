@@ -21,11 +21,15 @@ enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL };
 
 class DataFileWriter {
 private:
+	std::string fName;
 	double frequency;
 	FILE_TYPE fileType;
-	int hitLimitToWrite;
 	int eventFractionToWrite;
 	long long eventCounter;
+	double fileSplitTime;
+	long long currentFilePartIndex;
+
+	int hitLimitToWrite;
 
 	FILE *dataFile;
 	FILE *indexFile;
@@ -69,17 +73,26 @@ private:
 	} __attribute__((__packed__));
 	
 public:
-	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite) {
+	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, float splitTime) {
+		this->fName = std::string(fName);
 		this->frequency = frequency;
 		this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
-		this->hitLimitToWrite = hitLimitToWrite;
 		this->eventFractionToWrite = eventFractionToWrite;
 		this->eventCounter = 0;
 
+		this->fileSplitTime = splitTime * frequency; // Convert from seconds to clock cycles
+		this->currentFilePartIndex = 0;
+
+		this->hitLimitToWrite = hitLimitToWrite;
+
+		openFile();
+	};
+
+	void openFile() {
 		stepBegin = 0;
 		
 		if (fileType == FILE_ROOT){
-			hFile = new TFile(fName, "RECREATE");
+			hFile = new TFile(fName.c_str(), "RECREATE");
 			int bs = 512*1024;
 
 			hData = new TTree("data", "Event List", 2);
@@ -119,21 +132,28 @@ public:
 		}
 		else if(fileType == FILE_BINARY) {
 			char fName2[1024];
-			sprintf(fName2, "%s.ldat", fName);
+			sprintf(fName2, "%s.ldat", fName.c_str());
 			dataFile = fopen(fName2, "w");
-			sprintf(fName2, "%s.lidx", fName);
+			sprintf(fName2, "%s.lidx", fName.c_str());
 			indexFile = fopen(fName2, "w");
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
 		else if(fileType == FILE_TEXT) {
-			dataFile = fopen(fName, "w");
+			dataFile = fopen(fName.c_str(), "w");
 			assert(dataFile != NULL);
 			indexFile = NULL;
 		}
 	};
 	
 	~DataFileWriter() {
+		closeFile();
+		if(fileSplitTime > 0) {
+			renameFile();
+		}
+	};
+
+	void closeFile() {
 		if (fileType == FILE_ROOT){
 			hFile->Write();
 			hFile->Close();
@@ -166,7 +186,61 @@ public:
 		}
 	};
 	
+	void renameFile() {
+		char *fName1 = new char[1024];
+		char *fName2 = new char[1024];
+		if(fileType == FILE_BINARY) {
+			// Binary output consists of two files and fName is their common prefix
+
+			sprintf(fName1, "%s.ldat", fName.c_str());
+			sprintf(fName2, "%s_%08lld.ldat", fName.c_str(), currentFilePartIndex);
+			int r = rename(fName1, fName2);
+			assert(r == 0);
+
+			sprintf(fName1, "%s.lidx", fName.c_str());
+			sprintf(fName2, "%s_%08lld.lidx", fName.c_str(), currentFilePartIndex);
+			r = rename(fName1, fName2);
+			assert(r == 0);
+
+		}
+		else {
+			// ROOT or text output consists of a single file and fName is the complete fileName
+			strcpy(fName1, fName.c_str());
+			char *p = rindex(fName1, '.');
+
+			if(p == NULL) {
+				// If fName lacks a "." append the file part number at the end of the file name
+				sprintf(fName2, "%s_%08lld", fName1, currentFilePartIndex);
+				int r = rename(fName1, fName2);
+				assert(r == 0);
+			}
+			else {
+				// Insert the file part number before the extension
+				char tmp = *p;
+				*p = '\0';
+				sprintf(fName2, "%s_%08lld.%s", fName1, currentFilePartIndex, p+1);
+				*p = tmp;
+				int r = rename(fName1, fName2);
+				assert(r == 0);
+			}
+
+		}
+		delete [] fName2;
+		delete [] fName1;
+	};
+
 	void addEvents(float step1, float step2,EventBuffer<Coincidence> *buffer) {
+		long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
+
+		if((fileSplitTime > 0) && (filePartIndex > currentFilePartIndex)) {
+			closeStep(step1, step2);
+			closeFile();
+			renameFile();
+
+			openFile();
+			currentFilePartIndex = filePartIndex;
+		}
+
 		bool writeMultipleHits = false;
 
 		double Tps = 1E12/frequency;
@@ -296,7 +370,8 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
 	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
-	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
+	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
+	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 	
 };
 
@@ -314,6 +389,7 @@ int main(int argc, char *argv[])
 	FILE_TYPE fileType = FILE_TEXT;
 	int hitLimitToWrite = 1;
 	long long eventFractionToWrite = 1024;
+	double fileSplitTime = 0;
 
 
         static struct option longOptions[] = {
@@ -322,7 +398,8 @@ int main(int argc, char *argv[])
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeMultipleHits", required_argument, 0, 0},
-		{ "writeFraction", required_argument }
+		{ "writeFraction", required_argument },
+		{ "splitTime", required_argument, 0, 0}
 
         };
 
@@ -347,6 +424,8 @@ int main(int argc, char *argv[])
 			case 3:		fileType = FILE_ROOT; break;
 			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
 			case 5:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+			case 6:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
+
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -380,14 +459,15 @@ int main(int argc, char *argv[])
 
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), fileType, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
 	
-	for(int stepIndex = 0; stepIndex < reader->getNSteps(); stepIndex++) {
+	int stepIndex = 0;
+	while(reader->getNextStep()) {
 		float step1, step2;
-		reader->getStepValue(stepIndex, step1, step2);
-		printf("Processing step %d of %d: (%f, %f)\n", stepIndex+1, reader->getNSteps(), step1, step2);
+		reader->getStepValue(step1, step2);
+		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
-		reader->processStep(stepIndex, true,
+		reader->processStep(true,
 				new CoarseSorter(
 				new ProcessHit(config, reader,
 				new SimpleGrouper(config,
@@ -397,6 +477,7 @@ int main(int argc, char *argv[])
 				))))));
 		
 		dataFileWriter->closeStep(step1, step2);
+		stepIndex += 1;
 	}
 
 	delete dataFileWriter;

@@ -79,7 +79,8 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
 		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
 		hw_trigger_config["coincidence_window"] = configParser.getint("hw_trigger", "coincidence_window")
-		hw_trigger_config["single_fraction"] = configParser.getint("hw_trigger", "single_fraction")
+		hw_trigger_config["single_acceptance_period"] = configParser.getint("hw_trigger", "single_acceptance_period")
+		hw_trigger_config["single_acceptance_length"] = configParser.getint("hw_trigger", "single_acceptance_length")
 
 		fn = configParser.get("main", "trigger_map")
 		fn = replace_variables(fn, cdir)
@@ -197,7 +198,9 @@ class Config:
 				daqd.write_config_register(portID, slaveID, 3, 0x0606, self.__hw_trigger["coincidence_window"])
 				daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
-				daqd.write_config_register(portID, slaveID, 10, 0x060C, 0) # Single fraction
+
+
+				daqd.write_config_register(portID, slaveID, 32, 0x060C, self.__hw_trigger["single_acceptance_length"] << 16 | self.__hw_trigger["single_acceptance_period"] )
 				
 				hw_trigger_regions = self.__hw_trigger["regions"]
 				nRegions = daqd.read_config_register(portID, slaveID, 16, 0x0600)
