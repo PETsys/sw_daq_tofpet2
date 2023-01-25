@@ -15,6 +15,9 @@ def main():
 	parser.add_argument("--slave", type=int, required=True, action="append", help="Slave ID")
 	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=False, action="append", help="File name")
 	parser.add_argument("--noTriggerBoard", dest="noTrigger", action="store_true", help="enable only if the system has a DAQ board but no Clock & Trigger board")
+	parser.add_argument("--febd", required=True, choices=["1K", "8K" ], help="FEB/D type")
+	parser.add_argument("--fem", required=True, choices=["128", "256"], help="FEM type")
+
 	args = parser.parse_args()
 
 	channelOutputFile = open(args.o + "_channel.tsv", "w")
@@ -28,6 +31,19 @@ def main():
 	if not args.noTrigger and len(args.trigger_port) != len(args.port):
 		print("ERROR: Please enter same number of trigger_port IDs as FEB/Ds in the system")
 		exit(1)
+
+
+	if args.fem == "128":
+		n_asics_per_port = 2
+	else:
+		n_asics_per_port  = 4
+
+	if args.febd == "1K":
+		n_ports_per_region = 2
+	else:
+		n_ports_per_region = 4
+
+	n_asics_per_region = n_asics_per_port * n_ports_per_region
         
 
 	region_list = []
@@ -42,7 +58,7 @@ def main():
 		for quadrant in range(4):
 			trigger_region = 4 * trigger_port + quadrant
 			region_list.append(trigger_region)
-			for asicID in range(4*quadrant, 4*quadrant + 4):
+			for asicID in range(n_asics_per_region*quadrant, n_asics_per_region*(quadrant + 1)):
 				for channelID in range(64):
 					channelOutputFile.write("%(portID)s\t%(slaveID)d\t%(asicID)d\t%(channelID)d\t%(trigger_region)d\t0\t0\t0.0\t0.0\t0.0\n" % locals())
 					
