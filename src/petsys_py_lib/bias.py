@@ -50,6 +50,18 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 		spi.ad5535_set_channel(conn, portID, slaveID, chipID, channelID, value)
 
 	elif bias_slot_info == (0xE, None):
+		# BIAS-16P
+		#
+		# When bias_en is OFF we cannot communicate with the DAC and an exception will be thrown
+		# In particular this happens when clearing the BIAS DACs before enabling bias
+
+		# For the particular case of trying to set the DAC to zero do not bother
+		# trying to communicate with the DAC if bias_enable is off
+		if value == 0:
+			power_feedback = conn.read_config_register(portID, slaveID, 8, 0x021C)
+			if power_feedback & 0b10 == 0:
+				return None
+
 		# Impose minimum 1V bias voltage
 		min_dac = int(ceil(2**16 * 1.0 / 75))
 		value = max(value, min_dac)

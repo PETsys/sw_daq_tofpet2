@@ -326,6 +326,11 @@ class Connection:
 		self.disableCoincidenceTrigger()
 		self.disableAuxIO()
 
+		# Set all bias to minimum
+		# Setting to zero DAC but will be saturated by mezzanine specific code
+		for portID, slaveID, slotID, channelID in self.getActiveBiasChannels():
+			self.__write_hv_channel(portID, slaveID, slotID, channelID, 0, forceAccess=True)
+
 		# Check FEB/D board status
 		for portID, slaveID in self.getActiveFEBDs():
 			pllLocked = self.read_config_register(portID, slaveID, 1, 0x200)
@@ -340,11 +345,6 @@ class Connection:
 		# Power on ASICs
 		for portID, slaveID in self.getActiveFEBDs(): fe_power.set_fem_power(self, portID, slaveID, "on")
 		sleep(0.1) # Wait for power to stabilize
-
-		# Set all bias to minimum
-		# Setting to zero DAC but will be saturated by mezzanine specific code
-		for portID, slaveID, slotID, channelID in self.getActiveBiasChannels():
-			self.__write_hv_channel(portID, slaveID, slotID, channelID, 0, forceAccess=True)
 
 		# Reset the ASICs configuration
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
