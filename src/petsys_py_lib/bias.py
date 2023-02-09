@@ -33,6 +33,19 @@ def has_prom(conn, portID, slaveID, slotID):
 	else:
 		return True
 
+def get_str(conn, portID, slaveID, slotID):
+	bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
+
+	if bias_slot_info == (0xF, None):
+		return "BIAS-64P"
+	elif bias_slot_info == (0xE, None):
+		return "BIAS-16P"
+	elif bias_slot_info == (0xD, BIAS_32P_CODE):
+		return "BIAS-32P"
+	else:
+		raise UnknownBiasType()
+	
+
 def set_channel(conn, portID, slaveID, slotID, channelID , value):
 	bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
 

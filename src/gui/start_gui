@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# kate: indent-mode: python; indent-pasted-text false; indent-width 4; replace-tabs: on;
+# vim: tabstop=4 softtabstop=4 shiftwidth=4 expandtab
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -16,7 +18,7 @@ import os.path
 from collections import Counter
 from time import sleep, time
 import csv
-from petsys import daqd
+from petsys import daqd, info, bias
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
@@ -54,7 +56,7 @@ class GUI:
        
         self.__workingFolder = None
 
-        self.__febdTopology = []
+        self.__febdTopology = {}
         self.__hasClockTrigger = False
 
         self.__fem_switch_handle_set = False
@@ -620,74 +622,61 @@ class GUI:
             self.show_error_dialog("daqd communication server is not running.")
             return
 
-        systemTopology = []
-        self.__febdTopology = []
+        self.__febdTopology = {}
         self.__febdNumber = 0 
 
         connection = daqd.Connection()
 
-        for portID, slaveID in connection.getActiveUnits():
-            
-            register0 = connection.read_config_register(portID, slaveID, 1, 0x0000)
-            register1 = connection.read_config_register(portID, slaveID, 1, 0x0001)
-        
-        
-            if (register0 == 1):
-                if (register1 == 1):
-                    isEkit = True
-                else:
-                    isEkit = False
-                if connection.getBiasType(portID, slaveID) == 1:
-                        unitType = "FEB/D_64P"
-                else:
-                        unitType = "FEB/D_16P"
-               
-                self.__febdTopology.append([portID, slaveID, 0, unitType,""])
-            
-                    
-            if (register0 == 0 and register1 == 1):
-                self.__hasClockTrigger = True
-                isEkit = False
-                unitType = "CLK&TRIGGER"
-
-            
-                
-            systemTopology.append([portID, slaveID, 0, unitType,""])
-            
-        if self.__febdTopology == []:
-             self.show_error_dialog("No FEB/Ds detected. Please check connections and try again.")
-             return True
-        
-        if isEkit and unitType == "FEB/D_64P":
-            self.show_info_dialog( "Detected Evaluation Kit","                - 1 FEB/D + Bias Mezzanine 64P\n\nCalibration file required. Opening file chooser dialog...")
-            if not self.choose_BiasCal_File(systemButton, 0, None):
-                self.show_info_dialog("System configuration not saved","")  
-                return True
-
-            if self.show_confirmation_dialog("- 1 FEB/D + Bias Mezzanine 64P with calibration file %s\n\n        Save configuration files in Working Data Folder?" % self.__febdTopology[0][4], "Evaluation Kit Configuration"):
-                self.saveSystemSettings()
-            else:
-                self.show_info_dialog("System configuration not saved","")  
+        febds = connection.getActiveFEBDs()
+        if not febds:
+            self.show_error_dialog("No FEB/Ds detected. Please check connections and try again.")
             return True
 
-        elif isEkit and unitType == "FEB/D_16P":
-            if self.show_confirmation_dialog("           - 1 FEB/D + Bias Mezzanine 16P \n\n Save configuration files in Working Data Folder?", "Detected Evaluation Kit"):
-                self.saveSystemSettings()
-            return True
+        tgr = connection.getTriggerUnit()
+
+        is_ekit = (tgr != None) and ([ tgr ] == febds )
+
+        topology_txt = ""
+        self.__bias_64p = {}
+        if is_ekit:
+            system_type_txt = "Detected Evaluation Kit"
+            # Auxiliary function to change format depending on whether it's ekit or not
+            ffmt = lambda x,y: ""
         else:
-            topology = ""
-            for febd in systemTopology:
-                if febd[3] == "FEB/D_64P":
-                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d\n" % (febd[0], febd[1])
-                    self.__febdNumber += 1
-                elif febd[3] == "FEB/D_16P":
-                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d\n" % (febd[0], febd[1])
-                    self.__febdNumber += 1
-                else:
-                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
-            
-            topology += "\n  Opening configuration window..."
-            self.show_info_dialog("Detected SIPM Readout System", topology)
+            system_type_txt = "Detected SiPM Readout system"
+            ffmt = lambda x,y: "port %2d slave %2d: "
+
+            if tgr is not None:
+                portID, slaveID = tgr
+                topology_txt += "%s CLK&TRIGGER 16\n" % ffmt(portID, slaveID)
+                self.__hasClockTrigger = True
+    
+        for portID, slaveID in connection.getActiveFEBDs():
+            self.__febdTopology[(portID, slaveID)] = 0 if is_ekit else None
+
+            d = connection.getUnitInfo(portID, slaveID)
+            bias_str_list = []
+            for slotID in range(info.bias_slots(d)):
+                bias_str = bias.get_str(connection, portID, slaveID, slotID)
+
+                if not bias.has_prom(connection, portID, slaveID, slotID):
+                    self.__bias_64p[(portID, slaveID, slotID)] = None
+                    bias_str += "*"
+                
+                bias_str_list.append(bias_str)
+
+        
+            topology_txt += "%s FEB/D with %s\n" % (ffmt(portID, slaveID), (", ").join(bias_str_list))
+                
+        if self.__bias_64p != {}:
+            topology_txt += "\\n*Calibration file required\n\n" 
+        
+        topology_txt += "\n  Opening configuration window..."
+        self.show_info_dialog(system_type_txt, topology_txt)
+
+
+
+        for _ in range(1):
                     
             hBox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
 
@@ -713,60 +702,62 @@ class GUI:
                 label3 = Gtk.Label("triggerID")
                 label3.set_property("halign",3)
                 grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 1, 1)
-                if any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
-                    label4 = Gtk.Label("HV-DAC Calibration file")
-                    label4.set_property("halign",3)
-                    grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
-            elif any(febd[3] == "FEB/D_64P" for febd in self.__febdTopology):
-                label3 = Gtk.Label("HV-DAC Calibration file")
-                label3.set_property("halign",3)
-                grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 2, 1)
-                    
-            portLabelList = [0 for x in range(self.__febdNumber)]
-            slaveLabelList = [0 for x in range(self.__febdNumber)]
-            fileButtonList = [0 for x in range(self.__febdNumber)]
-            triggerSpinButtonList = [0 for x in range(self.__febdNumber)]
-            triggerSpinAdjustmentList = [0 for x in range(self.__febdNumber)]
-            fileEntryList = [0 for x in range(self.__febdNumber)]
+            else:
+                label3 = label2
 
-            for i, febd in enumerate(self.__febdTopology):
 
-                portLabelList[i] = Gtk.Label()
-                portLabelList[i].set_text(str(febd[0]))
+            max_bias_slots = max([ slotID for portID, slaveID, slotID in connection.getActiveBiasSlots() ]) + 1
+            for i in range(max_bias_slots):
+                label4 = Gtk.Label("BIAS %d cal" % i)
+                label4.set_property("halign",3)
+                grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
+                label3 = label4
 
-                slaveLabelList[i] = Gtk.Label()
-                slaveLabelList[i].set_text(str(febd[1]))
+             
+            self.__febdNumber = len(connection.getActiveFEBDs())       
+            portLabelList = {}
+            slaveLabelList = {}
+            fileButtonList = {}
+            triggerSpinButtonList = {}
+            triggerSpinAdjustmentList = {}
+            fileEntryList = {}
 
-                triggerSpinButtonList[i] = Gtk.SpinButton()
-                triggerSpinAdjustmentList[i] = Gtk.Adjustment(febd[2], 0, 32, 1, 1, 0)
-                triggerSpinButtonList[i].set_adjustment(triggerSpinAdjustmentList[i])
-                triggerSpinButtonList[i].set_width_chars(1)
-                triggerSpinButtonList[i].set_max_width_chars(2)
+            for i, (portID, slaveID) in enumerate(connection.getActiveFEBDs()):
+                ps = (portID, slaveID)
 
-                grid.attach(portLabelList[i], 0, i+1, 1, 1)
-                grid.attach(slaveLabelList[i], 1, i+1, 1, 1)
+                portLabelList[ps] = Gtk.Label()
+                portLabelList[ps].set_text("%d" % portID)
+
+                slaveLabelList[ps] = Gtk.Label()
+                slaveLabelList[ps].set_text("%d" % slaveID)
+
+                triggerSpinButtonList[ps] = Gtk.SpinButton()
+                triggerSpinAdjustmentList[ps] = Gtk.Adjustment(0, 0, 32, 1, 1, 0)
+                triggerSpinButtonList[ps].set_adjustment(triggerSpinAdjustmentList[ps])
+                triggerSpinButtonList[ps].set_width_chars(1)
+                triggerSpinButtonList[ps].set_max_width_chars(2)
+
+                grid.attach(portLabelList[ps], 0, i+1, 1, 1)
+                grid.attach(slaveLabelList[ps], 1, i+1, 1, 1)
 
                 if self.__hasClockTrigger:
-                    grid.attach(triggerSpinButtonList[i], 2, i+1, 1, 1)
-                    if febd[3] == "FEB/D_64P":
-                        fileEntryList[i] = Gtk.Entry()
-                        grid.attach(fileEntryList[i], 3, i+1, 1, 1)
+                    grid.attach(triggerSpinButtonList[ps], 2, i+1, 1, 1)
+
+                for slotID in range(max_bias_slots):
+                    pss = (portID, slaveID, slotID)
+                    if pss in self.__bias_64p.keys():
+                        fileEntryList[pss] = Gtk.Entry()
+                        grid.attach(fileEntryList[pss], 3, i+1, 1, 1)
                         fileEntryList[i].set_margin_left(10)
                         fileEntryList[i].set_width_chars(30)
                         fileEntryList[i].set_max_width_chars(30)
                         fileButtonList[i] = Gtk.Button("Choose")
-                        grid.attach(fileButtonList[i], 4, i+1, 1, 1)
-                        fileButtonList[i].connect("clicked", self.choose_BiasCal_File, i, fileEntryList[i])
-                elif febd[3] == "FEB/D_64P":
-                    fileEntryList[i] = Gtk.Entry()
-                    grid.attach(fileEntryList[i], 2, i+1, 1, 1)
-                    fileEntryList[i].set_margin_left(10)
-                    fileEntryList[i].set_width_chars(30)
-                    fileEntryList[i].set_max_width_chars(30)
-                    fileButtonList[i] = Gtk.Button("Choose")
-                    grid.attach(fileButtonList[i], 3, i+1, 1, 1)
-                    fileButtonList[i].connect("clicked", self.choose_BiasCal_File, i, fileEntryList[i])
-                    
+                        grid.attach(fileButtonList[pss], 4+slotID, i+1, 1, 1)
+                        fileButtonList[i].connect("clicked", self.choose_BiasCal_File, pss, fileEntryList[pss])
+                    else:
+                        label = Gtk.Label("PROM")
+                        #label.set_property("halign", 3)
+                        grid.attach(label, 4+slotID, i+1, 1, 1)
 
 
             febdConfigBox.show_all()
@@ -775,21 +766,21 @@ class GUI:
             response2 = febdConfigDialog.run()
 
 
-            topology = ""
-            for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
-                if  biasMezzType == "FEB/D_64P":
-                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d, trigger %d, calibration file '%s'\n" % (portID,slaveID, triggerID, biasCalFile)
-                    self.__febdNumber += 1
-                elif  biasMezzType == "FEB/D_16P":
-                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d, trigger %d\n" % (portID,slaveID, triggerID)
-                    self.__febdNumber += 1
-            for febd in systemTopology:
-                if febd[3] == "CLK&TRIGGER":
-                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
-            
-            topology += "\n\n\n        Save configuration files in Working Data Folder?"
-
-            if self.show_confirmation_dialog(topology, "SIPM Readout System configuration"):
+#            topology = ""
+#            for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
+#                if  biasMezzType == "FEB/D_64P":
+#                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d, trigger %d, calibration file '%s'\n" % (portID,slaveID, triggerID, biasCalFile)
+#                    self.__febdNumber += 1
+#                elif  biasMezzType == "FEB/D_16P":
+#                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d, trigger %d\n" % (portID,slaveID, triggerID)
+#                    self.__febdNumber += 1
+#            for febd in systemTopology:
+#                if febd[3] == "CLK&TRIGGER":
+#                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
+#            
+#            topology += "\n\n\n        Save configuration files in Working Data Folder?"
+#
+            if self.show_confirmation_dialog("Save configuration files in Working Data Folder?", "System configuration"):
                 self.saveSystemSettings()
             else:
                 self.show_info_dialog("System configuration not saved","")  
@@ -805,26 +796,20 @@ class GUI:
         if not os.path.exists(self.__workingFolder + "config.ini"):
             subprocess.call("cp config.ini "+self.__workingFolder, shell=True)
 
-        commandMap = "./make_simple_channel_map -o " + self.__workingFolder + "map"
-        commandBias = "./make_bias_calibration_table -o " + self.__workingFolder + "bias_calibration.tsv"
 
-        commandMapExtension = ""
-        commandBiasExtension = ""
+        if self.__hasClockTrigger:
+            map_cmd = [ "--port %d --slave %d --trigger %d" % (p,s,t) for (p,s),t in self.__febdTopology.items() ]
+        else:
+            map_cmd = [ "--port %d --slave %d --noTriggerBoard" % (p,s) for (p,s),t in self.__febdTopology.items() ]
 
+        map_cmd = (" ").join(map_cmd)
+        map_cmd = ("./make_simple_channel_map --febd 1K --fem 128 -o %s/map " % self.__workingFolder) + map_cmd
+        subprocess.call(map_cmd, shell=True)
 
-        for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
-            if self.__hasClockTrigger:
-                commandMapExtension += " --port %d --slave %d --trigger %d" % (portID,slaveID, triggerID)
-            else:
-                commandMapExtension += " --port %d --slave %d --noTriggerBoard" % (portID,slaveID)
-            
-            if  biasMezzType == "FEB/D_16P":
-                commandBiasExtension += ""
-            elif biasMezzType == "FEB/D_64P":
-                commandBiasExtension += " --port %d --slave %d --filename %s" % (portID,slaveID, biasCalFile)
-
-        subprocess.call(commandMap+commandMapExtension, shell=True)
-        subprocess.call(commandBias+commandBiasExtension, shell=True)
+        bias_cmd = [ "--port %d --slave %d --slot %d --filename %s" % (p,s,ss,fn) for (p,s,ss), fn in self.__bias_64p.items() ]
+        bias_cmd = (" ").join(bias_cmd)
+        bias_cmd = ("./make_bias_calibration_table -o %s/bias_calibration.tsv " % self.__workingFolder) + bias_cmd
+        subprocess.call(bias_cmd, shell=True)
 
         self.show_info_dialog("System configuration saved","")
                 
@@ -832,8 +817,8 @@ class GUI:
         if (response_id == -6):
             dialog.hide()
             return True
-        for i in range(self.__febdNumber):
-            self.__febdTopology[i][2] = triggerSpinButtonList[i].get_value()
+        for ps in self.__febdTopology.keys():
+            self.__febdTopology[ps] = triggerSpinButtonList[ps].get_value()
         valid = self.is_FEBD_Config_Valid()
         if valid:
             dialog.hide()
@@ -844,26 +829,21 @@ class GUI:
         if self.__febdTopology == None:
             return False
         
-        countPorts = Counter([(port,slave) for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])
-        countTrigger = Counter([trigger for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])
-        countFiles = Counter([("FEB/D_64P" == biastype, biasFile) for (port,slave,trigger,biastype,biasFile) in self.__febdTopology])            
+        countTrigger = Counter([trigger for trigger in self.__febdTopology.values() ])
+        countFiles = Counter([fn for fn in self.__bias_64p.values() ])
               
-        if any(count > 1 for count in countPorts.values()):
-            self.show_error_dialog("Each FEB/D should have a unique pair of (portID,slaveID).")
-            return False
-        
         if any(count > 1 for count in countTrigger.values()) and self.__hasClockTrigger:
             self.show_error_dialog("Each FEB/D should have a unique triggerID value.")
             return False
 
-        if (True, "") in  countFiles:
+        if (True, None) in  countFiles:
             self.show_error_dialog("Bias calibration file is not defined for all required FEB/Ds.")
             return False
 
         return True
         
         
-    def choose_BiasCal_File(self, fileButton, febdID, fileEntry):
+    def choose_BiasCal_File(self, fileButton, pss, fileEntry):
         dialog = self.builder.get_object("biasCalFileChooser")
         dialog.set_transient_for(self.MainWindow)
         
@@ -877,7 +857,7 @@ class GUI:
             if fileEntry != None:
                 fileEntry.set_text(dialog.get_filename())
             
-            self.__febdTopology[febdID][4] = dialog.get_filename()
+            self.__bias_64p[pss] = dialog.get_filename()
         dialog.hide()
         return response == Gtk.ResponseType.OK
             
