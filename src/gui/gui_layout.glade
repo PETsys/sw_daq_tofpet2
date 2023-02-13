@@ -2429,7 +2429,7 @@ Topology</property>
   </object>
   <object class="GtkDialog" id="febdConfigDialog">
     <property name="can_focus">False</property>
-    <property name="title" translatable="yes">Enter FEB/D connection topology</property>
+    <property name="title" translatable="yes">Enter BIAS-64P calibration files</property>
     <property name="resizable">False</property>
     <property name="window_position">center-on-parent</property>
     <property name="type_hint">dialog</property>

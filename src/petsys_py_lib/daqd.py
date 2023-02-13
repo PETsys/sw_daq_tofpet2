@@ -26,7 +26,7 @@ MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
 
-PROTOCOL_VERSION = 0x100
+PROTOCOL_VERSION = 0x101
 
 
 
@@ -313,7 +313,7 @@ class Connection:
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
 	# @param maxTries The maximum number of attempts to read a valid dataframe after uploading configuration 
-	def initializeSystem(self, maxTries = 5):
+	def initializeSystem(self, maxTries = 5, skipFEM = False):
 		# Stop the acquisition, if the system was still acquiring
 		self.__setAcquisitionMode(0)
 
@@ -341,6 +341,49 @@ class Connection:
 			if asicType != 0x0002:
 				raise ErrorInvalidAsicType(portID, slaveID, asicType)
 			
+		if self.getTriggerUnit() is not None and [ self.getTriggerUnit() ] != self.getActiveFEBDs():
+			# We have a distributed trigger
+			# Run trigger signal calibration sequence
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
+			sleep(0.010)
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
+		elif self.getTriggerUnit() is None:
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b000)
+
+
+		# Generate a local sync
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+
+		# Generate master sync (if available) and start acquisition
+		# First, cycle master sync enable on/off to calibrate sync reception
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+		sleep(0.010)
+		# Then enable master sync reception...
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
+		# ... and generate the sync
+		if self.getTriggerUnit() is not None:
+			# We have either
+			# (a) a single FEB/D with GbE
+			# (b) a distributed trigger
+			# Generate sync in the unit responsible for CLK and TGR
+			portID, slaveID = self.getTriggerUnit()
+			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
+			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
+			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+
+		# Enable acquisition
+		# This will include a 220 ms sleep period for daqd and the DAQ card to clear buffers
+		self.__setAcquisitionMode(1)
+		# Finally, disable sync reception
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+
+		if skipFEM:
+			return None
 			
 		# Power on ASICs
 		for portID, slaveID in self.getActiveFEBDs(): fe_power.set_fem_power(self, portID, slaveID, "on")
@@ -403,44 +446,7 @@ class Connection:
 					pass
 
 
-		if self.getTriggerUnit() is not None and [ self.getTriggerUnit() ] != self.getActiveFEBDs():
-			# We have a distributed trigger
-			# Run trigger signal calibration sequence
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
-			sleep(0.010)
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
-		elif self.getTriggerUnit() is None:
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b000)
 
-
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
-		# Generate master sync (if available) and start acquisition
-		# First, cycle master sync enable on/off to calibrate sync reception
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
-		sleep(0.010)
-		# Then enable master sync reception...
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
-		# ... and generate the sync
-		if self.getTriggerUnit() is not None:
-			# We have either
-			# (a) a single FEB/D with GbE
-			# (b) a distributed trigger
-			# Generate sync in the unit responsible for CLK and TGR
-			portID, slaveID = self.getTriggerUnit()
-			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
-			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
-			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
-		
-		# Enable acquisition
-		# This will include a 220 ms sleep period for daqd and the DAQ card to clear buffers	
-		self.__setAcquisitionMode(1)
-		# Finally, disable sync reception
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
 		# Check that the ASIC configuration has not changed after sync
 		for portID, slaveID in self.getActiveFEBDs():

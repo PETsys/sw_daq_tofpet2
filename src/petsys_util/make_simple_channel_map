@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from petsys import daqd, config
+from petsys import daqd, config, info
 from copy import deepcopy
 import argparse
 import struct
@@ -11,49 +11,34 @@ import sys
 def main():
 	parser = argparse.ArgumentParser(description='Make a simple channel and trigger map')
 	parser.add_argument("-o", type=str, required=True, help="Output file")
-	parser.add_argument("--port", type=int, required=True, action="append", help="Port ID")
-	parser.add_argument("--slave", type=int, required=True, action="append", help="Slave ID")
-	parser.add_argument("--trigger-port", dest="trigger_port", type=str, required=False, action="append", help="File name")
-	parser.add_argument("--noTriggerBoard", dest="noTrigger", action="store_true", help="enable only if the system has a DAQ board but no Clock & Trigger board")
-	parser.add_argument("--febd", required=True, choices=["1K", "8K" ], help="FEB/D type")
-	parser.add_argument("--fem", required=True, choices=["128", "256"], help="FEM type")
 
 	args = parser.parse_args()
 
 	channelOutputFile = open(args.o + "_channel.tsv", "w")
 	triggerOutputFile = open(args.o + "_trigger.tsv", "w")
 
+	connection = daqd.Connection()
+	connection.initializeSystem(skipFEM=True)
 
-	if not args.noTrigger and args.trigger_port is None:
-		print("ERROR: Please enter same number of trigger_port IDs as FEB/Ds in the system")
-		exit(1)
+	tgr = connection.getTriggerUnit()
+	is_ekit = (connection.getActiveFEBDs() == [ tgr ])
+	no_tgr =  (tgr == None)
 
-	if not args.noTrigger and len(args.trigger_port) != len(args.port):
-		print("ERROR: Please enter same number of trigger_port IDs as FEB/Ds in the system")
-		exit(1)
-
-
-	if args.fem == "128":
-		n_asics_per_port = 2
-	else:
-		n_asics_per_port  = 4
-
-	if args.febd == "1K":
-		n_ports_per_region = 2
-	else:
-		n_ports_per_region = 4
-
-	n_asics_per_region = n_asics_per_port * n_ports_per_region
-        
 
 	region_list = []
-	for i in range(len(args.port)):
-		portID = int(args.port[i])
-		slaveID = int(args.slave[i])
-		if args.noTrigger:
-			trigger_port = i 
+	for i, (portID, slaveID) in enumerate(connection.getActiveFEBDs()):
+
+		if is_ekit:
+			trigger_port = 0
+		elif no_tgr:
+			trigger_port = i
 		else:
-			trigger_port = int(args.trigger_port[i])
+			trigger_port = connection.read_config_register(portID, slaveID, 16, 0x0610) ^ 0xFFFF
+
+		d = connection.getUnitInfo(portID, slaveID)
+		n_fem = info.fem_per_febd(d)
+		asics_per_fem = info.asic_per_module(d)
+		n_asics_per_region = n_fem * asics_per_fem // 4
 		
 		for quadrant in range(4):
 			trigger_region = 4 * trigger_port + quadrant

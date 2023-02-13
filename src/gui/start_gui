@@ -644,15 +644,13 @@ class GUI:
             ffmt = lambda x,y: ""
         else:
             system_type_txt = "Detected SiPM Readout system"
-            ffmt = lambda x,y: "port %2d slave %2d: "
+            ffmt = lambda x,y: "port %2d slave %2d: " % (x,y)
 
             if tgr is not None:
                 portID, slaveID = tgr
                 topology_txt += "%s CLK&TRIGGER 16\n" % ffmt(portID, slaveID)
-                self.__hasClockTrigger = True
     
         for portID, slaveID in connection.getActiveFEBDs():
-            self.__febdTopology[(portID, slaveID)] = 0 if is_ekit else None
 
             d = connection.getUnitInfo(portID, slaveID)
             bias_str_list = []
@@ -669,7 +667,7 @@ class GUI:
             topology_txt += "%s FEB/D with %s\n" % (ffmt(portID, slaveID), (", ").join(bias_str_list))
                 
         if self.__bias_64p != {}:
-            topology_txt += "\\n*Calibration file required\n\n" 
+            topology_txt += "\n\n*Calibration file required\n\n"
         
         topology_txt += "\n  Opening configuration window..."
         self.show_info_dialog(system_type_txt, topology_txt)
@@ -698,17 +696,14 @@ class GUI:
             label2.set_margin_left(10)
             label2.set_property("halign",3)
             grid.attach_next_to(label2, label1, Gtk.PositionType.RIGHT, 1, 1)
-            if self.__hasClockTrigger:
-                label3 = Gtk.Label("triggerID")
-                label3.set_property("halign",3)
-                grid.attach_next_to(label3, label2, Gtk.PositionType.RIGHT, 1, 1)
-            else:
-                label3 = label2
+            label3 = label2
 
 
             max_bias_slots = max([ slotID for portID, slaveID, slotID in connection.getActiveBiasSlots() ]) + 1
-            for i in range(max_bias_slots):
-                label4 = Gtk.Label("BIAS %d cal" % i)
+            for i in range(2):
+                label4 = Gtk.Label("slot %d" % i)
+                label4.set_margin_right(10)
+                label4.set_margin_left(10)
                 label4.set_property("halign",3)
                 grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
                 label3 = label4
@@ -731,33 +726,28 @@ class GUI:
                 slaveLabelList[ps] = Gtk.Label()
                 slaveLabelList[ps].set_text("%d" % slaveID)
 
-                triggerSpinButtonList[ps] = Gtk.SpinButton()
-                triggerSpinAdjustmentList[ps] = Gtk.Adjustment(0, 0, 32, 1, 1, 0)
-                triggerSpinButtonList[ps].set_adjustment(triggerSpinAdjustmentList[ps])
-                triggerSpinButtonList[ps].set_width_chars(1)
-                triggerSpinButtonList[ps].set_max_width_chars(2)
-
                 grid.attach(portLabelList[ps], 0, i+1, 1, 1)
                 grid.attach(slaveLabelList[ps], 1, i+1, 1, 1)
 
-                if self.__hasClockTrigger:
-                    grid.attach(triggerSpinButtonList[ps], 2, i+1, 1, 1)
-
-                for slotID in range(max_bias_slots):
+                for slotID in range(2):
                     pss = (portID, slaveID, slotID)
                     if pss in self.__bias_64p.keys():
                         fileEntryList[pss] = Gtk.Entry()
-                        grid.attach(fileEntryList[pss], 3, i+1, 1, 1)
-                        fileEntryList[i].set_margin_left(10)
-                        fileEntryList[i].set_width_chars(30)
-                        fileEntryList[i].set_max_width_chars(30)
-                        fileButtonList[i] = Gtk.Button("Choose")
-                        grid.attach(fileButtonList[pss], 4+slotID, i+1, 1, 1)
-                        fileButtonList[i].connect("clicked", self.choose_BiasCal_File, pss, fileEntryList[pss])
-                    else:
+                        grid.attach(fileEntryList[pss], 2+2*slotID, i+1, 1, 1)
+                        fileEntryList[pss].set_margin_left(10)
+                        fileEntryList[pss].set_width_chars(30)
+                        fileEntryList[pss].set_max_width_chars(30)
+                        fileButtonList[pss] = Gtk.Button("Choose")
+                        grid.attach(fileButtonList[pss], 3+2*slotID, i+1, 1, 1)
+                        fileButtonList[pss].connect("clicked", self.choose_BiasCal_File, pss, fileEntryList[pss])
+                    elif pss in connection.getActiveBiasSlots():
                         label = Gtk.Label("PROM")
                         #label.set_property("halign", 3)
-                        grid.attach(label, 4+slotID, i+1, 1, 1)
+                        grid.attach(label, 2+2*slotID, i+1, 2, 1)
+                    else:
+                        label = Gtk.Label("N/A")
+                        #label.set_property("halign", 3)
+                        grid.attach(label, 2+2*slotID, i+1, 2, 1)
 
 
             febdConfigBox.show_all()
@@ -765,21 +755,6 @@ class GUI:
             febdConfigDialog.connect("response", self.validate_response2, triggerSpinButtonList)
             response2 = febdConfigDialog.run()
 
-
-#            topology = ""
-#            for [portID,slaveID, triggerID, biasMezzType, biasCalFile] in self.__febdTopology:
-#                if  biasMezzType == "FEB/D_64P":
-#                    topology += "- FEB/D + Bias Mezzanine 64P, in DAQ port %d, slave %d, trigger %d, calibration file '%s'\n" % (portID,slaveID, triggerID, biasCalFile)
-#                    self.__febdNumber += 1
-#                elif  biasMezzType == "FEB/D_16P":
-#                    topology += "- FEB/D + Bias Mezzanine 16P, in DAQ port %d, slave %d, trigger %d\n" % (portID,slaveID, triggerID)
-#                    self.__febdNumber += 1
-#            for febd in systemTopology:
-#                if febd[3] == "CLK&TRIGGER":
-#                    topology += "- Clock & Trigger in DAQ port %d, slave %d\n" % (febd[0], febd[1])
-#            
-#            topology += "\n\n\n        Save configuration files in Working Data Folder?"
-#
             if self.show_confirmation_dialog("Save configuration files in Working Data Folder?", "System configuration"):
                 self.saveSystemSettings()
             else:
@@ -797,13 +772,7 @@ class GUI:
             subprocess.call("cp config.ini "+self.__workingFolder, shell=True)
 
 
-        if self.__hasClockTrigger:
-            map_cmd = [ "--port %d --slave %d --trigger %d" % (p,s,t) for (p,s),t in self.__febdTopology.items() ]
-        else:
-            map_cmd = [ "--port %d --slave %d --noTriggerBoard" % (p,s) for (p,s),t in self.__febdTopology.items() ]
-
-        map_cmd = (" ").join(map_cmd)
-        map_cmd = ("./make_simple_channel_map --febd 1K --fem 128 -o %s/map " % self.__workingFolder) + map_cmd
+        map_cmd = ("./make_simple_channel_map -o %s/map " % self.__workingFolder)
         subprocess.call(map_cmd, shell=True)
 
         bias_cmd = [ "--port %d --slave %d --slot %d --filename %s" % (p,s,ss,fn) for (p,s,ss), fn in self.__bias_64p.items() ]
@@ -817,8 +786,7 @@ class GUI:
         if (response_id == -6):
             dialog.hide()
             return True
-        for ps in self.__febdTopology.keys():
-            self.__febdTopology[ps] = triggerSpinButtonList[ps].get_value()
+
         valid = self.is_FEBD_Config_Valid()
         if valid:
             dialog.hide()
@@ -826,15 +794,7 @@ class GUI:
         return True
            
     def is_FEBD_Config_Valid(self):
-        if self.__febdTopology == None:
-            return False
-        
-        countTrigger = Counter([trigger for trigger in self.__febdTopology.values() ])
         countFiles = Counter([fn for fn in self.__bias_64p.values() ])
-              
-        if any(count > 1 for count in countTrigger.values()) and self.__hasClockTrigger:
-            self.show_error_dialog("Each FEB/D should have a unique triggerID value.")
-            return False
 
         if (True, None) in  countFiles:
             self.show_error_dialog("Bias calibration file is not defined for all required FEB/Ds.")
