@@ -1,3 +1,6 @@
+// kate: mixedindent off; space-indent off; indent-pasted-text false; tab-width 8; indent-width 8; replace-tabs: off;
+// vim: tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab
+
 #ifndef __PFP_KX7_HPP__DEFINED__
 #define __PFP_KX7_HPP__DEFINED__
 
@@ -17,7 +20,8 @@ protected:
 public:
 	static PFP_KX7 *openCard(int fd);
 	 ~PFP_KX7();
-	 int getWords(uint64_t *buffer, int count);
+
+	uint64_t *getNextFrame();
 	bool cardOK();
 	void clearReplyQueue();
 	int sendCommand(uint64_t *packetBuffer, int packetBufferSize);
@@ -28,7 +32,6 @@ public:
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setGateEnable(unsigned mode);
-	virtual bool lookForWords(uint64_t pattern, bool match);
 
 	  static const int ETIMEOUT = -1;
 	  static const int ENOWORDS = -2;

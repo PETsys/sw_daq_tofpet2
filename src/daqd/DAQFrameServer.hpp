@@ -1,3 +1,6 @@
+// kate: mixedindent off; space-indent off; indent-pasted-text false; tab-width 8; indent-width 8; replace-tabs: off;
+// vim: tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab
+
 #ifndef __DAQFRAMESERVER_HPP__DEFINED__
 #define __DAQFRAMESERVER_HPP__DEFINED__
 
@@ -17,7 +20,8 @@ protected:
 public:
 	virtual ~AbstractDAQCard();
 
-	virtual int getWords(uint64_t *buffer, int count) = 0;
+	virtual uint64_t *getNextFrame() = 0;
+
 	virtual void clearReplyQueue() = 0;
 	virtual int sendCommand(uint64_t *packetBuffer, int packetBufferSize) = 0;
 	virtual int recvReply(uint64_t *packetBuffer, int packetBufferSize) = 0;
@@ -27,7 +31,6 @@ public:
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
 	virtual int setGateEnable(unsigned mode);
-	virtual bool lookForWords(uint64_t pattern, bool match) = 0;
 };
 
 class DAQFrameServer : public FrameServer

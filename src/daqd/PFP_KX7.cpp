@@ -1,3 +1,6 @@
+// kate: mixedindent off; space-indent off; indent-pasted-text false; tab-width 8; indent-width 8; replace-tabs: off;
+// vim: tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab
+
 #include "PFP_KX7.hpp"
 #include <assert.h>
 
@@ -181,19 +184,19 @@ PFP_KX7::~PFP_KX7()
 	close(fd);
 }
 
-bool PFP_KX7::lookForWords(uint64_t pattern, bool match)
+uint64_t *PFP_KX7::getNextFrame()
 {
 	if(!bufferSetThreadValid) {
 		// TODO:
 		// DAQFrameServer tries to read data even before the acquisiton has been started
 		// But this should be fixed in DAQFrameServer later
-		return false;
-
+		return NULL;
 	}
 
-	bool found = false;
-	while(!found) {
 
+	uint64_t *retval = NULL;
+
+	while(retval == NULL) {
 		if(currentBuffer == NULL) {
 			// We have no buffer to copy data from yet
 
@@ -210,85 +213,53 @@ bool PFP_KX7::lookForWords(uint64_t pattern, bool match)
 			pthread_mutex_unlock(&bufferSetMutex);
 			currentBuffer = bufferSet + index;
 		}
-		else if(currentBuffer->consumed == currentBuffer->filled) {
+
+		else if(currentBuffer->consumed >= currentBuffer->filled) {
 			// We have a buffer but it's exausted
 
 			currentBuffer = NULL;
 
-			pthread_mutex_lock(&bufferSetMutex);
-			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
-			pthread_mutex_unlock(&bufferSetMutex);
-			pthread_cond_signal(&bufferSetCondConsumed);
-			return false;
-
-		}
-
-		uint64_t *head = currentBuffer->data + currentBuffer->consumed;
-		uint64_t *end = currentBuffer->data + currentBuffer->filled;
-
-
-		while(true) {
-			if(head == end) break;
-			found = ((*head == pattern) == match);
-			if(found) break;
-			head++;
-		}
-
-		currentBuffer->consumed = head -  currentBuffer->data;
-	}
-	return true;
-}
-
-int PFP_KX7::getWords(uint64_t *buffer, int count)
-{
-	if(!bufferSetThreadValid) {
-		// TODO:
-		// DAQFrameServer tries to read data even before the acquisiton has been started
-		// In such case, sleep a bit and then return 0 words
-		// But this should be fixed in DAQFrameServer later
-		usleep(100000);
-		return 0;
-	}
-	
-	int r = 0;
-	while(r < count) {
-		if(currentBuffer == NULL) {
-			// We have no buffer to copy data from yet
-			
-			pthread_mutex_lock(&bufferSetMutex);
-			bool empty = (bufferSetWrPtr == bufferSetRdPtr);
-			if(empty) {
-				// We're empty, wait for signal and try again
-				pthread_cond_wait(&bufferSetCondFilled, &bufferSetMutex);
-				pthread_mutex_unlock(&bufferSetMutex);
-				continue;
-			}
-			
-			unsigned index = bufferSetRdPtr % N_BUFFER;
-			pthread_mutex_unlock(&bufferSetMutex);
-			currentBuffer = bufferSet + index;
-		}
-		else if(currentBuffer->consumed == currentBuffer->filled) {
-			// We have a buffer but it's exausted
-			
-			currentBuffer = NULL;
-			
 			pthread_mutex_lock(&bufferSetMutex);
 			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
 			pthread_mutex_unlock(&bufferSetMutex);
 			pthread_cond_signal(&bufferSetCondConsumed);
 			continue;
-			
+
 		}
-		
-		ssize_t missing = count - r;
-		ssize_t available = currentBuffer->filled - currentBuffer->consumed;
-		int c2 = (missing  < available) ? missing : available;
-		memcpy((buffer + r), currentBuffer->data + currentBuffer->consumed, c2 * sizeof(uint64_t));
-		currentBuffer->consumed += c2;
-		r += c2;
-	}
-	return r;
+
+
+		uint64_t *tmp = currentBuffer->data + currentBuffer->consumed;
+
+		uint64_t frameSource = (tmp[0] >> 54) & 0x400;
+		uint64_t frameType = (tmp[0] >> 51) & 0x7;
+		uint64_t frameSize = (tmp[0] >> 36) & 0x7FFF;
+		uint64_t frameID = (tmp[0]) & 0xFFFFFFFFF;
+		uint64_t nEvents = tmp[1] & 0xFFFF;
+		bool frameLost = (tmp[1] & 0x10000) != 0;
+
+		if((frameType != 0x1) || (frameSource != 0)) {
+			fprintf(stderr, "Bad frame header: %04lx %04lx\n", frameType, frameSource);
+			currentBuffer->consumed = currentBuffer->filled;
+			continue;
+		}
+
+		if(frameSize > MaxRawDataFrameSize) {
+			fprintf(stderr, "Excessive frame size: %lu\n word (max is %u)", frameSize, MaxRawDataFrameSize);
+			currentBuffer->consumed = currentBuffer->filled;
+			continue;
+		}
+
+		if(frameSize != (nEvents+2)) {
+			fprintf(stderr, "Inconsistent frame size: %lu\n words, %lu events\n", frameSize, nEvents);
+			currentBuffer->consumed = currentBuffer->filled;
+			continue;
+		}
+
+		retval = tmp;
+		currentBuffer->consumed += frameSize;
+        }
+
+        return retval;
 }
 
 bool PFP_KX7::cardOK()

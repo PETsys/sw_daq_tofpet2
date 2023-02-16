@@ -1,3 +1,6 @@
+// kate: mixedindent off; space-indent off; indent-pasted-text false; tab-width 8; indent-width 8; replace-tabs: off;
+// vim: tabstop=8 softtabstop=8 shiftwidth=8 noexpandtab
+
 #include "DAQFrameServer.hpp"
 #include <string.h>
 #include <math.h>
@@ -202,72 +205,23 @@ static bool isFull(unsigned writePointer, unsigned readPointer)
 {
 	return (writePointer != readPointer) && ((writePointer % MaxRawDataFrameQueueSize) == (readPointer % MaxRawDataFrameQueueSize));
 }
-
-bool DAQFrameServer::getFrame(AbstractDAQCard *card, uint64_t *dst)
-{
-	while(!die) {
-		int nWords;
-		lastFrameWasBad = true;
-
-		// Read 3 words which should be a HEADER_WORD and the two first words of a frame
-		nWords = card->getWords(dst, 2);
-		//fprintf(stderr, "DEBUG %016llx %016llx\n", dst[0], dst[1]);
-		if (nWords != 2) continue;
-
-		uint64_t frameSource = (dst[0] >> 54) & 0x400;
-		uint64_t frameType = (dst[0] >> 51) & 0x7;
-		uint64_t frameSize = (dst[0] >> 36) & 0x7FFF;
-		uint64_t frameID = (dst[0]) & 0xFFFFFFFFF;
-		uint64_t nEvents = dst[1] & 0xFFFF;
-		bool frameLost = (dst[1] & 0x10000) != 0;
-
-		if((frameType != 0x1) || (frameSource != 0)) {
-			fprintf(stderr, "Bad frame header: %04lx %04lx\n", frameType, frameSource);
-			continue;
-		}
-
-		if(frameSize > MaxRawDataFrameSize) {
-			fprintf(stderr, "Excessive frame size: %lu\n word (max is %u)", frameSize, MaxRawDataFrameSize);
-			continue;
-		}
-
-		if(frameSize != (nEvents+2)) {
-			fprintf(stderr, "Inconsistent frame size: %lu\n words, %lu events\n", frameSize, nEvents);
-			continue;
-		}
-
-		// Read the rest of the expected event words
-
-		if (nEvents != 0) {
-			nWords = card->getWords(dst+2, nEvents);
-			if(nWords != (nEvents)) continue;
-		}
-
-		// If we got here, we got a good data frame
-		lastFrameWasBad = false;
-		return true;
-
-	}
-	// If we got here, we didn't produce a good data frame
-	return false;
-
-}
-
-
 void *DAQFrameServer::doWork()
 {
 	while(!die) {
 		if(acquisitionMode == 0) continue;
 
 		RawDataFrame *dst = NULL;
-			pthread_mutex_lock(&lock);
-			if(!isFull(dataFrameWritePointer, dataFrameReadPointer)) {
-				dst = &shmPtr[dataFrameWritePointer % MaxRawDataFrameQueueSize];
-			}
-			pthread_mutex_unlock(&lock);
+		pthread_mutex_lock(&lock);
+		if(!isFull(dataFrameWritePointer, dataFrameReadPointer)) {
+			dst = &shmPtr[dataFrameWritePointer % MaxRawDataFrameQueueSize];
+		}
+		pthread_mutex_unlock(&lock);
 
 		if(dst == NULL) continue;
-		getFrame(cards[0], dst->data);
+		//getFrame(cards[0], dst->data);
+		uint64_t *tmp = cards[0]->getNextFrame();
+		uint64_t frameSize = (tmp[0] >> 36) & 0x7FFF;
+		memcpy(dst, tmp, frameSize * sizeof(uint64_t));
 
 		
 		// Do not store frames older than minimumFrameID
@@ -278,10 +232,10 @@ void *DAQFrameServer::doWork()
 		// - Frame is lost but frameID is a multiple of 128 (forward at least 1% so the process does not freeze)
 		if(dst->getFrameLost() && (dst->getFrameID() % 128 != 0)) continue;
 
-			 // Update the shared memory pointers to signal a new frame has been written
-			pthread_mutex_lock(&lock);
-			dataFrameWritePointer = (dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
-			pthread_mutex_unlock(&lock);
+		// Update the shared memory pointers to signal a new frame has been written
+		pthread_mutex_lock(&lock);
+		dataFrameWritePointer = (dataFrameWritePointer + 1)  % (2*MaxRawDataFrameQueueSize);
+		pthread_mutex_unlock(&lock);
 
 	}
 
