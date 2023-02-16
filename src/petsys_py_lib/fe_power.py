@@ -9,7 +9,7 @@ DS44XX_ADR  = { "vdd1" : [0x90, 0xF8, 0x4], # [chipID, regID, muxID]
                 "vdd2" : [0x90, 0xF8, 0x5], # [chipID, regID, muxID]
                 "vdd3" : [0x90, 0xF9, 0x5]} # [chipID, regID, muxID]
 
-VDD1_TARGET = 1.4
+VDD1_TARGET = 1.37
 VDD2_TARGET = 2.75
 VDD3_TARGET = 3.25
 
