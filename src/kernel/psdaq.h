@@ -11,5 +11,6 @@ struct ioctl_reg_t
 } ;
 #define PSDAQ_IOCTL_READ_REGISTER _IOR('q', 1, struct ioctl_reg_t *)
 #define PSDAQ_IOCTL_WRITE_REGISTER _IOW('q', 2, struct ioctl_reg_t *)
+#define PSDAQ_IOCTL_READ_VERSION _IOR('q', 3, struct ioctl_reg_t *)
 
 #endif

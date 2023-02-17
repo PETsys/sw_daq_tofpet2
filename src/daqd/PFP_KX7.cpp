@@ -25,6 +25,7 @@
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 #include "../kernel/psdaq.h"
+static const int REQUIRED_DRIVER_VERSION = 210;
 
 static unsigned long long TARGET_EXT_CLK_FREQUENCY = 200000000;
 #define MAP_SIZE (4*1024*1024UL)
@@ -59,9 +60,21 @@ PFP_KX7 * PFP_KX7::openCard(int index)
 		return NULL;
 	}
 
-	return new PFP_KX7(fd);
-	
 
+	// Check driver version
+	int v = -1;
+	struct ioctl_reg_t ioctl_reg;
+	int r = ioctl(fd, PSDAQ_IOCTL_READ_VERSION, &ioctl_reg);
+
+	if(r == 0)
+		v = ioctl_reg.value;
+
+	if(v != REQUIRED_DRIVER_VERSION) {
+		fprintf(stderr, "Incompatible driver version: %d\n", v);
+		return NULL;
+	}
+
+	return new PFP_KX7(fd);
 }
 
 

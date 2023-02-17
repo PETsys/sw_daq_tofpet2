@@ -25,6 +25,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ricardo Bugalho rbugalho at petsyselectronics dot com");
 MODULE_DESCRIPTION("PETsys DAQ driver");
 
+static const int DRIVER_VERSION = 210;
 
 const static struct
 pci_device_id psdaq_pci_id_tbl[] =
@@ -484,6 +485,16 @@ static long  psdaq_ioctl(struct file *file, unsigned int request, unsigned long 
 		if(err > 0) return -EFAULT;
 
 		writel(ioctl_reg.value, psdaq_dev->bar[1].addr + ioctl_reg.offset);
+		return 0;
+	}
+
+	else if (request == PSDAQ_IOCTL_READ_VERSION) {
+		// Return driver version
+		ioctl_reg.value = DRIVER_VERSION;
+
+		err = copy_to_user((struct ioctl_reg_t *)argp, &ioctl_reg, sizeof(struct ioctl_reg_t));
+		if(err > 0) return -EFAULT;
+
 		return 0;
 	}
 
