@@ -1077,17 +1077,22 @@ class Connection:
 	# @param step2 Tag to a given variable specific to this acquisition
 	# @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
-		workers = [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
+		# WARNING Only the writerPipe returns valid frame/event counters
+		# So it sould always be the last one to be read
+		workers = []
 		if self.__monitorPipe is not None:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
+		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
 			
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 
 		template1 = "@ffIIi"
 		template2 = "@I"
+		template3 = "@qqq"
 		n1 = struct.calcsize(template1)
 		n2 = struct.calcsize(template2)
+		n3 = struct.calcsize(template3)
 
 		self.__synchronizeDataToConfig()
 		wrPointer, rdPointer = (0, 0)
@@ -1111,6 +1116,9 @@ class Connection:
 		rdPointer,  = struct.unpack(template2, data)
 		self.__setDataFrameReadPointer(rdPointer)
 
+		for pin, pout in workers:
+			data = pout.read(n3)
+		stepFrames, stepFramesLost, stepEvents = struct.unpack(template3, data)
 
 		nBlocks = 0
 		currentFrame = startFrame
@@ -1148,6 +1156,9 @@ class Connection:
 				data = pout.read(n2)
 			rdPointer,  = struct.unpack(template2, data)
 
+			for pin, pout in workers:
+				data = pout.read(n3)
+
 			index = (rdPointer + bs - 1) % bs
 			currentFrame = self.__shm.getFrameID(index)
 
@@ -1173,10 +1184,14 @@ class Connection:
 		rdPointer,  = struct.unpack(template2, data)
 		self.__setDataFrameReadPointer(rdPointer)
 		
+		for pin, pout in workers:
+			data = pout.read(n3)
+		stepFrames, stepFramesLost, stepEvents = struct.unpack(template3, data)
+
 		# Check ASIC link status at end of acquisition
 		self.checkAsicRx()
 
-		return None
+		return stepFrames, stepFramesLost, stepEvents
 
         ## Acquires data and decodes it into a bytes buffer
         # @param acquisitionTime Acquisition time in seconds

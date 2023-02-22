@@ -285,6 +285,9 @@ int main(int argc, char *argv[])
 		}
 		
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
+		fwrite(&stepAllFrames, sizeof(long long), 1, stdout);
+		fwrite(&stepLostFrames0, sizeof(long long), 1, stdout);
+		fwrite(&stepEvents, sizeof(long long), 1, stdout);
 		fflush(stdout);
 	}
 

@@ -334,7 +334,11 @@ int main(int argc, char *argv[])
 		if(blockHeader.endOfStep != 0) {
 		}
 		
+		long long dummy = 0;
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
 		fflush(stdout);
 	}
 
