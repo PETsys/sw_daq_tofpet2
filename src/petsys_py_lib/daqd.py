@@ -1056,14 +1056,19 @@ class Connection:
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
-		self.__writerPipe.terminate()
-		if self.__monitorPipe is not None: self.__monitorPipe.terminate()
+		workers = [self.__writerPipe ]
+		if self.__monitorPipe is not None:
+			workers += [ self.__monitorPipe ]
+
+		for worker in workers:
+			worker.stdin.close()
 
 		sleep(0.5)
 
-		self.__writerPipe.kill()
+		for worker in workers:
+			worker.kill()
+			
 		self.__writerPipe = None
-		if self.__monitorPipe is not None: self.__monitorPipe.kill()
 		self.__monitorPipe = None
 
 
