@@ -2,14 +2,14 @@
 # vim: tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
 
 from . import i2c, spi
-from time import sleep
+from time import sleep, time
 from itertools import chain
 
 DS44XX_ADR  = { "vdd1" : [0x90, 0xF8, 0x4], # [chipID, regID, muxID]
                 "vdd2" : [0x90, 0xF8, 0x5], # [chipID, regID, muxID]
                 "vdd3" : [0x90, 0xF9, 0x5]} # [chipID, regID, muxID]
 
-VDD1_TARGET = 1.37
+VDD1_TARGET = 1.35
 VDD2_TARGET = 2.75
 VDD3_TARGET = 3.25
 
@@ -24,9 +24,11 @@ class RSenseReadError(Exception):
         super().__init__(self.message)
 
 class DACMaximumReached(Exception):
-    def __init__(self, portID, slaveID, busID, rail):
+    def __init__(self, portID, slaveID, busID, rail, status):
         self.portID, self.slaveID, self.busID, self.rail = portID, slaveID, busID, rail
-        self.message = f"ERROR: (portID, slaveID) = ({portID}, {slaveID}). {rail.upper()} DAC @ busID {busID} maxed out. FEB/I may require external power."
+        m = [ "%d: %4.2f V" % (4*(busID - 1) + i, vdd_effective) for i, vdd_effective in status.items() ]
+        m = ", ".join(m)
+        self.message = f"ERROR: (portID, slaveID) = ({portID}, {slaveID}). {rail.upper()} DAC @ busID {busID} maxed out ({m})."
         super().__init__(self.message)
 
 def read_power_good(conn, portID, slaveID):
@@ -34,7 +36,12 @@ def read_power_good(conn, portID, slaveID):
     return [cfg_reg[2] & 0x0F, (cfg_reg[2] >> 4) & 0x0F, cfg_reg[1] & 0x0F] # [vdd1_pg, vdd2_pg, vdd3_pg]
 
 def chk_power_good(conn, portID, slaveID, busID):
-    pg_lst = [ (x >> (busID-1)) & 0x1 for x in read_power_good(conn, portID, slaveID)]
+    t0  = time()
+    while (time() - t0) < 1.0:
+        pg_lst = [ (x >> (busID-1)) & 0x1 for x in read_power_good(conn, portID, slaveID)]
+        if pg_lst == [1, 1, 1]: break
+        sleep(0.1)
+
     if pg_lst != [1, 1, 1]:
         fem_power_8k(conn, portID, slaveID, "off")
         print(f'ERROR: Power Good Check FAILED @ busID {busID}! pg_reg = {pg_lst} !')
@@ -93,16 +100,21 @@ def ramp_up_rail(conn, portID, slaveID, busID, rail, range_to_iterate, max, targ
         setpoint = dac_setting
         set_dac(conn, portID, slaveID, busID, rail, dac_setting)
         reading = read_sense(conn, portID, slaveID, busID)
-        reading_connected = [r[read_idx[rail]] for r in reading if r[read_idx["gnd"]] < 0.1] #Filters for connected ports only 
-        if rail == "vdd2": reading_connected = [r for r in reading_connected if r > 1.5]     #Filters for old FEB\I
+
+        reading_connected = [ (i, (r[read_idx[rail]] - r[read_idx["gnd"]])) for i, r in enumerate(reading) if r[read_idx["gnd"]] < 0.1 ]
+        if rail == "vdd2":
+            reading_connected = [ (i, vdd_effective) for i, vdd_effective in reading_connected if vdd_effective > 1.5 ]
+
+        reading_connected = dict(reading_connected)
+
         if not reading_connected:
             break;
-        if min(reading_connected)  > target: 
+        if min(reading_connected.values())  > target: 
             break;
     
     if setpoint == max:
         fem_power_8k(conn, portID, slaveID, "off")
-        raise DACMaximumReached(portID, slaveID, busID, rail)
+        raise DACMaximumReached(portID, slaveID, busID, rail, reading_connected )
     else:
         return setpoint
 
@@ -120,9 +132,9 @@ def fem_power_8k(conn, portID, slaveID, power):
         print(f"INFO: Found the following active busIDs = {busID_lst}")
         for busID in busID_lst:
             set_all_dacs(conn, portID, slaveID, busID, VDD1_PRESET["baseline"], VDD2_PRESET["baseline"], VDD3_PRESET["baseline"])
+
         #Power ON and stabilize
         conn.write_config_register(portID, slaveID, 2, 0x0213, 0b11) 
-        sleep(0.2) #?Some time is required here. Minimum unknown.
         #Check Power Goods
         for busID in busID_lst:
             chk_power_good(conn, portID, slaveID, busID)
