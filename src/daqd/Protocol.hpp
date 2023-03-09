@@ -18,6 +18,7 @@ static const uint16_t commandSetTrigger = 0x10;
 static const uint16_t commandSetIdleTimeCalculation = 0x11;
 static const uint16_t commandSetGateEnable = 0x12;
 static const uint16_t commandSetMinimumFrameID = 0x13;
+static const uint16_t commandGetDAQTemp = 0x14;
 
 }
 #endif

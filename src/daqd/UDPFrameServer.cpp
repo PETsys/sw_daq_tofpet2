@@ -293,6 +293,11 @@ uint64_t UDPFrameServer::getPortUp()
 	return 1;
 };
 
+uint64_t UDPFrameServer::getDAQTemp()
+{
+	return 0;
+};
+
 uint64_t UDPFrameServer::getPortCounts(int port, int whichCount)
 {
 	return 0;

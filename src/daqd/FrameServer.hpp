@@ -42,6 +42,7 @@ public:
 	bool amAcquiring();
 
 	virtual uint64_t getPortUp() = 0;
+	virtual uint64_t getDAQTemp() = 0;
 	virtual uint64_t getPortCounts(int port, int whichCount) = 0;
 
 	virtual int setSorter(unsigned mode);

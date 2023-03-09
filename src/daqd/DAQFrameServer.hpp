@@ -27,6 +27,7 @@ public:
 	virtual int recvReply(uint64_t *packetBuffer, int packetBufferSize) = 0;
 	virtual int setAcquistionOnOff(bool enable) = 0;
 	virtual uint64_t getPortUp() = 0;
+	virtual uint64_t getDAQTemp() = 0;
 	virtual uint64_t getPortCounts(int channel, int whichCount) = 0;
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);
@@ -48,6 +49,7 @@ public:
 	virtual void startAcquisition(int mode);
 	virtual void stopAcquisition();
 	virtual uint64_t getPortUp();
+	virtual uint64_t getDAQTemp();
 	virtual uint64_t getPortCounts(int port, int whichCount);
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);

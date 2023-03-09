@@ -99,6 +99,19 @@ class Connection:
 		reply = [ n for n in range(12*16) if (mask & (1<<n)) != 0 ]
 		return reply
 
+	def getDAQTemp(self):
+		template = "@HH"
+		n = struct.calcsize(template)
+		data = struct.pack(template, 0x14, n)
+		self.__socket.send(data);
+
+		template = "@HQ"
+		n = struct.calcsize(template)
+		data = self.__socket.recv(n);
+		length, temps = struct.unpack(template, data)
+		reply = [ ((temps >> n*16) & 0xFFFF)/100 for n in range(4)]
+		return reply
+
 	def getActiveUnits(self):
 		if self.__activeUnits == {}: self.__scanUnits_ll()
 		return sorted(self.__activeUnits.keys())

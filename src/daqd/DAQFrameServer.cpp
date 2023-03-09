@@ -261,6 +261,22 @@ uint64_t DAQFrameServer::getPortUp()
 	return retval;
 }
 
+
+uint64_t DAQFrameServer::getDAQTemp()
+{
+	uint64_t retval = 0;
+
+	for(unsigned i = 0; i < cards.size(); i++) {
+		uint16_t temp = 0;
+		temp = cards[i]->getDAQTemp();
+		//printf("PFP KX7 #%d temp  = %.2f ºC.\n", i, ((float)temp/100));
+		retval |= temp << (i * 16);
+	}
+
+	return retval;
+}
+
+
 uint64_t DAQFrameServer::getPortCounts(int port, int whichCount)
 {
 	unsigned portsPerCard = 1 << daqCardPortBits;

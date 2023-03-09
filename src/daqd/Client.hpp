@@ -30,6 +30,7 @@ private:
 	int doSetIdleTimeCalculation();
 	int doSetGateEnable();
 	int doSetMinimumFrameID();
+	int doGetDAQTemp();
 };
 
 }

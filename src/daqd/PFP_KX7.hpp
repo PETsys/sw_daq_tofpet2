@@ -28,6 +28,7 @@ public:
 	int recvReply(uint64_t *packetBuffer, int packetBufferSize);
 	int setAcquistionOnOff(bool enable);
 	uint64_t getPortUp();
+	uint64_t getDAQTemp();
 	uint64_t getPortCounts(int channel, int whichCount);
 	virtual int setSorter(unsigned mode);
 	virtual int setCoincidenceTrigger(CoincidenceTriggerConfig *config);

@@ -109,10 +109,8 @@ PFP_KX7::PFP_KX7(int fd)
 		pfp_kx7old = true;
 	}
 
-	ReadWithoutCheck(base_addr0 + (statusReg+78) * 4, &fpga_temp, 1);
-	fpga_temp = fpga_temp & 0xFFF0;		// extracting bits 15 downto 4
-	temp_value = fpga_temp/16 * 503.975/4096 - 273.15;
-	printf("PFP KX7 temp = %f.\n", temp_value);
+	temp_value = getDAQTemp()/100;
+	printf("PFP KX7 temp = %.2f ºC.\n", temp_value);
 
 	if(pfp_kx7old) {
 		uint32_t ExtClkFreq;
@@ -578,6 +576,18 @@ uint64_t PFP_KX7::getPortUp()
 	ReadAndCheck(base_addr0 + statusReg * 4, &channelUp, 1);
 	reply = channelUp;	
 	return reply;
+}
+
+uint64_t PFP_KX7::getDAQTemp()
+{
+	uint64_t reply = 0;
+	uint32_t fpga_temp = 0;
+	ReadWithoutCheck(base_addr0 + (statusReg+78) * 4, &fpga_temp, 1);
+	fpga_temp = fpga_temp & 0xFFF0; // Filter other bits
+	// Temp enconded as 16 bit int; Max = 655.35 ºC
+	reply = (uint64_t)round((fpga_temp/16 * 503.975/4096 - 273.15)*100);
+	if (reply > 0xFFFF) reply = 0xFFFF;
+	return reply & 0xFFFF;
 }
 
 uint64_t PFP_KX7::getPortCounts(int channel, int whichCount)

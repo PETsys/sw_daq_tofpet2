@@ -70,6 +70,8 @@ int Client::handleRequest()
 		actionStatus = doSetGateEnable();
 	else if(cmdHeader.type == commandSetMinimumFrameID)
 		actionStatus = doSetMinimumFrameID();
+	else if(cmdHeader.type == commandGetDAQTemp)
+		actionStatus = doGetDAQTemp();
 
 	if(actionStatus == -1) {
 		fprintf(stderr, "Error handling client %d, command was %u\n", socket, unsigned(cmdHeader.type));
@@ -161,6 +163,18 @@ int Client::doGetPortUp()
 	struct { uint16_t length; uint64_t channelUp; } reply;
 	reply.length = sizeof(reply);
 	reply.channelUp = frameServer->getPortUp();
+	int status = 0;
+	status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
+	if (status < sizeof(reply)) return -1;
+	
+	return 0;
+}
+
+int Client::doGetDAQTemp()
+{
+	struct { uint16_t length; uint64_t temp; } reply;
+	reply.length = sizeof(reply);
+	reply.temp = frameServer->getDAQTemp();
 	int status = 0;
 	status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
 	if (status < sizeof(reply)) return -1;
