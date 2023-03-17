@@ -21,6 +21,7 @@ import math
 import subprocess
 from sys import stdout
 from copy import deepcopy
+import os
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
@@ -417,10 +418,17 @@ class Connection:
 
 		self.set_legacy_fem_mode()
 
+		asic_enable_mask = 0xFFFFFFFFFFFFFFFF
+		if "PETSYS_ASIC_MASK" in os.environ.keys():
+			asic_enable_mask = int(os.environ["PETSYS_ASIC_MASK"], base=16)
+			print("WARING: PETSYS_ASIC_MASK has been set to 0x%016X, some ASICs may be masked OFF" % asic_enable_mask)
+
 		for portID, slaveID in self.getActiveFEBDs():
 
 			supportsTxCalibration2 = (self.read_config_register(portID, slaveID, 64, 0xFFF8) & 0x2)
 			for chipID in range(MAX_CHIPS):
+				if (asic_enable_mask & (1<<chipID)) == 0:
+					continue
 				try:
 					status, readback = self.__doAsicCommand(portID, slaveID, chipID, "rdGlobalCfg")
 					if readback == tofpet2b.GlobalConfigAfterReset:
@@ -471,8 +479,8 @@ class Connection:
 				if readback != initialGlobalAsicConfig[(portID, slaveID, chipID)]:
 					raise tofpet2b.ConfigurationErrorBadRead(portID, slaveID, chipID, initialGlobalAsicConfig[(portID, slaveID, chipID)], readback)
 			
-		# Enable ASIC receiver logic for all ASIC
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, 0xFFFFFFFFFFFFFFFF)
+		# Enable ASIC receiver logic for all unmasked ASICs
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, asic_enable_mask)
 
 		# Set all ASICs to receiver logic calibration  mode
 		# Set ASIC receiver logic to calibration mode
@@ -511,6 +519,9 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs():
 			lDeserializerStatus = self.read_config_register(portID, slaveID, 64, 0x0302)
 			lDecoderStatus = self.read_config_register(portID, slaveID, 64, 0x0310)
+
+			lDeserializerStatus &= asic_enable_mask
+			lDecoderStatus &= asic_enable_mask
 
 			lDeserializerStatus = [ lDeserializerStatus & (1<<n) != 0 for n in range(MAX_CHIPS) ]
 			lDecoderStatus = [ lDecoderStatus & (1<<n) != 0 for n in range(MAX_CHIPS) ]
