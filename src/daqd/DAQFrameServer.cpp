@@ -218,6 +218,7 @@ void *DAQFrameServer::doWork()
 		pthread_mutex_unlock(&lock);
 
 		uint64_t *tmp = cards[0]->getNextFrame();
+		if(tmp == NULL) continue;
 		if(dst == NULL) continue;
 
 		uint64_t frameSize = (tmp[0] >> 36) & 0x7FFF;

@@ -360,7 +360,10 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 
 		// If the DMA buffer is empty wait up to ~100 us in 10 us steps
 		i = 0;
-		while((i < 10) && (psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer)) {
+		while(psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer) {
+			i += 1;
+			if(i >= 10) return n;
+
 			spin_lock(&psdaq_dev->lock);
 			psdaq_dev->dma_wr_pointer = READ_BAR0_REG(29);
 			spin_unlock(&psdaq_dev->lock);
@@ -370,10 +373,6 @@ static ssize_t psdaq_file_read (struct file *file, char *buf, size_t count, loff
 			}
 			
 		}
-		
-		// If DMA buffer is still empty after 100 us, return whatever data we have
-		if(psdaq_dev->dma_wr_pointer == psdaq_dev->dma_rd_pointer)
-			break;
 	
 		offset = psdaq_dev->dma_rd_pointer % NUM_PARTITION;
 		frame = (uint64_t *)((psdaq_dev->dma_buf)+(offset*BUF_SIZE/NUM_PARTITION));

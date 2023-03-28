@@ -210,7 +210,6 @@ uint64_t *PFP_KX7::getNextFrame()
 	while(retval == NULL) {
 		if(currentBuffer == NULL) {
 			// We have no buffer to copy data from yet
-
 			pthread_mutex_lock(&bufferSetMutex);
 			bool empty = (bufferSetWrPtr == bufferSetRdPtr);
 			if(empty) {
@@ -225,8 +224,9 @@ uint64_t *PFP_KX7::getNextFrame()
 			currentBuffer = bufferSet + index;
 		}
 
-		else if(currentBuffer->consumed >= currentBuffer->filled) {
-			// We have a buffer but it's exausted
+		if(currentBuffer->consumed >= currentBuffer->filled) {
+			// We have a buffer but it's empty or exausted
+		bool bufferWasEmpty = (currentBuffer->filled == 0);
 
 			currentBuffer = NULL;
 
@@ -234,10 +234,13 @@ uint64_t *PFP_KX7::getNextFrame()
 			bufferSetRdPtr = (bufferSetRdPtr + 1) % (2*N_BUFFER);
 			pthread_mutex_unlock(&bufferSetMutex);
 			pthread_cond_signal(&bufferSetCondConsumed);
-			continue;
+
+			if(bufferWasEmpty)
+				return NULL;
+			else
+				continue;
 
 		}
-
 
 		uint64_t *tmp = currentBuffer->data + currentBuffer->consumed;
 
