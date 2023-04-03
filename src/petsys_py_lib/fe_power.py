@@ -182,7 +182,8 @@ def set_fem_power(conn, portID, slaveID, power):
     base_pcb = conn.read_config_register(portID, slaveID, 16, 0x0000)
 
     # Enable ASIC reset so that ASICs will be immediately go to a known state
-    for portID, slaveID in conn.getActiveFEBDs(): conn.write_config_register(portID, slaveID, 1, 0x300, 0b1)
+    conn.write_config_register(portID, slaveID, 1, 0x300, 0b1)
+
     if base_pcb in [ 0x0005 ]:
         fem_power_8k(conn, portID, slaveID, power)
     else:
