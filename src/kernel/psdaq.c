@@ -200,9 +200,9 @@ static int psdaq_dev_probe( struct pci_dev *pdev,  const struct pci_device_id *i
 		goto failure_pci_enable;
 	
 	
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
+	err = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if(err) goto failure_dma_mask;
-	err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
+	err = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if(err) goto failure_dma_mask;
 
 	/* Request only the BARs that contain memory regions */
@@ -225,7 +225,7 @@ static int psdaq_dev_probe( struct pci_dev *pdev,  const struct pci_device_id *i
 	pci_set_master(pdev);
 	pci_save_state(pdev);
 
-	psdaq_dev->dma_buf = pci_alloc_consistent(pdev, BUF_SIZE, &psdaq_dev->dma_hwaddr);
+	psdaq_dev->dma_buf = dma_alloc_coherent(&pdev->dev, BUF_SIZE, &psdaq_dev->dma_hwaddr, GFP_KERNEL);
 	if(psdaq_dev->dma_buf == NULL) {
 		err = -ENOMEM;
 		goto failure_dma_allocation;
@@ -274,7 +274,7 @@ failure_cdev_add:
 	unregister_chrdev_region(psdaq_dev->dev, 1);
 
 failure_alloc_chrdev_region:
-	pci_free_consistent(pdev, BUF_SIZE, psdaq_dev->dma_buf, psdaq_dev->dma_hwaddr);
+	dma_free_coherent(&pdev->dev, BUF_SIZE, psdaq_dev->dma_buf, psdaq_dev->dma_hwaddr);
 
 failure_dma_allocation:
 	for (i = 0; i < 2; i++)
@@ -309,7 +309,7 @@ static void psdaq_dev_remove( struct pci_dev *pdev)
 	cdev_del(&psdaq_dev->cdev);
 	unregister_chrdev_region(psdaq_dev->dev, 1);
 
-	pci_free_consistent(pdev, BUF_SIZE, psdaq_dev->dma_buf, psdaq_dev->dma_hwaddr);
+	dma_free_coherent(&pdev->dev, BUF_SIZE, psdaq_dev->dma_buf, psdaq_dev->dma_hwaddr);
 
 	for (i = 0; i < 2; i++)
 		if (psdaq_dev->bar[i].len)

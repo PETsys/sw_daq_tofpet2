@@ -10,7 +10,7 @@
 #include <boost/algorithm/string/replace.hpp>
 
 extern "C" {
-#include <iniparser.h>
+#include <iniparser/iniparser.h>
 }
 
 using namespace PETSYS;
