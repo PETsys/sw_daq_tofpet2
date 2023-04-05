@@ -327,7 +327,7 @@ class Connection:
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
 	# @param maxTries The maximum number of attempts to read a valid dataframe after uploading configuration 
-	def initializeSystem(self, maxTries = 5, skipFEM = False):
+	def initializeSystem(self, maxTries = 5, skipFEM = False, power_lst = []):
 		# Stop the acquisition, if the system was still acquiring
 		self.__setAcquisitionMode(0)
 
@@ -400,7 +400,10 @@ class Connection:
 			return None
 			
 		# Power on ASICs
-		for portID, slaveID in self.getActiveFEBDs(): fe_power.set_fem_power(self, portID, slaveID, "on")
+		if not power_lst:
+			power_lst = self.getActiveFEBDs()
+
+		for portID, slaveID in power_lst: fe_power.set_fem_power(self, portID, slaveID, "on")
 		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
