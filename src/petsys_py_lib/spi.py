@@ -117,7 +117,7 @@ def ltc2668_ll(conn, portID, slaveID, chipID, command):
 		0, p+w+p, 	# mosi
 		p,p+w, 		# miso
 		padding + command + padding,
-		freq_sel = 0,
+		freq_sel = 1,	# For some reason, 10 MHz doesn't work reliably on FEB/D 8K
 		miso_edge = "falling")
 
 
