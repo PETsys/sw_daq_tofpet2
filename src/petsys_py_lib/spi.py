@@ -117,7 +117,7 @@ def ltc2668_ll(conn, portID, slaveID, chipID, command):
 		0, p+w+p, 	# mosi
 		p,p+w, 		# miso
 		padding + command + padding,
-		freq_sel = 1,	# For some reason, 10 MHz doesn't work reliably on FEB/D 8K
+		freq_sel = 1,	# WORKAROUND: 10 MHz operation unreliable on FEB/D 8K revC
 		miso_edge = "falling")
 
 
@@ -460,7 +460,7 @@ def m95080_ll(conn, portID, slaveID, spiID, command, read_count):
         0, p+w+r+p, 	# mosi
         p+w, w+r+p,		# miso
         w_padding + command + r_padding, #mosi data
-        freq_sel = 0,
+        freq_sel = 1, # WORKAROUND: 10 MHz operation unreliable with FEB/D 8K revA (at least)
         miso_edge = "falling", mosi_edge = "rising")
 
 def m95080_wip(conn, portID, slaveID, spiID, MAX_TRIES = 5):
