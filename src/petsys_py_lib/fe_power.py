@@ -188,3 +188,7 @@ def set_fem_power(conn, portID, slaveID, power):
         fem_power_8k(conn, portID, slaveID, power)
     else:
         fem_power_original(conn, portID, slaveID, power)
+
+    conn.write_config_register(portID, slaveID, 1, 0x300, 0b0)
+    if power == "on":
+        conn.set_legacy_fem_mode(portID, slaveID)

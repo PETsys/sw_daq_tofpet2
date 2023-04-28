@@ -296,33 +296,32 @@ class Connection:
 
 	## Detects if there are any legacy FEM-128 connected to FEB/D 1K
 	## and sets the legacy FEM bit for the respective ports
-	def set_legacy_fem_mode(self):
-		for portID, slaveID in self.getActiveFEBDs():
-			# Only FEB/D 1K supports legacy FEM-128
-			if not info.allows_legacy_module(self.getUnitInfo(portID, slaveID)): continue;
+	def set_legacy_fem_mode(self, portID, slaveID):
+		# Only FEB/D 1K supports legacy FEM-128
+		if not info.allows_legacy_module(self.getUnitInfo(portID, slaveID)): return
 
-			# FEB/D 1K has 8 ports
-			for module_id in range(8):
-				# Legacy FEM-128 have a MAX111xx ADC at device 4
-				if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
-					# Communication was successful, let's not do anything else
-					continue
+		# FEB/D 1K has 8 ports
+		for module_id in range(8):
+			# Legacy FEM-128 have a MAX111xx ADC at device 4
+			if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
+				# Communication was successful, let's not do anything else
+				continue
 
-				# Communication failed, flip the mode bit for this port and try again
-				port_bit = (1 << module_id)
-				mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
-				mode_vector = mode_vector ^ port_bit
-				self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
+			# Communication failed, flip the mode bit for this port and try again
+			port_bit = (1 << module_id)
+			mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
+			mode_vector = mode_vector ^ port_bit
+			self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
 
-				if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
-					# Communication was successful, let's not do anything else
-					continue
+			if spi.max111xx_check(self, portID, slaveID, module_id * 256 + 4):
+				# Communication was successful, let's not do anything else
+				continue
 
-				# Communication failed too
-				# Flip the mode bit back to the previous value
-				mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
-				mode_vector = mode_vector ^ port_bit
-				self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
+			# Communication failed too
+			# Flip the mode bit back to the previous value
+			mode_vector = self.read_config_register(portID, slaveID, 8, 0x02B8)
+			mode_vector = mode_vector ^ port_bit
+			self.write_config_register(portID, slaveID, 8, 0x02B8, mode_vector)
 
 
 	## Sends the entire configuration (needs to be assigned to the abstract Connection.config data structure) to the ASIC and starts to write data to the shared memory block
@@ -418,8 +417,6 @@ class Connection:
 		asicType = {}
 		initialGlobalAsicConfig = {} # Store the default config we're uploading into each FEB/D
 		initialAsicChannelConfig = {}
-
-		self.set_legacy_fem_mode()
 
 		asic_enable_mask = 0xFFFFFFFFFFFFFFFF
 		if "PETSYS_ASIC_MASK" in os.environ.keys():
