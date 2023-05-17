@@ -1,10 +1,28 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(sw_daq_tofpet2)
+
+find_program(LSB_RELEASE_EXEC lsb_release)
+execute_process(COMMAND ${LSB_RELEASE_EXEC} -is
+	OUTPUT_VARIABLE LSB_ID_SHORT
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(COMMAND ${LSB_RELEASE_EXEC} -rs
+	OUTPUT_VARIABLE LSB_RELEASE_SHORT
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 find_package(PythonLibs 3.6 REQUIRED)
-find_package(Boost REQUIRED python3 regex)
+if((${LSB_ID_SHORT} STREQUAL "Ubuntu") AND (${LSB_RELEASE_SHORT} VERSION_LESS_EQUAL "20.04"))
+	find_package(Boost REQUIRED python regex)
+else()
+	find_package(Boost REQUIRED python3 regex)
+endif()
+
 include(CheckIncludeFiles)
 
 include_directories(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
+include_directories("/usr/include/iniparser")
+
 link_libraries("rt" "pthread")
 
 include_directories("src/raw_data")
