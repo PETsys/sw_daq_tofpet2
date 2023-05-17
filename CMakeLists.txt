@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(sw_daq_tofpet2)
 find_package(PythonLibs 3.6 REQUIRED)
 find_package(Boost REQUIRED python3 regex)
