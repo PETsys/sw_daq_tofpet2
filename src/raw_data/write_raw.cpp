@@ -12,9 +12,11 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
-#include <set>  
+#include <map>
 #include <shm_raw.hpp>
 #include <boost/lexical_cast.hpp>
+#include <pthread.h>
+#include <unistd.h>
 
 using namespace std;
 
@@ -23,6 +25,29 @@ struct CalibrationData{
 	int freq;
 };
 
+class CalibrationPool {
+public:
+	CalibrationPool(PETSYS::SHM_RAW *shm);
+	~CalibrationPool();
+
+	void clear();
+	void processBatch(unsigned start, unsigned end);
+	void writeOut(FILE *f);
+
+private:
+	int n_cpu;
+	PETSYS::SHM_RAW *shm;
+	vector<map<uint64_t, unsigned>> calEventSet;
+
+	struct worker_t {
+			CalibrationPool *self;
+			pthread_t thread;
+			unsigned cpu_index;
+			unsigned start;
+			unsigned end;
+	};
+	static void * thread_routine(void *arg);
+};
 
 struct BlockHeader  {
 	float step1;
@@ -63,7 +88,7 @@ int main(int argc, char *argv[])
 		sprintf(fNameIdx, "%s.idxf", outputFilePrefix);
 		sprintf(fNameTmp, "%s.tmpf", outputFilePrefix);
 	}
-	
+
 	FILE * dataFile = fopen(fNameRaw, "wb");
 	assert(dataFile != NULL);
 	if(dataFile == NULL) {
@@ -99,8 +124,7 @@ int main(int argc, char *argv[])
 	if(r != 8) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 
 	
-	multiset<uint64_t> calEventSet;  
-	CalibrationData calData;
+	CalibrationPool calibrationPool(shm);
 
 	bool firstBlock = true;
 	float step1;
@@ -137,7 +161,7 @@ int main(int argc, char *argv[])
 			stepFirstFrameID = -1;
 			lastFrameType = FRAME_TYPE_UNKNOWN;
 
-			if(!acqStdMode) calEventSet.clear();
+			if(!acqStdMode) calibrationPool.clear();
 
 			stepStartOffset = ftell(dataFile);
 
@@ -151,6 +175,9 @@ int main(int argc, char *argv[])
 		unsigned bs = shm->getSizeInFrames();
 		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
 		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
+
+		if(!acqStdMode) calibrationPool.processBatch(rdPointer, wrPointer);
+
 		while(rdPointer != wrPointer) {
 			unsigned index = rdPointer % bs;
 			
@@ -196,14 +223,6 @@ int main(int argc, char *argv[])
 			int nEvents = shm->getNEvents(index);
 			bool frameLost = shm->getFrameLost(index);
 			
-			// If acquiring calibration data, insert events into multiset for data compression
-			if(!acqStdMode){
-				for(int i = 0 ; i < nEvents ; i++){
-					uint64_t event = shm->getFrameWord(index, i+2);
-					calEventSet.insert(event);
-				}
-			}
-		
 			// Accounting
 			stepEvents += nEvents;
 			stepMaxFrame = stepMaxFrame > nEvents ? stepMaxFrame : nEvents;
@@ -246,18 +265,7 @@ int main(int argc, char *argv[])
 		if(blockHeader.blockType == 2) {
 			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk 
 			if(!acqStdMode){
-				multiset<uint64_t>::iterator eventIt = calEventSet.begin();
-		        
-				while(eventIt != calEventSet.end()){
-					calData.freq = calEventSet.count(*eventIt);
-					calData.eventWord = *eventIt;
-					r = fwrite(&calData, sizeof(CalibrationData), 1, dataFile);
-					if(r != 1) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
-					r = fflush(dataFile);
-					if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
-					eventIt = calEventSet.upper_bound(*eventIt);
-				}
-				calEventSet.clear();
+				calibrationPool.writeOut(dataFile);
 			}	
 			
 			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
@@ -304,3 +312,88 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+CalibrationPool::CalibrationPool(PETSYS::SHM_RAW *shm)
+	: shm(shm)
+{
+	n_cpu = sysconf(_SC_NPROCESSORS_ONLN);
+	calEventSet = vector<map<uint64_t, unsigned>>(n_cpu);
+};
+
+CalibrationPool::~CalibrationPool()
+{
+};
+
+void CalibrationPool::clear()
+{
+	for (auto i = calEventSet.begin(); i != calEventSet.end(); i++)
+		i->clear();
+
+}
+
+void CalibrationPool::processBatch(unsigned start, unsigned end)
+{
+	vector<worker_t> workers(n_cpu);
+	for(auto i = 0; i < n_cpu; i++) {
+		workers[i].self = this;
+		workers[i].cpu_index = i;
+		workers[i].start = start;
+		workers[i].end = end;
+
+		pthread_create(&workers[i].thread, NULL, thread_routine, &workers[i]);
+	}
+
+	for(auto i = workers.begin(); i != workers.end(); i++) {
+		pthread_join(i->thread, NULL);
+	}
+};
+
+void * CalibrationPool::thread_routine(void *arg)
+{
+	worker_t *worker = (worker_t *)arg;
+	PETSYS::SHM_RAW *shm = worker->self->shm;
+	unsigned bs = shm->getSizeInFrames();
+	unsigned n_cpu = worker->self->n_cpu;
+	unsigned cpu_index = worker->cpu_index;
+	
+	unsigned index2 = worker->start;
+	while(index2 != worker->end) {
+		unsigned index = index2 % bs;
+
+		int frameSize = shm->getNEvents(index);
+		for(int i = 0; i < frameSize; i++) {
+			unsigned g = shm->getChannelID(index, i);
+			unsigned channelID = channelID % 64;
+			unsigned asicID = (g >> 6) % 64;
+			unsigned slaveID = (g >> 12) % 32;
+			unsigned portID = (g >> 17) % 32;
+		
+			unsigned hash = channelID ^ asicID ^ slaveID ^ portID;
+			hash = hash % n_cpu;
+
+			if(hash != cpu_index) continue;
+
+			uint64_t event_word = shm->getFrameWord(index, i+2);
+			worker->self->calEventSet[cpu_index][event_word]++;
+		}
+
+		index2 = (index2 + 1) % (2 * bs);
+	}
+
+
+	return NULL;
+}
+
+void CalibrationPool::writeOut(FILE *f)
+{
+	for(auto i = calEventSet.begin(); i != calEventSet.end(); i++) {
+		for(auto j = i->begin(); j != i->end(); j++) {
+			CalibrationData c;
+			c.eventWord = j->first;
+			c.freq = j->second;
+			fwrite(&c, sizeof(CalibrationData), 1, f);
+		}
+		
+		i->clear();
+	}
+
+}
