@@ -73,7 +73,6 @@ def get_module_version(conn, portID, slaveID, busID):
     else:
         return 'MURATA'
 
-
 def read_sense(conn, portID, slaveID, busID, debug = False, gnd_max_filter = 0.1):
     if debug: print(f'Reading busID {busID}')
     reading = []
@@ -104,10 +103,22 @@ def read_sense(conn, portID, slaveID, busID, debug = False, gnd_max_filter = 0.1
     sleep(0.001) #!This should not be needed. Possible firmware issue. Take in consideration if futures issues appear.
     return reading
 
+def read_dac_ti(conn, portID, slaveID, busID, rail):
+    chipID = DS44XX_ADR['TI'][rail][0]
+    regID  = DS44XX_ADR['TI'][rail][1]
+    return i2c.ds44xx_read_register(conn, portID, slaveID, busID, chipID, regID)
+
 def set_dac_ti(conn, portID, slaveID, busID, rail, setting):
     chipID = DS44XX_ADR['TI'][rail][0]
     regID  = DS44XX_ADR['TI'][rail][1]
     i2c.ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, setting, debug_error=False)
+
+def read_dac_murata(conn, portID, slaveID, busID, rail):
+    chipID = DS44XX_ADR['MURATA'][rail][0]
+    regID  = DS44XX_ADR['MURATA'][rail][1]
+    muxID  = DS44XX_ADR['MURATA'][rail][2]
+    i2c.PI4MSD5V9540B_set_register(conn, portID, slaveID, busID, 0xE0, muxID, debug_error=False)
+    return i2c.ds44xx_read_register(conn, portID, slaveID, busID, chipID, regID)
 
 def set_dac_murata(conn, portID, slaveID, busID, rail, setting):
     chipID = DS44XX_ADR['MURATA'][rail][0]
@@ -124,6 +135,12 @@ def int_to_dac(value):
         return value
 
 #Interface function for different DCDC modules
+def read_dac(conn, portID, slaveID, busID, moduleVersion, rail):
+    if moduleVersion == 'MURATA':
+        return read_dac_murata(conn, portID, slaveID, busID, rail)
+    elif moduleVersion == 'TI':
+        return read_dac_ti(conn, portID, slaveID, busID, rail)
+
 def set_dac(conn, portID, slaveID, busID, moduleVersion, rail, setting):
     converted_setting = int_to_dac(setting)
     if moduleVersion == 'MURATA':
@@ -163,19 +180,21 @@ def ramp_up_rail(conn, portID, slaveID, busID, moduleVerison, rail, range_to_ite
     else:
         return setpoint
 
+def detect_active_bus(conn, portID, slaveID, testID_lst = [1,2,3,4]):
+    busID_lst = []
+    for testID in testID_lst:
+        for reading in read_sense(conn, portID, slaveID, testID):
+            if reading[3] < 0.1:
+                detected_module_type = get_module_version(conn, portID, slaveID, testID)
+                busID_lst.append((testID,detected_module_type))
+                break;
+    return busID_lst
 
 def fem_power_8k(conn, portID, slaveID, power):
     if power == "on":
         #Initialize DC-DC blocks
         print("INFO: Initializing DCDC blocks.")
-        busID_lst = []
-        for testID in [1,2,3,4]: #! TURN THIS INTO A FUNCTION
-            for reading in read_sense(conn, portID, slaveID, testID):
-                if reading[3] < 0.1:
-                    detected_module_type = get_module_version(conn, portID, slaveID, testID)
-                    busID_lst.append((testID,detected_module_type))
-                    break;
-        
+        busID_lst = detect_active_bus(conn, portID, slaveID)
         print(f"INFO: Found the following active busIDs = {busID_lst}")
 
         #Set all DACs to baseline values (enough for 1 ASIC directly connected to board)
@@ -196,7 +215,7 @@ def fem_power_8k(conn, portID, slaveID, power):
             vdd2_iterable = range(VDD2_PRESET[moduleVersion]["baseline"], VDD2_PRESET[moduleVersion]["max"] + 1, 4)
             vdd3_iterable = range(VDD3_PRESET[moduleVersion]["baseline"], VDD3_PRESET[moduleVersion]["max"] + 1, 3)
 
-            vdd1_setpoint = ramp_up_rail(conn, portID, slaveID, busID, moduleVersion, "vdd1", vdd1_iterable, VDD1_PRESET[moduleVersion]["max"], VDD1_TARGET+0.065)
+            vdd1_setpoint = ramp_up_rail(conn, portID, slaveID, busID, moduleVersion, "vdd1", vdd1_iterable, VDD1_PRESET[moduleVersion]["max"], VDD1_TARGET)
             vdd2_setpoint = ramp_up_rail(conn, portID, slaveID, busID, moduleVersion, "vdd2", vdd2_iterable, VDD2_PRESET[moduleVersion]["max"], VDD2_TARGET)
             vdd3_setpoint = ramp_up_rail(conn, portID, slaveID, busID, moduleVersion, "vdd3", vdd3_iterable, VDD3_PRESET[moduleVersion]["max"], VDD3_TARGET)
 

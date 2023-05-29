@@ -509,6 +509,17 @@ class Connection:
 				for n in range(64):
 					self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=n, value=ccfg)
 
+		# FEB\D-8K -> Ramp up VDD1 rail again after ASIC configuration
+		for portID, slaveID in self.getActiveFEBDs():
+			if self.__activeUnits[(portID, slaveID)][0] in [ 0x0005 ]:
+				print(f'INFO: Found FEB\D 8K @ ({portID},{slaveID}). Ramping up VDD1 rail after ASIC configuration.')
+				busID_lst = fe_power.detect_active_bus(self, portID, slaveID)
+				for busID, moduleVersion in busID_lst:
+					current_dac_setting = fe_power.read_dac(self, portID, slaveID, busID, moduleVersion, 'vdd1')
+					vdd1_iterable = range(current_dac_setting, fe_power.VDD1_PRESET[moduleVersion]["max"] + 1, 2)
+					new_dac_setting = fe_power.ramp_up_rail(self, portID, slaveID, busID, moduleVersion, "vdd1", vdd1_iterable, fe_power.VDD1_PRESET[moduleVersion]["max"], fe_power.VDD1_TARGET)
+					#print(portID, slaveID, busID, moduleVersion, current_dac_setting, new_dac_setting)
+		
 		# Allow some ms for the deserializer to lock to the 8B/10B pattern
 		sleep(0.010)
 
