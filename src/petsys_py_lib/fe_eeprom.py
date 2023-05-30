@@ -35,6 +35,16 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
+                            ], 
+                'fem_256_p' :[
+                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
+                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
+                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
                             ] 
                 }                 
 
