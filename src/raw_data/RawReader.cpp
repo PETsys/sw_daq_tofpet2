@@ -300,7 +300,7 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 		int N = dataFrame->getNEvents();
 		if(N == 0) continue;
 
-		assert((N+2) < MaxRawDataFrameSize);
+		assert((N+2) <= MaxRawDataFrameSize);
 
 		r = readFromDataFile((char*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
