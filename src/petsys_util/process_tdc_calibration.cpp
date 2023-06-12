@@ -888,11 +888,9 @@ void calibrateAsic(
 		hResolution->Draw("HIST");
 		
 	}
-	sprintf(fName, "%s.pdf", summaryFilePrefix);
+	sprintf(fName, "%s.svg", summaryFilePrefix);
 	c->SaveAs(fName);
-
-	sprintf(fName, "%s.png", summaryFilePrefix);
-	c->SaveAs(fName);
+	delete c;
 
 	rootFile->Write();
 	delete rootFile;

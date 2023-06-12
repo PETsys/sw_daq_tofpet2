@@ -601,10 +601,7 @@ void calibrateAsic(
 	hMax100Time->SetLineColor(kRed);
 	hMax100Time->Draw("HISTO,SAME");
 
-	sprintf(fName, "%s.pdf", summaryFilePrefix);
-	c->SaveAs(fName);
-
-	sprintf(fName, "%s.png", summaryFilePrefix);
+	sprintf(fName, "%s.svg", summaryFilePrefix);
 	c->SaveAs(fName);
 	delete c;
 

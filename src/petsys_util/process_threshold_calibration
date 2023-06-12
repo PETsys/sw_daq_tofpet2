@@ -320,8 +320,7 @@ def main(argv):
 		leg3.AddEntry(gnoise_E[(portID, slaveID, chipID)],"E","p");
 		leg3.Draw()
 
-		plotName = "%s_%02d_%02d_%02d.pdf" % (args.inputFilePrefix, portID, slaveID, chipID)
-
+		plotName = "%s_%02d_%02d_%02d.svg" % (args.inputFilePrefix, portID, slaveID, chipID)
 		c1.SaveAs(plotName)
 
 
