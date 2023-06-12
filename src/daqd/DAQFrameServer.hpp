@@ -58,7 +58,6 @@ public:
 private:
 	std::vector<AbstractDAQCard *> cards;
 	unsigned daqCardPortBits;
-	uint64_t *cfData;
 	
 protected:
 

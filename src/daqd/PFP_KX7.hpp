@@ -18,7 +18,7 @@ protected:
 	  PFP_KX7(int index);
 
 public:
-	static PFP_KX7 *openCard(int fd);
+	static PFP_KX7 *openCard(const char *devName);
 	 ~PFP_KX7();
 
 	uint64_t *getNextFrame();

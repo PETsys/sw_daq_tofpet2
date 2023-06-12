@@ -46,15 +46,14 @@ int main(int argc, char *argv[])
 	int debugLevel = 0;
 	
 	int daqType = -1;
-	unsigned ncards = 1;
-	unsigned daqCardPortBits = 5;
+	std::vector<std::string> daqCardList;
+	unsigned daqCardPortBits = -1;
 	
 	static struct option longOptions[] = {
 		{ "socket-name", required_argument, 0, 0 },
 		{ "debug-level", required_argument, 0, 0 },
 		{ "daq-type", required_argument, 0, 0 },
-		{ "ncards", required_argument, 0, 0 },
-		{ "card-width", required_argument, 0, 0},
+		{ "card", required_argument, 0, 0 },
 		{ NULL, 0, 0, 0 }
 	};
 	while(1) {
@@ -85,10 +84,7 @@ int main(int argc, char *argv[])
 			
 		}
 		else if (c == 0 && optionIndex == 3) {
-			ncards = boost::lexical_cast<unsigned>((char *)optarg);
-		}
-		else if (c == 0 && optionIndex == 4) {
-			daqCardPortBits = boost::lexical_cast<unsigned>((char *)optarg);
+			daqCardList.push_back((char *)optarg);
 		}
 		else {
 			fprintf(stderr, "ERROR: Unknown option!\n");
@@ -96,12 +92,32 @@ int main(int argc, char *argv[])
 		}
 		
 	}
+
+	// We don't support more than 2 DAQ cards
+	if(daqCardList.size() > 2) {
+		fprintf(stderr, "Maximum number of DAQ cards (2) exceeded.\n");
+		return -1;
+	}
+
+	// Set default if user did not specify DAQ card
+	if(daqCardList.size() == 0) {
+		daqCardList.push_back("/dev/psdaq0");
+	}
+
 	
+	if(daqCardPortBits == -1) {
+		if(daqCardList.size() == 1)
+			daqCardPortBits = 5;
+		else
+			daqCardPortBits = 2;
+	}
+
+
 	if(clientSocketName == NULL) {
 		fprintf(stderr, "--socket-name </path/to/socket> required\n");
 		return -1;
 	}
-	
+
 	if (daqType == -1) {
 		fprintf(stderr, "--daq-type xxx required\n");
 		return -1;
@@ -137,8 +153,8 @@ int main(int argc, char *argv[])
 		frameServer = UDPFrameServer::createFrameServer(shmName, shmfd, shmPtr, debugLevel);
 	}
 	else if (daqType == 1) {
-		for(int index = 0; index < ncards; index++) {
-			AbstractDAQCard *card = PFP_KX7::openCard(index);
+		for(auto i = daqCardList.begin(); i != daqCardList.end(); i++) {
+			AbstractDAQCard *card = PFP_KX7::openCard(i->c_str());
 			if(card == NULL)
 				goto cleanup_daq_cards;
 

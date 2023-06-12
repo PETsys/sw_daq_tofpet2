@@ -49,11 +49,8 @@ static const unsigned BUFFER_SIZE = DMA_TRANS_BYTE_SIZE / 8;
 static const unsigned N_BUFFER = 2;
 static const unsigned RDWR_POINTER_LENGTH = 1;       // 1 to 5
 
-PFP_KX7 * PFP_KX7::openCard(int index)
+PFP_KX7 * PFP_KX7::openCard(const char *devName)
 {
-	char devName[512];
-	sprintf(devName, "/dev/psdaq%d", index);
-	
 	int fd = open(devName, O_RDWR | O_SYNC);
 	if(fd == -1) {
 		fprintf(stderr, "ERROR: Could not open device %s: %s (%d)\n", devName, strerror(errno), errno);
@@ -414,7 +411,7 @@ void * PFP_KX7::bufferSetThreadRoutine(void * arg)
 
 int PFP_KX7::setAcquistionOnOff(bool enable)
 {
-	fprintf(stderr, "calling PFP_KX7::setAcquistionOnOff()\n");
+	fprintf(stderr, "calling PFP_KX7::setAcquistionOnOff(%s)\n", enable ? "enable" : "disable");
 	uint32_t data[1];
 	int status;
 	
@@ -451,11 +448,13 @@ int PFP_KX7::setAcquistionOnOff(bool enable)
 			pthread_join(bufferSetThread, NULL);
 			bufferSetThreadValid = false;
 			printf("INFO: PFP_KX7 worker stopped.\n");
+
+			// Discard any data present in the card and driver buffer
+			while(read(fd, bufferSet[0].data, BUFFER_SIZE * sizeof(uint64_t)) > 0);
 		}
 	}
 	
 	
-	fprintf(stderr, "returning PFP_KX7::setAcquistionOnOff()\n");
 	return status;	
 }
 

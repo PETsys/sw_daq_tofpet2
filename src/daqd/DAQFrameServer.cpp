@@ -42,15 +42,12 @@ DAQFrameServer::DAQFrameServer(std::vector<AbstractDAQCard *> cards, unsigned da
 {
 	int nCards = cards.size();
 	size_t bs = MaxRawDataFrameSize + 4;
-	cfData = new uint64_t [bs * nCards];
 	lastFrameWasBad = true;
 }
 	
 
 DAQFrameServer::~DAQFrameServer()
 {
-	stopAcquisition();
-	delete [] cfData;
 }
 
 void DAQFrameServer::startAcquisition(int mode)
@@ -207,6 +204,18 @@ static bool isFull(unsigned writePointer, unsigned readPointer)
 }
 void *DAQFrameServer::doWork()
 {
+	std::vector<AbstractDAQCard *> activeCards;
+	std::vector<uint64_t> cardsPrefix;
+	for (uint64_t i = 0; i < cards.size(); i++) {
+		if(cards[i]->getPortUp() != 0x0) {
+			activeCards.push_back(cards[i]);
+			cardsPrefix.push_back(i << (59 + daqCardPortBits));
+		}
+	}
+
+	int nCards = cards.size();
+	int nActiveCards = activeCards.size();
+
 	while(!die) {
 		if(acquisitionMode == 0) continue;
 
@@ -217,13 +226,87 @@ void *DAQFrameServer::doWork()
 		}
 		pthread_mutex_unlock(&lock);
 
-		uint64_t *tmp = cards[0]->getNextFrame();
-		if(tmp == NULL) continue;
-		if(dst == NULL) continue;
+		if(nCards == 1) {
+			uint64_t *tmp = cards[0]->getNextFrame();
+			if(tmp == NULL) continue;
+			if(dst == NULL) continue;
 
-		uint64_t frameSize = (tmp[0] >> 36) & 0x7FFF;
-		memcpy(dst, tmp, frameSize * sizeof(uint64_t));
+			uint64_t frameSize = (tmp[0] >> 36) & 0x7FFF;
+			memcpy(dst, tmp, frameSize * sizeof(uint64_t));
+		}
+		else if (nActiveCards == 1) {
+			uint64_t *tmp = activeCards[0]->getNextFrame();
+			if(tmp == NULL) continue;
+			if(dst == NULL) continue;
 
+			dst->data[0] = tmp[0];
+			dst->data[1] = tmp[1];
+			uint64_t nEvents = tmp[1]  & 0xFFFF;
+
+			uint64_t *src_ptr = tmp + 2;
+			uint64_t *end_ptr = src_ptr + nEvents;
+			uint64_t *dst_ptr = dst->data + 2;
+			uint64_t prefix = cardsPrefix[0];
+			for( ; src_ptr < end_ptr; src_ptr++, dst_ptr++)
+				*dst_ptr = *src_ptr | prefix;
+
+		}
+		else if(nActiveCards == 2) {
+			uint64_t *tmp0 = activeCards[0]->getNextFrame();
+			uint64_t *tmp1 = activeCards[1]->getNextFrame();
+			if(tmp0 == NULL) continue;
+			if(tmp1 == NULL) continue;
+			if(dst == NULL) continue;
+
+			uint64_t frameID0;
+			uint64_t frameID1;
+			do {
+				frameID0 = tmp0[0] & 0xFFFFFFFFFULL;
+				frameID1 = tmp1[0] & 0xFFFFFFFFFULL;
+				//fprintf(stderr, "D1 %016llx %016llx\n", frameID0, frameID1);
+
+				if(frameID0 < frameID1) tmp0 = cards[0]->getNextFrame();
+				if(frameID1 < frameID0) tmp1 = cards[1]->getNextFrame();
+
+				while(!die && (tmp0 == NULL)) tmp0 = cards[0]->getNextFrame();
+				while(!die && (tmp1 == NULL)) tmp1 = cards[1]->getNextFrame();
+			} while(!die && (frameID0 != frameID1));
+
+			bool frameLost = ((tmp0[1] | tmp1[1]) & 0x10000) != 0;
+			uint64_t nEvents0 = tmp0[1]  & 0xFFFF;
+			uint64_t nEvents1 = tmp1[1]  & 0xFFFF;
+			//fprintf(stderr, "D2 %4llu %4llu\n", nEvents0, nEvents1);
+
+			if((nEvents0 + nEvents1 + 2) > MaxRawDataFrameSize) {
+				frameLost = true;
+			}
+
+			if(frameLost) {
+				dst->data[0] = (2ULL << 36) | frameID0;
+				dst->data[1] = 0x10000;
+			}
+			else {
+
+				dst->data[0] = ((nEvents0 + nEvents1 + 2ULL) << 36) | frameID0;
+				dst->data[1] = nEvents0 + nEvents1;
+
+				uint64_t *src_ptr = tmp0 + 2;
+				uint64_t *end_ptr = src_ptr + nEvents0;
+				uint64_t *dst_ptr = dst->data + 2;
+				uint64_t prefix = cardsPrefix[0];
+				for( ; src_ptr < end_ptr; src_ptr++, dst_ptr++)
+					*dst_ptr = *src_ptr | prefix;
+
+				src_ptr = tmp1 + 2;
+				end_ptr = src_ptr + nEvents1;
+				prefix = cardsPrefix[1];
+				for( ; src_ptr < end_ptr; src_ptr++, dst_ptr++)
+					*dst_ptr = *src_ptr | prefix;
+			}
+
+
+
+		}
 		
 		// Do not store frames older than minimumFrameID
 		if(dst->getFrameID() < minimumFrameID) continue;

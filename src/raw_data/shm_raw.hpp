@@ -8,7 +8,7 @@
 
 namespace PETSYS {
 	
-static const int MaxRawDataFrameSize = 2048;
+static const int MaxRawDataFrameSize = 4096;
 static const unsigned MaxRawDataFrameQueueSize = 16*1024;
 
 
