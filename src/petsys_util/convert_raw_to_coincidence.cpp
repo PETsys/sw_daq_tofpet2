@@ -17,7 +17,7 @@
 using namespace PETSYS;
 
 
-enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL };
+enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT };
 
 class DataFileWriter {
 private:
@@ -130,7 +130,7 @@ public:
 			hIndex->Branch("stepBegin", &brStepBegin, bs);
 			hIndex->Branch("stepEnd", &brStepEnd, bs);
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			char fName2[1024];
 			sprintf(fName2, "%s.ldat", fName.c_str());
 			dataFile = fopen(fName2, "w");
@@ -139,7 +139,7 @@ public:
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
-		else if(fileType == FILE_TEXT) {
+		else if(fileType == FILE_TEXT || fileType == FILE_TEXT_COMPACT) {
 			dataFile = fopen(fName.c_str(), "w");
 			assert(dataFile != NULL);
 			indexFile = NULL;
@@ -158,11 +158,11 @@ public:
 			hFile->Write();
 			hFile->Close();
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			fclose(dataFile);
 			fclose(indexFile);
 		}
-		else if(fileType == FILE_TEXT) {
+		else if(fileType == FILE_TEXT || fileType == FILE_TEXT_COMPACT) {
 			fclose(dataFile);
 		}
 	}
@@ -177,7 +177,7 @@ public:
 			stepBegin = hData->GetEntries();
 			hFile->Write();
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
 			stepBegin = ftell(dataFile);
 		}
@@ -189,7 +189,7 @@ public:
 	void renameFile() {
 		char *fName1 = new char[1024];
 		char *fName2 = new char[1024];
-		if(fileType == FILE_BINARY) {
+		if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			// Binary output consists of two files and fName is their common prefix
 
 			sprintf(fName1, "%s.ldat", fName.c_str());
@@ -229,14 +229,13 @@ public:
 		delete [] fName1;
 	};
 
-	void addEvents(float step1, float step2,EventBuffer<Coincidence> *buffer) {
+	void addEvents(float step1, float step2, EventBuffer<Coincidence> *buffer) {
 		long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
 
 		if((fileSplitTime > 0) && (filePartIndex > currentFilePartIndex)) {
 			closeStep(step1, step2);
 			closeFile();
 			renameFile();
-
 			openFile();
 			currentFilePartIndex = filePartIndex;
 		}
@@ -246,7 +245,6 @@ public:
 		double Tps = 1E12/frequency;
 		float Tns = Tps / 1000;
 	
-
 		long long tMin = buffer->getTMin() * (long long)Tps;
 		
 		int N = buffer->getSize();
@@ -264,80 +262,101 @@ public:
 			
 			int limit1 = (hitLimitToWrite < p1.nHits) ? hitLimitToWrite : p1.nHits;
 			int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
-			for(int m = 0; m < limit1; m++) for(int n = 0; n < limit2; n++) {
-				if(m != 0 && n != 0) continue;
-				Hit &h1 = *p1.hits[m];
-				Hit &h2 = *p2.hits[n];
-				
-				float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
-				float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
 
-				if (fileType == FILE_ROOT){
-					brStep1 = step1;
-					brStep2 = step2;
+			int coincHitIndex = 0;
 
-					br1N  = p1.nHits;
-					br1J = m;
-					br1Time = ((long long)(h1.time * Tps)) + tMin;
-					br1ChannelID = h1.raw->channelID;
-					br1ToT = (h1.timeEnd - h1.time) * Tps;
-					br1Energy = h1.energy * Eunit1;
-					br1TacID = h1.raw->tacID;
-					br1X = h1.x;
-					br1Y = h1.y;
-					br1Z = h1.z;
-					br1Xi = h1.xi;
-					br1Yi = h1.yi;
-					
-					br2N  = p2.nHits;
-					br2J = n;
-					br2Time = ((long long)(h2.time * Tps)) + tMin;
-					br2ChannelID = h2.raw->channelID;
-					br2ToT = (h2.timeEnd - h2.time) * Tps;
-					br2Energy = h2.energy * Eunit2;
-					br2TacID = h2.raw->tacID;
-					br2X = h2.x;
-					br2Y = h2.y;
-					br2Z = h2.z;
-					br2Xi = h2.xi;
-					br2Yi = h2.yi;
-					
-					hData->Fill();
-				}
-				else if(fileType == FILE_BINARY) {
-					Event eo = { 
-						(uint8_t)p1.nHits, (uint8_t)m,
-						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit1,
-						(int)h1.raw->channelID,
-						
-						
-						(uint8_t)p2.nHits, (uint8_t)n,
-						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit2,
-						(int)h2.raw->channelID
-						
-					};
-					fwrite(&eo, sizeof(eo), 1, dataFile);
-				}
-				else if(fileType == FILE_TEXT) {
-					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
-						p1.nHits, m,
-						((long long)(h1.time * Tps)) + tMin,
-						h1.energy * Eunit1,
-						h1.raw->channelID,
-						
-						p2.nHits, n,
-						((long long)(h2.time * Tps)) + tMin,
-						h2.energy * Eunit2,
-						h2.raw->channelID
-					);
+			if(fileType == FILE_TEXT_COMPACT) {	
+				for(int i = 0; i < limit1 + limit2; i++){
+					Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
+					float Eunit = h.raw->qdcMode ? 1.0 : Tns;
+					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
+					p1.nHits, p2.nHits,
+					((long long)(h.time * Tps)) + tMin,
+					h.energy * Eunit,
+					h.raw->channelID);
 				}
 			}
-		}
-		
+			else if(fileType == FILE_BINARY_COMPACT) {
+						Event eo = { 
+							(uint8_t)p1.nHits, (uint8_t)m,
+							((long long)(h1.time * Tps)) + tMin,
+							h1.energy * Eunit1,
+							(int)h1.raw->channelID
+						};
+						fwrite(&eo, sizeof(eo), 1, dataFile);
+					}
+			else{
+				for(int m = 0; m < limit1; m++) for(int n = 0; n < limit2; n++) {
+					if(m != 0 && n != 0) continue;
+					
+					Hit &h1 = *p1.hits[m];
+					Hit &h2 = *p2.hits[n];
+					
+					float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
+					float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
+
+					if (fileType == FILE_ROOT){
+						brStep1 = step1;
+						brStep2 = step2;
+
+						br1N  = p1.nHits;
+						br1J = m;
+						br1Time = ((long long)(h1.time * Tps)) + tMin;
+						br1ChannelID = h1.raw->channelID;
+						br1ToT = (h1.timeEnd - h1.time) * Tps;
+						br1Energy = h1.energy * Eunit1;
+						br1TacID = h1.raw->tacID;
+						br1X = h1.x;
+						br1Y = h1.y;
+						br1Z = h1.z;
+						br1Xi = h1.xi;
+						br1Yi = h1.yi;
+
+						br2N  = p2.nHits;
+						br2J = n;
+						br2Time = ((long long)(h2.time * Tps)) + tMin;
+						br2ChannelID = h2.raw->channelID;
+						br2ToT = (h2.timeEnd - h2.time) * Tps;
+						br2Energy = h2.energy * Eunit2;
+						br2TacID = h2.raw->tacID;
+						br2X = h2.x;
+						br2Y = h2.y;
+						br2Z = h2.z;
+						br2Xi = h2.xi;
+						br2Yi = h2.yi;
+
+						hData->Fill();
+					}
+					else if(fileType == FILE_BINARY) {
+						Event eo = { 
+							(uint8_t)p1.nHits, (uint8_t)m,
+							((long long)(h1.time * Tps)) + tMin,
+							h1.energy * Eunit1,
+							(int)h1.raw->channelID,
+							(uint8_t)p2.nHits, (uint8_t)n,
+							((long long)(h2.time * Tps)) + tMin,
+							h2.energy * Eunit2,
+							(int)h2.raw->channelID		
+						};
+						fwrite(&eo, sizeof(eo), 1, dataFile);
+					}
+					else if(fileType == FILE_TEXT) {
+						fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
+							p1.nHits, m,
+							((long long)(h1.time * Tps)) + tMin,
+							h1.energy * Eunit1,
+							h1.raw->channelID,
+
+							p2.nHits, n,
+							((long long)(h2.time * Tps)) + tMin,
+							h2.energy * Eunit2,
+							h2.raw->channelID
+						);
+					}
+				}
+			}
+		}	
 	};
-	
 };
 
 class WriteHelper : public OrderedEventHandler<Coincidence, Coincidence> {
@@ -367,6 +386,8 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  -o \t\t\t Output file name - by default in text data format\n");
 	fprintf(stderr, "Optional flags:\n");
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
+	fprintf(stderr,  "  --writeBinaryCompact \t Set the output data format to compact binary\n");
+	fprintf(stderr,  "  --writeTextCompact \t Set the output data format to compact text \n");
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
 	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
@@ -384,49 +405,50 @@ void displayUsage(char *argv0)
 int main(int argc, char *argv[])
 {
 	char *configFileName = NULL;
-        char *inputFilePrefix = NULL;
-        char *outputFileName = NULL;
+    char *inputFilePrefix = NULL;
+	char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
 	int hitLimitToWrite = 1;
 	long long eventFractionToWrite = 1024;
 	double fileSplitTime = 0;
 
-
-        static struct option longOptions[] = {
-                { "help", no_argument, 0, 0 },
-                { "config", required_argument, 0, 0 },
+    static struct option longOptions[] = {
+        { "help", no_argument, 0, 0 },
+        { "config", required_argument, 0, 0 },
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
+		{ "writeTextCompact", no_argument, 0, 0 },
+		{ "writeBinaryCompact", no_argument, 0, 0 },
 		{ "writeMultipleHits", required_argument, 0, 0},
 		{ "writeFraction", required_argument },
 		{ "splitTime", required_argument, 0, 0}
+    };
 
-        };
+	while(true) {
+		int optionIndex = 0;
+		int c = getopt_long(argc, argv, "i:o:c:",longOptions, &optionIndex);
 
-        while(true) {
-                int optionIndex = 0;
-                int c = getopt_long(argc, argv, "i:o:c:",longOptions, &optionIndex);
-
-                if(c == -1) break;
-                else if(c != 0) {
-                        // Short arguments
-                        switch(c) {
-                        case 'i':       inputFilePrefix = optarg; break;
-                        case 'o':       outputFileName = optarg; break;
-			default:        displayUsage(argv[0]); exit(1);
+		if(c == -1) break;
+		else if(c != 0) {
+			// Short arguments
+			switch(c) {
+				case 'i':       inputFilePrefix = optarg; break;
+				case 'o':       outputFileName = optarg; break;
+				default:    displayUsage(argv[0]); exit(1);
 			}
 		}
 		else if(c == 0) {
 			switch(optionIndex) {
-			case 0:		displayHelp(argv[0]); exit(0); break;
-                        case 1:		configFileName = optarg; break;
-			case 2:		fileType = FILE_BINARY; break;
-			case 3:		fileType = FILE_ROOT; break;
-			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
-			case 5:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
-			case 6:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
-
-			default:	displayUsage(argv[0]); exit(1);
+				case 0:		displayHelp(argv[0]); exit(0); break;
+				case 1:		configFileName = optarg; break;
+				case 2:		fileType = FILE_BINARY; break;
+				case 3:		fileType = FILE_ROOT; break;
+				case 4:		fileType = FILE_TEXT_COMPACT; break;
+				case 5:		fileType = FILE_BINARY_COMPACT; break;
+				case 6:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
+				case 7:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+				case 8:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
+				default:	displayUsage(argv[0]); exit(1);
 			}
 		}
 		else {
