@@ -58,6 +58,7 @@ class Connection:
 		self.__asicConfigCache = None
 		self.__asicConfigCache_TAC_Refresh = None
 		self.__hvdac_config_cache = {}
+		self.__hvdac_max_values = {}
 
 		self.__writerPipe = None
 		self.__monitorPipe = None
@@ -192,7 +193,12 @@ class Connection:
 
 	def getActiveBiasChannels(self):
 		if self.__activeUnits == {}: self.__scanUnits_ll()
-		return bias.get_active_channels(self)
+		lst = []
+		for portID, slaveID, slotID in self.getActiveBiasSlots():
+			bias_slot_info = self.getBiasSlotInfo(portID, slaveID, slotID)
+			n_ch = bias.get_number_channels(bias_slot_info)
+			lst += [ (portID, slaveID, slotID, k) for k in range(n_ch) ]
+		return lst
 
 	## Disables test pulse 
 	def setTestPulseNone(self):
@@ -1018,7 +1024,24 @@ class Connection:
 	# @param is a dictionary, as returned by get_hvdac_config
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def set_hvdac_config(self, config, forceAccess=False):
-		for portID, slaveID, slotID, channelID in self.getActiveBiasChannels():
+		active_bias_channels = self.getActiveBiasChannels()
+
+		# Store max HV value. Implemented for 32P-AG7200.
+		max_value = {}
+		for portID, slaveID, slotID, channelID in active_bias_channels: 
+			value = config[(portID, slaveID, slotID, channelID)]
+			max_value[slotID] = max(max_value[slotID], value) if slotID in max_value else value
+		self.__hvdac_max_values = max_value.copy()
+
+		# Set BIAS-32P-AG7200 DCDC output
+		vdc_delta = 2.0 # 2V above max HV output
+		for portID, slaveID, slotID in active_bias_channels: 
+			if self.getBiasSlotInfo(portID, slaveID, slotID) == "BIAS_32P_AG":
+				for dacID in range(2):
+					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, max_value[slotID] + vdc_delta)
+
+		# Set channels
+		for portID, slaveID, slotID, channelID in active_bias_channels: 
 			value = config[(portID, slaveID, slotID, channelID)]
 			self.__write_hv_channel(portID, slaveID, slotID, channelID, value, forceAccess=forceAccess)
 		
@@ -1272,7 +1295,7 @@ class Connection:
 			# where writeRaw owns all frames and daqd has no buffer space, even if writeRaw has already processed
 			# some/most of the frame block
 			if nFramesInBlock > bs/2:
-                                nFramesInBlock = bs/2
+				nFramesInBlock = bs/2
 
 			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
