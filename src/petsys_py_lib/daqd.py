@@ -1034,11 +1034,12 @@ class Connection:
 		self.__hvdac_max_values = max_value.copy()
 
 		# Set BIAS-32P-AG7200 DCDC output
+		BIAS_32P_DAC_ONEVOLT = int(2**16/60.01)
 		vdc_delta = 2.0 # 2V above max HV output
 		for portID, slaveID, slotID in active_bias_channels: 
 			if self.getBiasSlotInfo(portID, slaveID, slotID) == "BIAS_32P_AG":
 				for dacID in range(2):
-					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, max_value[slotID] + vdc_delta)
+					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta)
 
 		# Set channels
 		for portID, slaveID, slotID, channelID in active_bias_channels: 
