@@ -16,7 +16,7 @@
 using namespace PETSYS;
 
 
-enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL };
+enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT};
 
 class DataFileWriter {
 private:
@@ -58,7 +58,7 @@ private:
 	float 		brY;
 	float 		brZ;
 	
-	struct Event {
+	struct GroupEvent {
 		uint8_t mh_n; 
 		uint8_t mh_j;
 		long long time;
@@ -66,6 +66,14 @@ private:
 		int id;
 	} __attribute__((__packed__));
 	
+	struct Event {
+		long long time;
+		float e;
+		int id;
+	} __attribute__((__packed__));
+
+	typedef uint8_t GroupHeader;
+
 public:
 	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, float splitTime) {
 		this->fName = std::string(fName);
@@ -111,7 +119,7 @@ public:
 			hIndex->Branch("stepBegin", &brStepBegin, bs);
 			hIndex->Branch("stepEnd", &brStepEnd, bs);
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			char fName2[1024];
 			sprintf(fName2, "%s.ldat", fName.c_str());
 			dataFile = fopen(fName2, "w");
@@ -120,7 +128,7 @@ public:
 			assert(dataFile != NULL);
 			assert(indexFile != NULL);
 		}
-		else if (fileType == FILE_TEXT) {
+		else if (fileType == FILE_TEXT || fileType == FILE_TEXT_COMPACT) {
 			dataFile = fopen(fName.c_str(), "w");
 			assert(dataFile != NULL);
 			indexFile = NULL;
@@ -139,11 +147,11 @@ public:
 			hFile->Write();
 			hFile->Close();
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			fclose(dataFile);
 			fclose(indexFile);
 		}
-		else if (fileType == FILE_TEXT) {
+		else if (fileType == FILE_TEXT || fileType == FILE_TEXT_COMPACT) {
 			fclose(dataFile);
 		}
 	}
@@ -158,7 +166,7 @@ public:
 			stepBegin = hData->GetEntries();
 			hFile->Write();
 		}
-		else if(fileType == FILE_BINARY) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT || fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
 			stepBegin = ftell(dataFile);
 		}
@@ -170,7 +178,7 @@ public:
 	void renameFile() {
 		char *fName1 = new char[1024];
 		char *fName2 = new char[1024];
-		if(fileType == FILE_BINARY) {
+		if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			// Binary output consists of two files and fName is their common prefix
 
 			sprintf(fName1, "%s.ldat", fName.c_str());
@@ -238,11 +246,23 @@ public:
 			GammaPhoton &p = buffer->get(i);
 			
 			if(!p.valid) continue;
+
 			Hit &h0 = *p.hits[0];
 			int limit = (hitLimitToWrite < p.nHits) ? hitLimitToWrite : p.nHits;
+
+			if(fileType == FILE_TEXT_COMPACT) {
+				fprintf(dataFile, "%d\n", limit);
+			}
+			else if(fileType == FILE_BINARY_COMPACT) {
+				GroupHeader header = {(uint8_t)limit};
+				fwrite(&header, sizeof(header), 1, dataFile);
+			}
+
 			for(int m = 0; m < limit; m++) {
 				Hit &h = *p.hits[m];
 				float Eunit = h.raw->qdcMode ? 1.0 : Tns;
+
+
 				if (fileType == FILE_ROOT){
 					brStep1 = step1;
 					brStep2 = step2;
@@ -264,8 +284,16 @@ public:
 					hData->Fill();
 				}
 				else if(fileType == FILE_BINARY) {
-					Event eo = { 
+					GroupEvent eo = { 
 						(uint8_t)p.nHits, (uint8_t)m,
+						((long long)(h.time * Tps)) + tMin,
+						h.energy * Eunit,
+						(int)h.raw->channelID
+					};
+					fwrite(&eo, sizeof(eo), 1, dataFile);
+				}
+				else if(fileType == FILE_BINARY_COMPACT) {
+					Event eo = {
 						((long long)(h.time * Tps)) + tMin,
 						h.energy * Eunit,
 						(int)h.raw->channelID
@@ -280,11 +308,16 @@ public:
 						h.raw->channelID
 					);
 				}
+				else if (fileType == FILE_TEXT_COMPACT) {
+					fprintf(dataFile, "%lld\t%f\t%d\n",
+						((long long)(h.time * Tps)) + tMin,
+						h.energy * Eunit,
+						h.raw->channelID
+					);
+				}
 			}
-		}
-		
+		}	
 	};
-	
 };
 
 class WriteHelper : public OrderedEventHandler<GammaPhoton, GammaPhoton> {
@@ -315,6 +348,8 @@ void displayHelp(char * program)
 	fprintf(stderr, "Optional flags:\n");
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
+	fprintf(stderr,  "  --writeBinaryCompact \t Set the output data format to compact binary\n");
+	fprintf(stderr,  "  --writeTextCompact \t Set the output data format to compact text \n");
 	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
 	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
@@ -331,45 +366,49 @@ void displayUsage(char *argv0)
 int main(int argc, char *argv[])
 {
 	char *configFileName = NULL;
-        char *inputFilePrefix = NULL;
-        char *outputFileName = NULL;
+    char *inputFilePrefix = NULL;
+    char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
 	int hitLimitToWrite = 1;
 	long long eventFractionToWrite = 1024;
 	double fileSplitTime = 0.0;
 
-        static struct option longOptions[] = {
-                { "help", no_argument, 0, 0 },
-                { "config", required_argument, 0, 0 },
+	static struct option longOptions[] = {
+		{ "help", no_argument, 0, 0 },
+		{ "config", required_argument, 0, 0 },
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
+		{ "writeTextCompact", no_argument, 0, 0 },
+		{ "writeBinaryCompact", no_argument, 0, 0 },
 		{ "writeMultipleHits", required_argument, 0, 0},
 		{ "writeFraction", required_argument, 0, 0},
 		{ "splitTime", required_argument, 0, 0}
-        };
+	};
 
-        while(true) {
-                int optionIndex = 0;
-                int c = getopt_long(argc, argv, "i:o:c:",longOptions, &optionIndex);
+	while(true) {
+		int optionIndex = 0;
+		int c = getopt_long(argc, argv, "i:o:c:",longOptions, &optionIndex);
 
-                if(c == -1) break;
-                else if(c != 0) {
-                        // Short arguments
-                        switch(c) {
-                        case 'i':       inputFilePrefix = optarg; break;
-                        case 'o':       outputFileName = optarg; break;
+		if(c == -1) break;
+		else if(c != 0) {
+			// Short arguments
+			switch(c) {
+			case 'i':       inputFilePrefix = optarg; break;
+			case 'o':       outputFileName = optarg; break;
 			default:        displayUsage(argv[0]); exit(1);
 			}
 		}
 		else if(c == 0) {
 			switch(optionIndex) {
 			case 0:		displayHelp(argv[0]); exit(0); break;
-                        case 1:		configFileName = optarg; break;
+			case 1:		configFileName = optarg; break;
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
-			case 4:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
-			case 5:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
-			case 6:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
+			case 4:		fileType = FILE_TEXT_COMPACT; break;
+			case 5:		fileType = FILE_BINARY_COMPACT; break;
+			case 6:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
+			case 7:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+			case 8:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}

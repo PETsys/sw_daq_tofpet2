@@ -57,20 +57,39 @@ private:
 	float 		br1Y,		br2Y;
 	float 		br1Z,		br2Z;
 	
-	struct Event {
+	struct CoincidenceEvent {
 		uint8_t mh_n1; 
 		uint8_t mh_j1;
 		long long time1;
 		float e1;
 		int id1;
 
-		
 		uint8_t mh_n2; 
 		uint8_t mh_j2;
 		long long time2;
 		float e2;
 		int id2;
 	} __attribute__((__packed__));
+
+	struct CompactCoincidenceEvent {
+		uint8_t mh_n1; 
+		uint8_t mh_n2;
+		long long time;
+		float e;
+		int id;
+	} __attribute__((__packed__));
+
+	struct Event {
+		long long time;
+		float e;
+		int id;
+	} __attribute__((__packed__));
+
+	struct CoincidenceGroupHeader {
+		uint8_t nHits1; 
+		uint8_t nHits2;
+	} __attribute__((__packed__));
+
 	
 public:
 	DataFileWriter(char *fName, double frequency, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, float splitTime) {
@@ -177,7 +196,7 @@ public:
 			stepBegin = hData->GetEntries();
 			hFile->Write();
 		}
-		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
+		else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT || fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
 			fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), step1, step2);
 			stepBegin = ftell(dataFile);
 		}
@@ -264,27 +283,32 @@ public:
 			int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
 
 			int coincHitIndex = 0;
+			
 
 			if(fileType == FILE_TEXT_COMPACT) {	
-				for(int i = 0; i < limit1 + limit2; i++){
+				fprintf(dataFile, "%d\t%d\n", limit1, limit2);
+				for(int i = 0; i < limit1 + limit2; i++) {
 					Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
 					float Eunit = h.raw->qdcMode ? 1.0 : Tns;
-					fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
-					p1.nHits, p2.nHits,
+					fprintf(dataFile, "%lld\t%f\t%d\n",
 					((long long)(h.time * Tps)) + tMin,
 					h.energy * Eunit,
 					h.raw->channelID);
 				}
 			}
 			else if(fileType == FILE_BINARY_COMPACT) {
-						Event eo = { 
-							(uint8_t)p1.nHits, (uint8_t)m,
-							((long long)(h1.time * Tps)) + tMin,
-							h1.energy * Eunit1,
-							(int)h1.raw->channelID
-						};
-						fwrite(&eo, sizeof(eo), 1, dataFile);
-					}
+				CoincidenceGroupHeader header = {(uint8_t)limit1, (uint8_t)limit2};
+				fwrite(&header, sizeof(header), 1, dataFile);
+				for(int i = 0; i < limit1 + limit2; i++) {
+					Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
+					float Eunit = h.raw->qdcMode ? 1.0 : Tns;
+					Event eo = { 
+						((long long)(h.time * Tps)) + tMin,
+						h.energy * Eunit,
+						(int)h.raw->channelID};
+					fwrite(&eo, sizeof(eo), 1, dataFile);
+				}
+			}
 			else{
 				for(int m = 0; m < limit1; m++) for(int n = 0; n < limit2; n++) {
 					if(m != 0 && n != 0) continue;
@@ -328,7 +352,7 @@ public:
 						hData->Fill();
 					}
 					else if(fileType == FILE_BINARY) {
-						Event eo = { 
+						CoincidenceEvent eo = { 
 							(uint8_t)p1.nHits, (uint8_t)m,
 							((long long)(h1.time * Tps)) + tMin,
 							h1.energy * Eunit1,
@@ -497,7 +521,7 @@ int main(int argc, char *argv[])
 				new WriteHelper(dataFileWriter, step1, step2,
 				new NullSink<Coincidence>()
 				))))));
-		
+
 		dataFileWriter->closeStep(step1, step2);
 		stepIndex += 1;
 	}

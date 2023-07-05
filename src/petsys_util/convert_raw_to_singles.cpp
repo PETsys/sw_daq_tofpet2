@@ -56,7 +56,7 @@ private:
 	float		brTQE;
 	
 
-	struct Event {
+	struct SingleEvent {
 		long long time;
 		float e;
 		int id;  
@@ -252,7 +252,7 @@ public:
 				hData->Fill();
 			}
 			else if(fileType == FILE_BINARY) {
-				Event eo = {
+				SingleEvent eo = {
 					((long long)(hit.time * Tps)) + tMin,
 					hit.energy * Eunit,
 					(int)hit.raw->channelID
