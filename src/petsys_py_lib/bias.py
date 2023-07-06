@@ -4,52 +4,66 @@
 from . import spi
 from math import ceil
 
-BIAS_32P_MAGIC = [ 0x27, 0x43, 0xd4, 0x9c, 0x28, 0x41, 0x47, 0xe2, 0xbb, 0xa2, 0xff, 0x81, 0xd0, 0x60, 0x12, 0xd3 ]
-BIAS_32P_CODE = int('11QA', base=36)
+BIAS_32P_MAGIC    = [ 0x27, 0x43, 0xd4, 0x9c, 0x28, 0x41, 0x47, 0xe2, 0xbb, 0xa2, 0xff, 0x81, 0xd0, 0x60, 0x12, 0xd3 ]
+BIAS_32P_AG_MAGIC = [ 0x36, 0x53, 0x77, 0x48, 0x72, 0x36, 0x55, 0x77, 0x68, 0x53, 0x57, 0x49, 0x6b, 0x76, 0x4a, 0x50 ]
+
+def get_bias_interface(conn, portID, slaveID, slotID):
+	return (conn.read_config_register(portID, slaveID, 16, 0x0030) >> (4*slotID)) & 0xF
+
+def has_prom(conn, portID, slaveID, slotID):
+	return (get_bias_interface(conn, portID, slaveID, slotID) != 0xF)
 
 def read_bias_slot_info(conn, portID, slaveID, slotID, allowUnknown=False):
-	bias_interface = conn.read_config_register(portID, slaveID, 16, 0x0030)
-	bias_interface = (bias_interface >> (4*slotID)) & 0xF
+	bias_interface = get_bias_interface(conn, portID, slaveID, slotID)
 
 	if bias_interface == 0xF:
-		return (bias_interface, None)
+		bias_name = "BIAS_64P"
 	elif bias_interface == 0xE:
-		return (bias_interface, None)
-	else:
+		bias_name = "BIAS_16P"
+	elif bias_interface == 0xD:
 		chipID = 0x8000 + 0x100 * slotID + 0x0
 		d = spi.m95256_read(conn, portID, slaveID, chipID, 0x0, 16)
 		if d == bytes(BIAS_32P_MAGIC):
-			return (bias_interface, BIAS_32P_CODE)
+			bias_name = "BIAS_32P"
+		elif d == bytes(BIAS_32P_AG_MAGIC):
+			bias_name = "BIAS_32P_AG"
 		elif allowUnknown:
-			return (bias_interface, None)
+			bias_name = "UNKNOWN_BIAS"
 		else:
 			raise BadBiasMagic()
-
-def has_prom(conn, portID, slaveID, slotID):
-	bias_interface, prom_version = conn.getBiasSlotInfo(portID, slaveID, slotID)
-
-	if bias_interface == 0xF:
-		return False
 	else:
-		return True
+		raise UnknownBiasType(f'{bias_interface}')
+	
+	return bias_name
 
-def get_str(conn, portID, slaveID, slotID):
+def get_pretty_name(conn, portID, slaveID, slotID): # !Should just receive a BIAS NAME, this is a formatter/error handler. Requires changes in GUI (get_str())
+	PRETTY_NAMES = { 'BIAS_64P'    : 'BIAS-64P',
+					 'BIAS_16P'    : 'BIAS-16P',
+					 'BIAS_32P'    : 'BIAS-32P',
+					 'BIAS_32P_AG' : 'BIAS-32P AG7200' }
+
 	bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
 
-	if bias_slot_info == (0xF, None):
-		return "BIAS-64P"
-	elif bias_slot_info == (0xE, None):
-		return "BIAS-16P"
-	elif bias_slot_info == (0xD, BIAS_32P_CODE):
-		return "BIAS-32P"
+	if bias_slot_info in PRETTY_NAMES:
+		return PRETTY_NAMES[bias_slot_info]
 	else:
 		raise UnknownBiasType()
 	
+def set_ag7200_dcdc(conn, portID, slaveID, slotID, dacID, value):
+	# Calculate DAC(VDC)
+	value_truncated = max(39.5, min(57, value)) # VDC limits
+	offset = 0
+	v_dac = -( ( ( (value_truncated-2.495)/100000) - (2.495/5431) ) * 27000 - 2.495) + offset	# Convert target VDC to VDAC
+	dac_setting = int((v_dac/5)*65536) 	# Convert VDAC to DAC setting
+
+	# Set DAC
+	chipID = 0x8000 + 0x100 * slotID + 0x14  
+	spi.max5136_wrt_through(conn, portID, slaveID, chipID, dacID, dac_setting)
 
 def set_channel(conn, portID, slaveID, slotID, channelID , value):
 	bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
 
-	if bias_slot_info == (0xF, None):
+	if bias_slot_info == "BIAS_64P":
 		if channelID > 32:
 			chipID = 0x8000 + 0x100 * slotID + 0x11
 		else:
@@ -61,10 +75,7 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 		value = max(value, min_dac)
 
 		spi.ad5535_set_channel(conn, portID, slaveID, chipID, channelID, value)
-
-	elif bias_slot_info == (0xE, None):
-		# BIAS-16P
-		#
+	elif bias_slot_info == "BIAS_16P":
 		# When bias_en is OFF we cannot communicate with the DAC and an exception will be thrown
 		# In particular this happens when clearing the BIAS DACs before enabling bias
 
@@ -81,9 +92,7 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 	
 		chipID = 0x8000 + 0x100 * slotID + 0x10
 		spi.ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value)
-
-
-	elif bias_slot_info == (0xD, BIAS_32P_CODE):
+	elif bias_slot_info in ["BIAS_32P", "BIAS_32P_AG"]:
 		# Impose minimum 1V bias voltage
 		min_dac = int(ceil(2**16 * 1.0 / 60))
 		value = max(value, min_dac)
@@ -93,30 +102,21 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 
 		chipID = 0x8000 + 0x100 * slotID + 0x10 + dacID
 		spi.ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value)
-
 	else:
-			raise UnknownBiasType()
+		raise UnknownBiasType()
+
 	return None
 
-
-def get_active_channels(conn):
-	r = []
-	for portID, slaveID, slotID in conn.getActiveBiasSlots():
-		bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
-
-		if bias_slot_info == (0xF, None):
-			r += [ (portID, slaveID, slotID, k) for k in range(64) ]
-
-		elif bias_slot_info == (0xE, None):
-			r += [ (portID, slaveID, slotID, k) for k in range(16) ]
-
-		elif bias_slot_info == (0xD, BIAS_32P_CODE):
-			r += [ (portID, slaveID, slotID, k) for k in range(32) ]
-
-		else:
-			raise UnknownBiasType()
-
-	return r
+def get_number_channels(bias_name):
+	CH_PER_BIAS = { 'BIAS_64P'    : 64,
+					'BIAS_16P'    : 16,
+					'BIAS_32P'    : 32,
+					'BIAS_32P_AG' : 32 }
+	
+	if bias_name in CH_PER_BIAS:
+		return CH_PER_BIAS[bias_name]
+	else:
+		raise UnknownBiasType()
 
 
 class BiasException(Exception): pass

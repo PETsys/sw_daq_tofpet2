@@ -411,6 +411,55 @@ def si534x_command(conn, portID, slaveID, chipID, command):
 	return si534x_ll(conn, portID, slaveID, chipID, command)
 
 
+def max5136_ll(conn, portID, slaveID, chipID, command):
+	"""! MAX5136 DAC SPI low level coding
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param data Data to be transmitted over the SPI bus.
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+	w = 8 * len(command)
+	padding = [0xFF for n in range(1) ]
+	p = 8 * len(padding)
+
+	# Pad the cycle with zeros
+	return conn.spi_master_execute(portID, slaveID, chipID,
+		p+w+p, 		# cycle
+		p,p+w, 		# sclk en
+		p-1,p+w+1,	# cs
+		0, p+w+p, 	# mosi
+		p,p+w, 		# miso
+		padding + command + padding,
+		freq_sel = 1,	
+		miso_edge = "falling", mosi_edge = "falling")
+
+def max5136_wrt_through(conn, portID, slaveID, chipID, channelID, value):
+	"""! Set MAX5136 DAC
+
+	@param conn daqd connection object
+	@param portID FEB/D portID
+	@param slaveID FEB/D slaveID
+	@param chipID SPI slave number
+	@param channelID DAC channel number to be set
+	@param value DAC value to be set
+
+	@return Data received from the SPI bus returned by spi_master_execute()
+	"""
+	if channelID not in [0 , 1]:
+		DACException("Invalid DAC channelID.")
+
+	control_byte = 0b00110000 | (0b1 << channelID)
+	dac_high = value >> 8
+	dac_low  = value & 0xFF
+	
+	command = [control_byte, dac_high, dac_low]
+
+	return max5136_ll(conn, portID, slaveID, chipID, command)
+
 ##
 ## EEPROMS
 ## Many SPI EEPROMs of a given typpe have similiar protocols for reading
