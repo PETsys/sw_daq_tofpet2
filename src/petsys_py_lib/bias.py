@@ -28,6 +28,8 @@ def read_bias_slot_info(conn, portID, slaveID, slotID, allowUnknown=False):
 			bias_name = "BIAS_32P"
 		elif d == bytes(BIAS_32P_AG_MAGIC):
 			bias_name = "BIAS_32P_AG"
+		elif d == bytes(BIAS_32P_LTC2439_MAGIC):
+			bias_name = "BIAS_32P_LTC2439"
 		elif allowUnknown:
 			bias_name = "UNKNOWN_BIAS"
 		else:
@@ -38,10 +40,11 @@ def read_bias_slot_info(conn, portID, slaveID, slotID, allowUnknown=False):
 	return bias_name
 
 def get_pretty_name(conn, portID, slaveID, slotID): # !Should just receive a BIAS NAME, this is a formatter/error handler. Requires changes in GUI (get_str())
-	PRETTY_NAMES = { 'BIAS_64P'    : 'BIAS-64P',
-					 'BIAS_16P'    : 'BIAS-16P',
-					 'BIAS_32P'    : 'BIAS-32P',
-					 'BIAS_32P_AG' : 'BIAS-32P AG7200' }
+	PRETTY_NAMES = { 'BIAS_64P'         : 'BIAS-64P',
+					 'BIAS_16P'         : 'BIAS-16P',
+					 'BIAS_32P'         : 'BIAS-32P',
+					 'BIAS_32P_AG'      : 'BIAS-32P AG7200',
+					 'BIAS_32P_LTC2439' : 'BIAS-32P' }
 
 	bias_slot_info = conn.getBiasSlotInfo(portID, slaveID, slotID)
 
@@ -93,7 +96,7 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 	
 		chipID = 0x8000 + 0x100 * slotID + 0x10
 		spi.ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value)
-	elif bias_slot_info in ["BIAS_32P", "BIAS_32P_AG"]:
+	elif bias_slot_info in ["BIAS_32P", "BIAS_32P_AG", "BIAS_32P_LTC2439"]:
 		# Impose minimum 1V bias voltage
 		min_dac = int(ceil(2**16 * 1.0 / 60))
 		value = max(value, min_dac)
@@ -109,10 +112,11 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 	return None
 
 def get_number_channels(bias_name):
-	CH_PER_BIAS = { 'BIAS_64P'    : 64,
-					'BIAS_16P'    : 16,
-					'BIAS_32P'    : 32,
-					'BIAS_32P_AG' : 32 }
+	CH_PER_BIAS = { 'BIAS_64P'         : 64,
+					'BIAS_16P'         : 16,
+					'BIAS_32P'         : 32,
+					'BIAS_32P_AG'      : 32,
+					'BIAS_32P_LTC2439' : 32 }
 	
 	if bias_name in CH_PER_BIAS:
 		return CH_PER_BIAS[bias_name]

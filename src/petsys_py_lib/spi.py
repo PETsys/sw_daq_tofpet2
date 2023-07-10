@@ -225,24 +225,90 @@ def ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 10):
 			
 		time.sleep(0.2*MAX_CONVERSION_TIME)
 
-	return signal, value, readback
-
-def ltc2418_read2(conn, portID, slaveID, chipID, channel, MAX_TRIES = 10):
-	"""! LTC2418 ADC SPI read channel
-
-	@param conn daqd connection object
-	@param portID FEB/D portID
-	@param slaveID FEB/D slaveID
-	@param chipID SPI slave number
-	@param channel ADC channel to be read
-
-	@return Data returned by ADC"""
-	
-	signal, value, readback = ltc2418_read(conn, portID, slaveID, chipID, channel, MAX_TRIES)
 	if signal != 1:
 		value = -value
 	return value
-	
+
+def ltc2439_ll(conn, portID, slaveID, chipID, command):
+    """! LTC2439 ADC SPI low level coding
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param chipID SPI slave number
+    @param data Data to be transmitted over the SPI bus.
+
+    @return Data received from the SPI bus returned by spi_master_execute()
+    """
+    w = 19
+    command = command << 16
+    
+    command = [ (command >> 16) & 0xFF, (command >> 8) & 0xFF, command & 0xFF ]
+    
+    padding = [ ]
+    p = 8 * len(padding)
+
+    # Pad the cycle with zeros
+    r =  conn.spi_master_execute(portID, slaveID, chipID,
+        w+p+1, 		# cycle
+        0,w+p,    # sclk en
+        0,w+p+1,	# cs
+        0, w+p, 	# mosi
+        0, w+p, 		# miso
+        command + padding,
+        freq_sel = 3,
+        miso_edge = "falling",
+        mosi_edge = "rising")
+    
+    read_bytes = int.from_bytes(r[1:-1], "big")
+    read_bytes = read_bytes >> 5
+    return read_bytes
+
+
+def ltc2439_read(conn, portID, slaveID, chipID, channel, MAX_TRIES = 10):
+    """! LTC2439 ADC SPI read channel
+
+    @param conn daqd connection object
+    @param portID FEB/D portID
+    @param slaveID FEB/D slaveID
+    @param chipID SPI slave number
+    @param channel ADC channel to be read
+
+    @return Data returned by ADC
+    """
+    MAX_CONVERSION_TIME = 0.17 #Conversion should take at most 164ms
+    
+    # EN  = 1 to change channel
+    # SGL = 1 for single-ended mode
+    base_cmd = 0b10110000  # 1 0 EN SGL OS A2 A1 A0
+    os       = 8 * (channel %2) # ODD/SIGN
+    adr      = channel // 2     # A2 A1 A0
+    command  =  base_cmd + os + adr 
+    
+    #Change Channel
+    r = ltc2439_ll(conn, portID, slaveID, chipID, command)
+    
+    #Get Reading for desired channel
+    t0 = time.time()
+    while True:
+        read_bytes = ltc2439_ll(conn, portID, slaveID, chipID, command)
+        signal     = (read_bytes >> 16) & 0x1       #1  bit
+        value      = (read_bytes >>  0) & 0xFFFF  #16 bits
+        eoc        = (read_bytes >> 18) & 0x1
+
+
+        if eoc == 0:
+            break
+            
+        if (time.time() - t0) > (MAX_TRIES*MAX_CONVERSION_TIME):
+            raise ADCException("End Of Conversion failed.")
+            
+        time.sleep(0.2*MAX_CONVERSION_TIME)
+
+    if signal != 1:
+        value = -value
+    return value
+
 
 def ad7194_ll(conn,  portID, slaveID, chipID, command, read_count):
 	"""! AD7194 ADC SPI low level coding
