@@ -1018,6 +1018,9 @@ class Connection:
 	## - value: an integer
 	## WARNING: As the hardware does not support readback, this always returns the software cache
 	def get_hvdac_config(self):
+		if self.__hvdac_config_cache == {}:
+			for portID, slaveID, slotID, channelID in self.getActiveBiasChannels(): 
+				self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)] = 0
 		return deepcopy(self.__hvdac_config_cache)
 
 	## Sets the bias voltage channels
@@ -1026,26 +1029,28 @@ class Connection:
 	def set_hvdac_config(self, config, forceAccess=False):
 		active_bias_channels = self.getActiveBiasChannels()
 
-		# Store max HV value. Implemented for 32P-AG7200.
+		# Get max HV value. Implemented for 32P-AG7200.
 		max_value = {}
 		for portID, slaveID, slotID, channelID in active_bias_channels: 
 			value = config[(portID, slaveID, slotID, channelID)]
 			max_value[slotID] = max(max_value[slotID], value) if slotID in max_value else value
-		self.__hvdac_max_values = max_value.copy()
 
 		# Set BIAS-32P-AG7200 DCDC output
 		BIAS_32P_DAC_ONEVOLT = int(2**16/60.01)
-		vdc_delta = 2.0 # 2V above max HV output
-		for portID, slaveID, slotID in active_bias_channels: 
-			if self.getBiasSlotInfo(portID, slaveID, slotID) == "BIAS_32P_AG":
+		vdc_delta = 2.0 # Set op-amp rails 2V above max HV output
+		for portID, slaveID, slotID in self.getActiveBiasSlots(): 
+			if self.__activeBiasSlots[(portID, slaveID, slotID)] == "BIAS_32P_AG":
+				vdc_dcdc = (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta
 				for dacID in range(2):
-					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta)
+					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, vdc_dcdc)
 
 		# Set channels
 		for portID, slaveID, slotID, channelID in active_bias_channels: 
 			value = config[(portID, slaveID, slotID, channelID)]
 			self.__write_hv_channel(portID, slaveID, slotID, channelID, value, forceAccess=forceAccess)
 		
+		# Cache max values after applying
+		self.__hvdac_max_values = max_value.copy()
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)

@@ -39,7 +39,8 @@ def read_bias_slot_info(conn, portID, slaveID, slotID, allowUnknown=False):
 	
 	return bias_name
 
-def get_pretty_name(conn, portID, slaveID, slotID): # !Should just receive a BIAS NAME, this is a formatter/error handler. Requires changes in GUI (get_str())
+def get_str(conn, portID, slaveID, slotID): # !Should just receive a BIAS NAME, this is a formatter/error handler. Requires changes in GUI (get_str())
+	#! FIND OTHER CALLS OF THIS FUCNTION
 	PRETTY_NAMES = { 'BIAS_64P'         : 'BIAS-64P',
 					 'BIAS_16P'         : 'BIAS-16P',
 					 'BIAS_32P'         : 'BIAS-32P',

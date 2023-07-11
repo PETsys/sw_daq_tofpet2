@@ -1,7 +1,7 @@
 # kate: indent-mode: python; indent-pasted-text false; indent-width 4; replace-tabs: on;
 # vim: tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
 
-from . import i2c, spi
+from . import i2c, spi, fe_power
 from time import sleep, time
 
 DS44XX_ADR  =   {
@@ -27,6 +27,13 @@ VDD2_PRESET = { 'TI'    : {"min": -127, "max":  127, "baseline":   37},
                 'MURATA': {"min": -127, "max":  127, "baseline":  -23} }
 VDD3_PRESET = { 'TI'    : {"min": -127, "max":  127, "baseline":   69},
                 'MURATA': {"min": -127, "max":  127, "baseline":   40} }
+
+
+class PowerGoodError(Exception): 
+    def __init__(self, portID, slaveID):
+        self.portID, self.slaveID = portID, slaveID
+        self.message = f"ERROR: Failed FEM power good check! @ (portID, slaveID) = ({portID}, {slaveID})."
+        super().__init__(self.message)
 
 class RSenseReadError(Exception):
     def __init__(self, portID, slaveID, busID, adcID):
@@ -55,8 +62,7 @@ def chk_power_good(conn, portID, slaveID, busID):
 
     if pg_lst != [1, 1, 1]:
         set_fem_power(conn, portID, slaveID, "off")
-        print(f'ERROR: Power Good Check FAILED @ busID {busID}! pg_reg = {pg_lst} !')
-        exit(1)
+        raise PowerGoodError(portID, slaveID)
     return pg_lst
 
 def get_module_version(conn, portID, slaveID, busID):
@@ -196,7 +202,9 @@ def set_fem_power(conn, portID, slaveID, power):
             set_all_dacs(conn, portID, slaveID, busID, moduleVersion, VDD1_PRESET[moduleVersion]["baseline"], VDD2_PRESET[moduleVersion]["baseline"], VDD3_PRESET[moduleVersion]["baseline"])
 
         #Power ON and stabilize
-        conn.write_config_register(portID, slaveID, 2, 0x0213, 0b01)
+        bias_en = fe_power.get_bias_power_status(conn, portID, slaveID)
+        power_state = 0b01 | (bias_en << 1) # Keep BIAS_EN state
+        conn.write_config_register(portID, slaveID, 2, 0x0213, power_state)
         sleep(0.05)
         #Check Power Goods
         for busID, _ in busID_lst:
@@ -226,6 +234,7 @@ def set_fem_power(conn, portID, slaveID, power):
 
     
     elif power == "off":
+        fe_power.set_bias_power(conn, portID, slaveID, 'off') # To reset DACs
         conn.write_config_register(portID, slaveID, 2, 0x0213, 0)
         for busID in [1,2,3,4]: #! REWRITE THIS!!!!!!!!!!!!!!!!
             try:
