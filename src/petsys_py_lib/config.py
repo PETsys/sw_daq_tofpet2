@@ -5,7 +5,7 @@ import configparser
 import os.path
 import re
 from sys import stderr
-from . import tofpet2b, tofpet2c
+from . import tofpet2b, tofpet2c, fe_power
 import bitarray
 import math
 
@@ -116,6 +116,8 @@ class Config:
 		if bias_enable == APPLY_BIAS_PREBD or bias_enable == APPLY_BIAS_ON:
 			assert (self.__loadMask & LOAD_BIAS_CALIBRATION) != 0
 			assert (self.__loadMask & LOAD_BIAS_SETTINGS) != 0
+			for portID, slaveID in daqd.getActiveFEBDs(): 
+				fe_power.set_bias_power(daqd, portID, slaveID, 'on')
 			for key in list(self.__biasChannelSettingsTable.keys()):
 				offset, prebd, bd, over = self.getBiasChannelDefaultSettings(key)
 				if bias_enable == APPLY_BIAS_PREBD:
@@ -125,6 +127,11 @@ class Config:
 				
 				dacSet = self.mapBiasChannelVoltageToDAC(key, Vset)
 				hvdacHwConfig[key] = dacSet
+		elif bias_enable == APPLY_BIAS_OFF:
+			for portID, slaveID in daqd.getActiveFEBDs(): 
+				fe_power.set_bias_power(daqd, portID, slaveID, 'off')
+		else:
+			raise Exception('Unknown value for bias_enable')
 				
 		daqd.set_hvdac_config(hvdacHwConfig)
 

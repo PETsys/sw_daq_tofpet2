@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from petsys import daqd, config, spi, bias
+from petsys import daqd, spi, bias # type: ignore 
 import argparse
 import struct
 import sys
@@ -13,7 +13,7 @@ def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 
 	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 8)
 	if data != b"PETSYS  ":
-		if [x for x in spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 16)] == bias.BIAS_32P_MAGIC:
+		if [x for x in spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 16)] in [bias.BIAS_32P_MAGIC, bias.BIAS_32P_AG_MAGIC, bias.BIAS_32P_LTC2439_MAGIC]:
 			print(f'INFO: BIAS_32P detecteted @ (portID, slaveID, slotID) = ({portID},{slaveID},{slotID})')
 			offset = 4
 			promLayoutVersion = 0x01
