@@ -7,7 +7,7 @@ import argparse
 import os
 import subprocess
 
-parser = argparse.ArgumentParser(description='Create an ASIC mask (enabling only a subset of connected ASICS) and export it as system environmental variable')
+parser = argparse.ArgumentParser(description='Create an ASIC mask (for enabling only a subset of connected ASICS) and describe how to export it as system environment variable')
 
 parser.add_argument('--asics', nargs='*', type=int, default = None, help='List of Asics to be enabled (command-line)')
 parser.add_argument('--asics_file', type=str, default = None, help='List of Asics to be enabled (one column text file)')
@@ -36,8 +36,6 @@ if "PETSYS_ASIC_MASK" in os.environ.keys():
     isMaskSet = True
     currentAsicEnableMask = int(os.environ["PETSYS_ASIC_MASK"], base=16)
     del os.environ['PETSYS_ASIC_MASK']
-else:
-    print ("INFO: PETSYS_ASIC_MASK is currently not set, all ASICs will be enabled")
 
 connection = daqd.Connection()
 connection.initializeSystem()
