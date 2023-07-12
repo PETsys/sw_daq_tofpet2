@@ -14,7 +14,7 @@ def add_calibration_from_rom(connection, portID, slaveID, slotID, outputFile):
 	data = spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 8)
 	if data != b"PETSYS  ":
 		if [x for x in spi.m95256_read(connection, portID, slaveID, chipID, 0x0000, 16)] in [bias.BIAS_32P_MAGIC, bias.BIAS_32P_AG_MAGIC, bias.BIAS_32P_LTC2439_MAGIC]:
-			print(f'INFO: BIAS_32P detecteted @ (portID, slaveID, slotID) = ({portID},{slaveID},{slotID})')
+			print(f'INFO: BIAS_32P detected @ (portID, slaveID, slotID) = ({portID},{slaveID},{slotID})')
 			offset = 4
 			promLayoutVersion = 0x01
 		else:
