@@ -393,7 +393,7 @@ def max111xx_ll(conn, portID, slaveID, chipID, command):
 		freq_sel=1,
 		miso_edge="falling")
 
-def max111xx_check(conn, portID, slaveID, chipID):
+def max111xx_check_once(conn, portID, slaveID, chipID):
 	m_config1 = 0x00008064  # single end ref; no avg; scan 16; normal power; echo on
 	m_config2 = 0x00008800  # single end channels (0/1 -> 14/15, pdiff_com)
 	m_config3 = 0x00009000  # unipolar convertion for channels (0/1 -> 14/15)
@@ -414,6 +414,10 @@ def max111xx_check(conn, portID, slaveID, chipID):
 		return False
 
 	return True
+
+def max111xx_check(conn, portID, slaveID, chipID): #! This fixes a known bug of unknown origin
+	for _ in range(2): check_result = max111xx_check_once(conn, portID, slaveID, chipID)
+	return check_result
 
 def max111xx_read(conn, portID, slaveID, chipID, channelID):
 	m_control = 0x00000826  # manual external; channel 0; reset FIFO; normal power; ID present; CS control
