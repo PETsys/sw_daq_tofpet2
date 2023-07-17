@@ -97,7 +97,6 @@ public:
 			brStep2 = step2;
 			hIndex->Fill();
 			stepBegin = hData->GetEntries();
-			hFile->Write();
 		}
 		else {
 			// Do nothing
