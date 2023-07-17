@@ -66,11 +66,14 @@ def tableize(df): # Thanks https://stackoverflow.com/a/62046440
     out.append(hline)
     print( "\n".join(out))
 
-def print_table(sensor_list):
+def print_table(sensor_list, show_sipm=True):
     # Find out max number of ASICs per FEM and build sensor column list 
     n_asics_max = max([sensor.get_location() for sensor in sensor_list], key=lambda x:x[3])[3] + 1
 
-    for type in ['asic', 'sipm']:
+    types_lst = ['asic']
+    if show_sipm: types_lst.append('sipm')
+
+    for type in types_lst:
         print('|')
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
         print('+','-' * 1,'> ',f'{type.upper()} sensors @ ',f'{timestamp}', sep = '')
@@ -118,15 +121,14 @@ def main(argv):
     if args.debug:
         for sensor in sensor_list: print(sensor.get_location(), sensor.get_temperature())
     
-    # Single-shot
+    # Open output file
     dataFile = open(args.fileName, "w")
     write_table_header(dataFile, sensor_list)
     temp_cache = write_table_row(dataFile, sensor_list, conn.getCurrentTimeTag())
-    print_table(sensor_list)
 
-    
     # Over time: measure every 'interval' seconds for 'time' seconds
     if not args.startup:
+        print_table(sensor_list)
         tDelta = args.time if args.time < args.interval else args.interval
         tNow   = time.time()
         tEnd   = tNow + args.time
@@ -147,6 +149,8 @@ def main(argv):
         systemConfig = config.Config()
         systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
 
+        print_table(sensor_list, show_sipm=False)
+        
         tDelta = STARTUP_INTERVAL
         tNow   = time.time()
         tEnd   = tNow + STARTUP_TIME
@@ -156,7 +160,7 @@ def main(argv):
             time.sleep(tDelta)
             tNow = tNow + tDelta
             temp_now = write_table_row(dataFile, sensor_list, conn.getCurrentTimeTag())
-            print_table(sensor_list)
+            print_table(sensor_list, show_sipm=False)
             stable = True # Assume stability and check if not
             for t1, t2 in zip(temp_now, temp_cache):
                 if fabs(t1-t2) > STARTUP_T_DELTA:
