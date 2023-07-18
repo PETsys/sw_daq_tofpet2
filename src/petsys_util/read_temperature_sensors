@@ -1,62 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-from petsys import daqd, fe_temperature, config
-from math import sqrt, fabs
-import time
-import argparse
-import sys
+import argparse, sys, time
+import pandas as pd
+from petsys import daqd, fe_temperature, config, fe_power # type: ignore
+from math import fabs
+from collections import defaultdict
 
-
-
-def write_tree(sensor_list): 
-    sensor_list.sort(key = lambda x:x.get_location())
-	
-    locations = [ x.get_location() for x in sensor_list ]
-    moduleLocations = list(set([ (portID, slaveID, moduleID) for (portID, slaveID, moduleID, subModuleID, place) in locations]))
-    moduleLocations.sort()
-    femSensorList = list(set([(subModuleID,place) for (portID, slaveID, moduleID, subModuleID, place) in locations]))
-    femSensorList.sort(key = lambda x:x[0])
-    
-    asic_sensor_names = ""
-    sipm_sensor_names = ""
-    
-    for subModuleID, kind in femSensorList:
-        if kind == "asic": asic_sensor_names += "   A"+str(subModuleID)+ " Sensor"
-        if kind == "sipm": sipm_sensor_names += "   S"+str(subModuleID)+ " Sensor"
-
-    timeString = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
-    length = 31 + len(femSensorList)*12 
-    lenght2 = (length - len(timeString))*0.5
-    line =  ""
-    line2 = ""
-    for i in range(length):
-        line += "-" 
-        if i < lenght2:
-            line2 += "-" 
-
-    print(line2+timeString+line2)
-    print("portID    slaveID    moduleID  %s%s" % (asic_sensor_names,sipm_sensor_names)) 
-    print(line)
-    
-    for portID, slaveID, moduleID in moduleLocations:
-        asic_sensor_readings = ""
-        sipm_sensor_readings = ""
-        
-        for sensor in sensor_list:
-            thisPortID, thisSlaveID, thisModuleID, subModuleID, kind = sensor.get_location()
-			
-            if (portID != thisPortID) or (slaveID != thisSlaveID) or (moduleID != thisModuleID):
-                # Filter out this module, it will be printed in different iteration of this loop
-                continue
-	
-            if kind == "asic": asic_sensor_readings += ("  %7.2f ºC" % sensor.get_temperature())
-            if kind == "sipm": sipm_sensor_readings += ("  %7.2f ºC" % sensor.get_temperature())
-			
-		
-        print("%d         %d          %d        %s%s" % (portID, slaveID, moduleID, asic_sensor_readings, sipm_sensor_readings))    
-    print(line)
-    print("\n")
-      
 def write_table_header(fd, sensor_list):
     locations_list = [sensor.get_location() for sensor in sensor_list]
     fd.write("# Absolute Sensor ID format : portID_slaveID_moduleID_SensorID\n")
@@ -97,63 +46,138 @@ def write_table_row(fd, sensor_list, timestamp):
     fd.flush()
     return T
 
+def tableize(df): # Thanks https://stackoverflow.com/a/62046440
+    if not isinstance(df, pd.DataFrame):
+        return
+    df_columns = df.columns.tolist() 
+    max_len_in_lst = lambda lst: len(sorted(lst, reverse=True, key=len)[0])
+    align_center = lambda st, sz: "{0}{1}{0}".format(" "*(1+(sz-len(st))//2), st)[:sz] if len(st) < sz else st
+    align_right = lambda st, sz: "{0}{1} ".format(" "*(sz-len(st)-1), st) if len(st) < sz else st
+    max_col_len = max_len_in_lst(df_columns)
+    max_val_len_for_col = dict([(col, max_len_in_lst(df.iloc[:,idx].astype('str'))) for idx, col in enumerate(df_columns)])
+    col_sizes = dict([(col, 1 + max(max_val_len_for_col.get(col, 0), max_col_len)) for col in df_columns])
+    build_hline = lambda row: '+'.join(['-' * col_sizes[col] for col in row]).join(['+', '+'])
+    build_data = lambda row, align: "|".join([align(str(val), col_sizes[df_columns[idx]]) for idx, val in enumerate(row)]).join(['|', '|'])
+    hline = build_hline(df_columns)
+    out = [hline, build_data(df_columns, align_center)]
+    for i, row in df.iterrows():
+        if (i-1) % 2 : out.append(hline)
+        out.append(build_data(row.tolist(), align_right))
+    out.append(hline)
+    print( "\n".join(out))
+
+def print_table(sensor_list, show_sipm=True):
+    # Find out max number of ASICs per FEM and build sensor column list 
+    n_asics_max = max([sensor.get_location() for sensor in sensor_list], key=lambda x:x[3])[3] + 1
+
+    types_lst = ['asic']
+    if show_sipm: types_lst.append('sipm')
+
+    for type in types_lst:
+        print('|')
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+        print('+','-' * 1,'> ',f'{type.upper()} sensors @ ',f'{timestamp}', sep = '')
+        sensor_cols =  [f'{type[0].upper()}{idx} Sensor' for idx in range(n_asics_max)]
+        # Create DF
+        df_cols = ['portID', 'slaveID', 'moduleID'] + sensor_cols
+        df = pd.DataFrame(columns=df_cols)
+        # Group by module
+        module_lst = defaultdict(list)
+        for (p, s, m, l, t), temp in [ (sensor.get_location(), sensor.get_temperature()) for sensor in sensor_list]:
+            module_lst[(p,s,m)].append((l , t, temp))
+        # Fill DF rows
+        for idx in module_lst:
+            entry = {'portID': idx[0], 'slaveID': idx[1], 'moduleID': idx[2]}
+            for sensor in module_lst[idx]:
+                if sensor[1] == type:
+                    new_temp = f'{sensor[2]:.2f} ºC'
+                    new_col  = f'{type[0].upper()}{sensor[0]} Sensor' 
+                    entry[new_col] = new_temp
+            df.loc[len(df)] = entry
+        # Print table with timestamp
+        tableize(df.fillna("-"))
+    print('')
+
+
 def main(argv):
     parser = argparse.ArgumentParser(description='Measure temperature from all connected sensors')
-    parser.add_argument("--time", type=float, required=False, default=0, help="Acquisition time (in seconds)")
+    parser.add_argument("--time",     type=float, required=False, default=0,  help="Acquisition time (in seconds)")
     parser.add_argument("--interval", type=float, required=False, default=60, help="Measurement interval (in seconds)")
-    parser.add_argument("-o", type=str, dest="fileName", required=False, default="/dev/null", help="Data filename")
-    parser.add_argument("--startup", dest="isStartup", action="store_true", help="Check temperature stability when starting up")
+    parser.add_argument("-o",         type=str,   required=False, default="/dev/null", dest="fileName", help="Data filename")
+    parser.add_argument("--startup",  action="store_true", help="Check temperature stability when starting up")
+    parser.add_argument("--debug",    action="store_true", help="Enable debug mode")
     args = parser.parse_args()
+    # Create connection
+    conn = daqd.Connection()
+    # Check FEM power status
+    for portID, slaveID in conn.getActiveFEBDs():
+        if not fe_power.get_fem_power_status(conn, portID, slaveID):
+            print(f'WARNING: FEM Power for (portID, slaveID) = ({portID}, {slaveID}) if OFF.')
+            fe_power.set_fem_power(conn, portID, slaveID, "on")
+    # Check sensor list
+    sensor_list = fe_temperature.get_sensor_list(conn, debug=args.debug)
+    if not sensor_list:
+        print("ERROR: No sensors found. Check connections and power.")
+        exit(1)
+    else:
+        sensor_list.sort(key = lambda x:x.get_location())
 
-    connection = daqd.Connection()
-      
-    sensor_list = fe_temperature.get_sensor_list(connection)
-
-    if sensor_list is []:
-        print("WARNING: No sensors found. Check connections and power.")
-        return 1
-
+    if args.debug:
+        for sensor in sensor_list: print(sensor.get_location(), sensor.get_temperature())
+    
+    # Open output file
     dataFile = open(args.fileName, "w")
     write_table_header(dataFile, sensor_list)
-    
-    tEnd = time.time() + args.time
+    temp_cache = write_table_row(dataFile, sensor_list, conn.getCurrentTimeTag())
 
-    if args.isStartup:
-          tEnd = time.time() + 610
-          systemConfig = config.Config()
-          connection.initializeSystem()
-          systemConfig.loadToHardware(connection, bias_enable=config.APPLY_BIAS_OFF)
-          prevT = [-999]
-          
-    while True:
-        tNextRead = time.time() + args.interval
-        if args.isStartup:
-            tNextRead = time.time() + 60
-            isStable = True
+    # Over time: measure every 'interval' seconds for 'time' seconds
+    if not args.startup:
+        print_table(sensor_list)
+        tDelta = args.time if args.time < args.interval else args.interval
+        tNow   = time.time()
+        tEnd   = tNow + args.time
+        while tNow < tEnd:
+            time.sleep(tDelta)
+            tNow = tNow + tDelta
+            write_table_row(dataFile, sensor_list, conn.getCurrentTimeTag())
+            print_table(sensor_list)
+
+    # Startup procedure
+    STARTUP_TIME     = 600 
+    STARTUP_INTERVAL = 60
+    STARTUP_T_DELTA  = 0.2  # Setting stability on ASIC Sensors to X ºC
+
+    if args.startup:
+        print('INFO: Starting up system for temperature stabilization')
+        conn.initializeSystem()
+        systemConfig = config.Config()
+        systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
+
+        print_table(sensor_list, show_sipm=False)
         
-        timestamp = connection.getCurrentTimeTag()
-        write_tree(sensor_list)
-        T = write_table_row(dataFile, sensor_list, timestamp)
-        
-        if args.isStartup:
-            for t1, t2 in zip(T,prevT):
-                if fabs(t1-t2) > 0.2: # Setting stability on ASIC Sensors to 0.2 ºC
-                    isStable = False
-                    prevT = T 
+        tDelta = STARTUP_INTERVAL
+        tNow   = time.time()
+        tEnd   = tNow + STARTUP_TIME
+        stable = False
+        while not stable:
+            print(f'INFO: Stabilizing ASIC temperature. Waiting for {STARTUP_INTERVAL} seconds.\n')
+            time.sleep(tDelta)
+            tNow = tNow + tDelta
+            temp_now = write_table_row(dataFile, sensor_list, conn.getCurrentTimeTag())
+            print_table(sensor_list, show_sipm=False)
+            stable = True # Assume stability and check if not
+            for t1, t2 in zip(temp_now, temp_cache):
+                if fabs(t1-t2) > STARTUP_T_DELTA:
+                    stable = False
                     break
-            if isStable == True:
-                print("\nASIC temperatures stable over the last minute. System is ready to start data acquisition/calibration.\n")
-                sys.exit(0)
+            temp_cache = temp_now.copy()
+            if stable:
+                print(f'INFO: ASIC temperatures stable over the last {STARTUP_INTERVAL} seconds. System is ready to start data acquisition/calibration.')
+            elif tNow >= tEnd:
+                print(f'WARNING: Failed to reach stable ASIC temperatures after {(STARTUP_TIME/60):.1f} minutes.')
+                break
 
-
-        if tNextRead > tEnd:
-            break
-
-        tNow = time.time()
-        if tNextRead > tNow:
-            time.sleep(tNextRead - tNow)
-
-            
+    dataFile.close()    
     return 0
 
 if __name__ == '__main__':
