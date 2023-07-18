@@ -18,18 +18,14 @@ import os.path
 from collections import Counter
 from time import sleep, time
 import csv
-from petsys import daqd, info, bias
+from petsys import daqd, info, bias, fe_power
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
-#from matplotlib.backends.backend_gtk3cairo import FigureCanvasGTK3Cairo as FigureCanvas
-#import matplotlib
-#matplotlib.use('GTK3Cairo') 
-#import matplotlib.pyplot as plt
+
 from matplotlib.figure import Figure
 
 import numpy as np
-
 
 class GUI:
     def __init__ (self):
@@ -85,7 +81,6 @@ class GUI:
         else:
             self.__scroll = False
         
-
     def execute(self,command, processName ="", message1="", message2=""):
         
         self.__usedStopButton = False
@@ -125,11 +120,6 @@ class GUI:
             
         self.timeout_id = GLib.timeout_add(1000, self.check_if_finished, data)
 
-
-        
-
-
-    
     def read_temperature(self,command, processName ="", message1="", message2=""):
         
         self.__usedTempStopButton = False
@@ -159,7 +149,6 @@ class GUI:
             
         self.timeout_id = GLib.timeout_add(1000, self.check_if_temp_finished, data)
     
-
     def check_if_finished(self, data):
         message1 = data[1]
         message2 = data[2]
@@ -190,7 +179,6 @@ class GUI:
             self.__process = None
             if message1 != "" and not self.__usedStopButton:
                 self.show_info_dialog(message1, message2, self.processWindow)
-        
         return True
         
     def check_if_temp_finished(self, data):
@@ -206,7 +194,6 @@ class GUI:
             else:
                 self.readTempWindow.set_title("%s (stopped by user)" % data[0])
         
-
             textView = self.builder.get_object("readTempTextView")
             self.scroll_to_end(textView)
             buf = textView.get_buffer()
@@ -217,8 +204,6 @@ class GUI:
         
         return True
 
-
- 
     def write_to_textview(self, fd, condition):
         if condition == GLib.IO_IN: 
             char = fd.read().decode() 
@@ -240,8 +225,6 @@ class GUI:
             return True 
         else:
             return False 
-
-
     
     def write_to_textview_temp(self, fd, condition):
         if condition == GLib.IO_IN: 
@@ -265,15 +248,11 @@ class GUI:
         else:
             return False 
     
-
-
-
     def scroll_to_end(self,textview):
         i = textview.props.buffer.get_end_iter()
         mark = textview.props.buffer.get_insert()
         textview.props.buffer.place_cursor(i)
         textview.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
-
 
     def on_MainWindow_delete_event(self, MainWindow, data): 
         if self.show_confirmation_dialog("This will close any running process","Exit?"):
@@ -306,11 +285,9 @@ class GUI:
             if self.show_confirmation_dialog("","Close window?", self.readTempWindow):
                 window.hide()
         return True
-        
-    
-
 
         # Main menu handler functions       
+
     def on_menuFileQuit_activate(self, menuFileQuit): # quit with Quit button
         if self.show_confirmation_dialog("This will close any running process","Exit?"):
             if self.__process is not None:
@@ -325,7 +302,6 @@ class GUI:
     def on_menuHelpAbout_activate(self, menuHelpAbout): 
         about = Gtk.AboutDialog.new()
         about.set_transient_for(self.MainWindow)
-       # about.set_version("v2019.03.07")
         about.set_logo(GdkPixbuf.Pixbuf.new_from_file("gui/logo_PETsys2.png"))
         about.set_website("http://www.petsyselectronics.com")
         about.set_website_label("petsyselectronics.com")
@@ -334,9 +310,8 @@ class GUI:
         about.show()
         
     def on_menuHelpDoc_activate(self, menuHelpDoc):
-        Gtk.show_uri_on_window(None, "https://drive.google.com/drive/u/0/folders/0BxJ0aPS8qNAxZmtLVEdBWUdicWs?ogsrc=32",0)
-
-    #Daqd section handler function  
+        Gtk.show_uri_on_window(None, "https://www.petsyselectronics.com/web/private/folder/18/d2Vic2l0ZS9kb2N1bWVudGF0aW9uL1RPRlBFVDIgRG93bmxvYWRzL0RvY3VtZW50YXRpb24=/2",0)
+ 
     def on_daqdSwitch_state_set(self, daqdSwitch, isON):
 
         isGBE = self.builder.get_object("radioButtonGBE").get_active()
@@ -400,7 +375,14 @@ class GUI:
                         continue
                     if timeSec < 5:
                         self.__terminalPid = pid2
-            
+                #Check if power is on to update power button
+                connection = daqd.Connection()
+                for portID, slaveID in connection.getActiveFEBDs(): 
+                    femPowerStatus = fe_power.get_fem_power_status(connection, portID, slaveID)
+                    if not femPowerStatus and self.builder.get_object("femOnOffSwitch").get_active(): 
+                        self.setPowerSwitchesStatus(True)
+                    if femPowerStatus and not self.builder.get_object("femOnOffSwitch").get_active():
+                        self.setPowerSwitchesStatus(False)
         else:
             if not self.__daqd_switch_handle_set:
                 isDaqdPresent = subprocess.call(["pidof", "daqd"], stdout= subprocess.PIPE) == 0
@@ -410,11 +392,23 @@ class GUI:
                 if self.__terminalPid != None:
                     os.kill(int(self.__terminalPid), signal.SIGKILL)
       
-
     def is_daqd_running(self):
         isDaqdPresent = subprocess.call(["pidof", "daqd"], stdout= subprocess.PIPE) == 0
         return isDaqdPresent
 
+    def setPowerSwitchesStatus(self, isFemPowerOn):
+        if isFemPowerOn:
+            self.__fem_switch_handle_set = True
+            self.builder.get_object("femOnOffSwitch").set_active(True)
+            self.builder.get_object("biasOnOffLabel").set_sensitive(True)
+            self.builder.get_object("biasOnOffSwitch").set_sensitive(True)
+            self.__fem_switch_handle_set = False
+        else:
+            self.__fem_switch_handle_set = True
+            self.builder.get_object("femOnOffSwitch").set_active(False)
+            self.builder.get_object("biasOnOffLabel").set_sensitive(False)
+            self.builder.get_object("biasOnOffSwitch").set_sensitive(False)
+            self.__fem_switch_handle_set = False
 
     def on_dataFolderChooseButton_clicked(self, dataFolderChooseButton):   
         folderChooser = self.builder.get_object("dataFolderChooser")
@@ -489,7 +483,6 @@ class GUI:
             self.builder.get_object("threshSpinButton3").set_value(0)
             self.show_info_dialog("WARNING: Custom Discriminator Thresholds Settings file detected in working folder", "Caution: Save button in ASIC Thresholds Settings Section will overwrite it!")
 
-     
     def on_dataFolderEntry_activate(self, dataFolderEntry):
         folderExists= os.path.exists(dataFolderEntry.get_text())
         if not folderExists:
@@ -588,7 +581,6 @@ class GUI:
             info.launch([configFile], None)
         appChooser.hide()
 
-
     def on_threshApplyButton_clicked(self, threshApplyButton):
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
@@ -615,7 +607,6 @@ class GUI:
         subprocess.call(command, shell=True)
         
         self.show_info_dialog("Threshold Settings saved","")
-
 
     def on_systemDetectButton_clicked(self, systemButton):
         if not self.is_daqd_running():
@@ -668,13 +659,8 @@ class GUI:
                 
         if self.__bias_64p != {}:
             topology_txt += "\n\n*Calibration file required\n\n"
-        
-        topology_txt += "\n  Opening configuration window..."
-        self.show_info_dialog(system_type_txt, topology_txt)
-
-
-
-        for _ in range(1):
+            topology_txt += "\n  Opening configuration window..."
+            self.show_info_dialog(system_type_txt, topology_txt)
                     
             hBox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=20)
 
@@ -683,7 +669,6 @@ class GUI:
             febdConfigBox = self.builder.get_object("febdConfigDialogBox")
             grid = Gtk.Grid()
             febdConfigBox.pack_start(grid, True, True, 0)
-
 
             label1 = Gtk.Label("portID")
             label1.set_margin_right(10)
@@ -698,17 +683,15 @@ class GUI:
             grid.attach_next_to(label2, label1, Gtk.PositionType.RIGHT, 1, 1)
             label3 = label2
 
-
             max_bias_slots = max([ slotID for portID, slaveID, slotID in connection.getActiveBiasSlots() ]) + 1
             for i in range(2):
                 label4 = Gtk.Label("slot %d" % i)
                 label4.set_margin_right(10)
                 label4.set_margin_left(10)
-                label4.set_property("halign",3)
+                label4.set_property("halign", 3)
                 grid.attach_next_to(label4, label3, Gtk.PositionType.RIGHT, 2, 1)
                 label3 = label4
-
-             
+        
             self.__febdNumber = len(connection.getActiveFEBDs())       
             portLabelList = {}
             slaveLabelList = {}
@@ -734,7 +717,7 @@ class GUI:
                     if pss in self.__bias_64p.keys():
                         fileEntryList[pss] = Gtk.Entry()
                         grid.attach(fileEntryList[pss], 2+2*slotID, i+1, 1, 1)
-                        fileEntryList[pss].set_margin_left(10)
+                        fileEntryList[pss].set_margin_left(1)
                         fileEntryList[pss].set_width_chars(30)
                         fileEntryList[pss].set_max_width_chars(30)
                         fileButtonList[pss] = Gtk.Button("Choose")
@@ -749,19 +732,19 @@ class GUI:
                         #label.set_property("halign", 3)
                         grid.attach(label, 2+2*slotID, i+1, 2, 1)
 
-
+        
             febdConfigBox.show_all()
             febdConfigDialog = self.builder.get_object("febdConfigDialog")
             febdConfigDialog.connect("response", self.validate_response2, triggerSpinButtonList)
             response2 = febdConfigDialog.run()
+        else:
+            self.show_info_dialog(system_type_txt, topology_txt)
 
-            if self.show_confirmation_dialog("Save configuration files in Working Data Folder?", "System configuration"):
-                self.saveSystemSettings()
-            else:
-                self.show_info_dialog("System configuration not saved","")  
-            return True
-            
-            
+        if self.show_confirmation_dialog("Save configuration files in Working Data Folder?", "System configuration"):
+            self.saveSystemSettings()
+        else:
+            self.show_info_dialog("System configuration not saved","")  
+        return True
         
     def saveSystemSettings(self):
         if self.__workingFolder == None:
@@ -770,7 +753,6 @@ class GUI:
         
         if not os.path.exists(self.__workingFolder + "config.ini"):
             subprocess.call("cp config.ini "+self.__workingFolder, shell=True)
-
 
         map_cmd = ("./make_simple_channel_map -o %s/map " % self.__workingFolder)
         subprocess.call(map_cmd, shell=True)
@@ -801,8 +783,7 @@ class GUI:
             return False
 
         return True
-        
-        
+                
     def choose_BiasCal_File(self, fileButton, pss, fileEntry):
         dialog = self.builder.get_object("biasCalFileChooser")
         dialog.set_transient_for(self.MainWindow)
@@ -821,7 +802,6 @@ class GUI:
         dialog.hide()
         return response == Gtk.ResponseType.OK
             
-      
     def on_asicCalStartButton_clicked(self, systemCalStartButton):
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
@@ -856,25 +836,25 @@ class GUI:
         
         if not confirm:
             return True
-            
+
         start = time()
-        
+
         command = ""
         if do_cal[0]:
-            command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"disc_calibration;"
-            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
-            command += "python3 -u ./make_simple_disc_settings_table --config " + self.__workingFolder+"config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
+            command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder + "config.ini -o " + self.__workingFolder + "disc_calibration;"
+            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
+            command += "python3 -u ./make_simple_disc_settings_table --config " + self.__workingFolder + "config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
             
         if do_cal[1]:
-            command += "python3 -u ./acquire_tdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"tdc_calibration;"
-            command += "./process_tdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"tdc_calibration -o "+ self.__workingFolder+"tdc_calibration;"
+            command += "python3 -u ./acquire_tdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder + "tdc_calibration;"
+            command += "./process_tdc_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "tdc_calibration -o " + self.__workingFolder+"tdc_calibration;"
 
         if do_cal[2]:
             command += "python3 -u ./acquire_qdc_calibration --config " + self.__workingFolder+"config.ini -o " + self.__workingFolder+"qdc_calibration;"
-            command += "./process_qdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder+"qdc_calibration -o "+ self.__workingFolder+"qdc_calibration;"
-       
-        
+            command += "./process_qdc_calibration --config " + self.__workingFolder+"config.ini -i " + self.__workingFolder + "qdc_calibration -o "+ self.__workingFolder+"qdc_calibration;"
             
+        self.setPowerSwitchesStatus(True)
+
         self.execute(command,"ASIC Calibration","Calibration finished", "Please check calibration summary plots.")
 
         #end = time()
@@ -883,8 +863,7 @@ class GUI:
         #    self.show_error_dialog("Calibration finished too soon! Please check terminal output.")
         #else:
        #     self.show_info_dialog("Calibration finished","Please check calibration summary plots.")
-                    
-
+                
     def on_temperatureStartupButton_clicked(self, button):
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
@@ -894,15 +873,13 @@ class GUI:
             self.show_error_dialog("daqd communication server is not running.")
             return
            
+        self.setPowerSwitchesStatus(True)
+
         self.execute("python3 -u ./read_temperature_sensors --startup", "Check for temperature stability")
             
-        #if success:
         #    self.show_info_dialog("Temperature is stable","ASIC(s) temperatures stable over the last minute. System ready to acquire.")
         #else:
         #    self.show_info_dialog("Temperature is unstable","ASIC(s) temperatures not stable over the last 10 minutes. Please ensure a stable temperature environment or proceed with measurements anyway")
-
-        
-            
 
     def on_temperatureReadButton_clicked(self, button):
         if self.__workingFolder == None:
@@ -932,10 +909,6 @@ class GUI:
        
         return True
 
-
-    
-
-
     def on_readTempLogToggleButton_clicked(self, button):  
         if self.builder.get_object("readTempLogToggleButton").get_active():
               
@@ -961,8 +934,6 @@ class GUI:
         else:
              self.__tempLogfileName = None
         
-
-
     def on_readTempStartButton_clicked(self, button):
         
         if self.__temperatureProcess is not None:
@@ -973,6 +944,8 @@ class GUI:
         if self.__tempLogFileName is None:
             self.__tempLogFileName = "/tmp/log"
             
+        self.setPowerSwitchesStatus(True)
+
         command = "python3 -u ./read_temperature_sensors -o %s --interval %s --time 259200" % (self.__tempLogFileName, interval ) 
   
         self.timeout_id = GObject.timeout_add(300, self.update_graph)
@@ -1057,7 +1030,6 @@ class GUI:
             self.builder.get_object("readTempSensorPopup").show_all()
             self.builder.get_object("readTempSensorPopup").popup()
             
-
     def on_readTempStopButton_clicked(self, button):
         if self.__temperatureProcess is not None:
             if self.show_confirmation_dialog("","Stop temperature monitoring?",  self.readTempWindow):
@@ -1070,51 +1042,40 @@ class GUI:
                 #GObject.source_remove(self.timeout_id)
         return True
         
-
     def on_femOnOffSwitch_state_set(self, switch, isOn):
-        if not self.is_daqd_running(): 
+        if not self.is_daqd_running():
             if not self.__fem_switch_handle_set: 
                 self.show_error_dialog("daqd communication server is not running.")
                 self.__fem_switch_handle_set = True
                 self.builder.get_object("femOnOffSwitch").set_active(not isOn)
                 self.__fem_switch_handle_set = False
             return True
-
-        if self.__workingFolder == None:
-            if not self.__fem_switch_handle_set:
-                self.show_error_dialog("Please choose a working folder.")
-                self.__fem_switch_handle_set = True
-                self.builder.get_object("femOnOffSwitch").set_active(not isOn)
-                self.__fem_switch_handle_set = False
-            return True 
             
         if isOn:
-            if not self.__fem_switch_handle_set:
-                if self.show_confirmation_dialog("Turn FEM power on?"):
-                    success = subprocess.call("./set_fem_power --power on", shell=True) == 0
-                    if success:
-                        self.builder.get_object("biasOnOffLabel").set_sensitive(True)
-                        self.builder.get_object("biasOnOffSwitch").set_sensitive(True)
-                        return True
+            if not self.__fem_switch_handle_set:              
+                # if self.show_confirmation_dialog("Turn FEM power on?", parent = self.MainWindow):
+                success = subprocess.call("./set_fem_power --power on", shell=True) == 0
+                if success:
+                    self.builder.get_object("biasOnOffLabel").set_sensitive(True)
+                    self.builder.get_object("biasOnOffSwitch").set_sensitive(True)
+                    return True
                 self.__fem_switch_handle_set = True
                 self.builder.get_object("femOnOffSwitch").set_active(False)
                 self.__fem_switch_handle_set = False
                 return True
-
         else:
             if not self.__fem_switch_handle_set:
-                if self.show_confirmation_dialog("Turn FEM power off?"):
-                    success = subprocess.call("./set_fem_power --power off", shell=True) == 0
-                    if success:
-                        self.builder.get_object("biasOnOffLabel").set_sensitive(False)
-                        self.builder.get_object("biasOnOffSwitch").set_sensitive(False)
-                        return True
+                #if self.show_confirmation_dialog("Turn FEM power off?", parent = self.MainWindow):
+                success = subprocess.call("./set_fem_power --power off", shell=True) == 0
+                if success:
+                    self.builder.get_object("biasOnOffLabel").set_sensitive(False)
+                    self.builder.get_object("biasOnOffSwitch").set_sensitive(False)
+                    return True
                 self.__fem_switch_handle_set = True
                 self.builder.get_object("femOnOffSwitch").set_active(True)
                 self.__fem_switch_handle_set = False
                 return True
-
-          
+  
     def on_biasOnOffSwitch_state_set(self, button, isOn):
         if not self.is_daqd_running(): 
             if not self.__bias_switch_handle_set: 
@@ -1140,24 +1101,23 @@ class GUI:
    
         if isOn:
             if not self.__bias_switch_handle_set:
-                if self.show_confirmation_dialog("Activate bias voltage lines?"):
-                    success = subprocess.call("./set_bias --power on", shell=True)== 0
-                    if success:
-                        self.__bias_switch_handle_set = True
-                        self.builder.get_object("biasOnOffSwitch").set_active(True)
-                        self.__bias_switch_handle_set = False
-                        return True
+                #if self.show_confirmation_dialog("Activate bias voltage lines?"):
+                success = subprocess.call("./set_bias --power on", shell=True)== 0
+                if success:
+                    self.__bias_switch_handle_set = True
+                    self.builder.get_object("biasOnOffSwitch").set_active(True)
+                    self.__bias_switch_handle_set = False
+                    return True
         else:
             if not self.__bias_switch_handle_set:
-                if self.show_confirmation_dialog("Deactivate bias voltage lines?"): 
-                    success = subprocess.call("./set_bias --power off", shell=True)== 0
-                    if success:
-                        self.__bias_switch_handle_set = True
-                        self.builder.get_object("biasOnOffSwitch").set_active(False)
-                        self.__bias_switch_handle_set = False
-                        return True
+                #if self.show_confirmation_dialog("Deactivate bias voltage lines?"): 
+                success = subprocess.call("./set_bias --power off", shell=True)== 0
+                if success:
+                    self.__bias_switch_handle_set = True
+                    self.builder.get_object("biasOnOffSwitch").set_active(False)
+                    self.__bias_switch_handle_set = False
+                    return True
             
-
     def on_acqFileChooseButton_clicked(self, acqFileChooseButton):
         
         fileChooser = self.builder.get_object("acqFileChooser")
@@ -1217,7 +1177,7 @@ class GUI:
             return True
 
       
-        if fileName is "":
+        if fileName == "":
             self.builder.get_object("processingFileChooseEntry").set_text("")
             self.builder.get_object("processingFileChooseEntry1").set_text("")
             return True
@@ -1247,9 +1207,6 @@ class GUI:
 
         self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
 
-
-        
-     
     def on_acqAcquireButton_clicked(self, acqFileChooseButton):   
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
@@ -1270,9 +1227,6 @@ class GUI:
         if self.builder.get_object("acqFileEntry").get_text() == "":
             self.show_error_dialog("Please choose an output file name.")
             return
-       
-        
-
 
         outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
 
@@ -1299,9 +1253,10 @@ class GUI:
             flag = "--enable-hw-trigger"
         else:
             flag = ""
-         
-        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
        
+        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+        
+        self.setPowerSwitchesStatus(True)
         #subprocess.call()
         self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
         
@@ -1370,7 +1325,6 @@ class GUI:
             fileName = self.builder.get_object("processingFileChooseEntry").get_text() 
             self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
         
-
     def on_processingFileChooseButton_clicked(self, button):
         fileChooser = self.builder.get_object("processingFileChooserDialog")
         fileEntry = self.builder.get_object("processingFileChooseEntry")
@@ -1431,14 +1385,12 @@ class GUI:
         elif response == Gtk.ResponseType.CANCEL:
             fileChooser.hide()
         
-
-
     def on_processingFileChooseEntry_changed(self, dataFolderEntry):
         fileName = self.builder.get_object("processingFileChooseEntry").get_text()
         if fileName.endswith('.rawf'):
             fileName, ext = os.path.splitext(fileName)
         
-        if fileName is "":
+        if fileName == "":
             self.builder.get_object("processingFileChooseEntry1").set_text("")
             return True
         
@@ -1474,9 +1426,6 @@ class GUI:
         if not fileExists:
             self.show_error_dialog("Raw file doesn't exist. Please enter an existing file or use the Choose button.")
             return True
-        if not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
-            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
-            return True
 
         inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
         
@@ -1495,6 +1444,9 @@ class GUI:
         dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
         fraction = self.builder.get_object("processingFractionSpinButton").get_value()
 
+        if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
+            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
+            return True
         
         if dataFormat == "Binary":
             flag1 = "--writeBinary"
@@ -1513,6 +1465,7 @@ class GUI:
             flag3 = "--writeMultipleHits %d" % (nHits)
         else:
             flag3 = ""
+    
        
         if dataType == "Singles":
             command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3) 
@@ -1546,19 +1499,17 @@ class GUI:
             self.show_error_dialog("Please choose an output file name.")
             return
 
-        if not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
             self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
             return
-       
-
+         
         outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
 
-    
         if os.path.exists(outFile+".rawf"):
             if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
                 return True
-        
-    
+            
         mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
         time = self.builder.get_object("acqTimeSpinButton").get_value()
         if time == 0:
@@ -1586,11 +1537,9 @@ class GUI:
         inFile = self.__workingFolder + inFileName
         outFile = self.__workingFolder + outFileName
 
-        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
         dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
         fraction = self.builder.get_object("processingFractionSpinButton").get_value()
-
-       
+      
         if dataFormat == "Binary":
             flag1 = "--writeBinary"
             if outFile.endswith('.ldat'):
@@ -1618,6 +1567,8 @@ class GUI:
         if dataType == "Raw":
             command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s;" % (self.__workingFolder, inFile, outFile)
         
+        self.setPowerSwitchesStatus(True)
+
         self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
               
     def show_error_dialog(self, string):
@@ -1629,9 +1580,10 @@ class GUI:
     def show_confirmation_dialog(self, query, title = "WARNING", parent = None):
         if parent is None:
             parent = self.MainWindow
+
         dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO, title)
-        dialog.format_secondary_text(query)
-        rtn = dialog.run()
+        dialog.format_secondary_text(query)     
+        rtn = dialog.run() 
         dialog.destroy()
         return rtn == Gtk.ResponseType.YES
 
@@ -1642,7 +1594,6 @@ class GUI:
         dialog.format_secondary_text(text)
         dialog.run()
         dialog.destroy()
-
 
 def main():
     gui = GUI()
