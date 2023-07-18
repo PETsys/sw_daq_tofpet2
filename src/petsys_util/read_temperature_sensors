@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import argparse, sys, time
 import pandas as pd
-from petsys import daqd, fe_temperature, config # type: ignore
+from petsys import daqd, fe_temperature, config, fe_power # type: ignore
 from math import fabs
 from collections import defaultdict
 
@@ -107,13 +107,17 @@ def main(argv):
     parser.add_argument("--startup",  action="store_true", help="Check temperature stability when starting up")
     parser.add_argument("--debug",    action="store_true", help="Enable debug mode")
     args = parser.parse_args()
-
+    # Create connection
     conn = daqd.Connection()
+    # Check FEM power status
+    for portID, slaveID in conn.getActiveFEBDs():
+        if not fe_power.get_fem_power_status(conn, portID, slaveID):
+            print(f'WARNING: FEM Power for (portID, slaveID) = ({portID}, {slaveID}) if OFF.')
+            fe_power.set_fem_power(conn, portID, slaveID, "on")
+    # Check sensor list
     sensor_list = fe_temperature.get_sensor_list(conn, debug=args.debug)
-
     if not sensor_list:
-        print("WARNING: No sensors found. Check connections and power.")
-        print("TIP: You can run './set_fem_power --power on' to turn ON FEM power.")
+        print("ERROR: No sensors found. Check connections and power.")
         exit(1)
     else:
         sensor_list.sort(key = lambda x:x.get_location())
