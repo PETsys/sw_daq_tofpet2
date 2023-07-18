@@ -29,8 +29,6 @@ MAX_CHIPS = 64
 
 PROTOCOL_VERSION = 0x102
 
-
-
 # Handles interaction with the system via daqd
 class Connection:
 	## Constructor
@@ -81,7 +79,7 @@ class Connection:
 	## Returns the system reference clock frequency
 	def getSystemFrequency(self):
 		return self.__systemFrequency
-	
+
 	## Returns an array with the active ports
 	def getActivePorts(self):
 		if self.__activePorts == []:
@@ -129,7 +127,6 @@ class Connection:
 		else:
 			raise ErrorTooManyTriggerUnits(triggerUnits)
 
-		
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
 		if self.__activeUnits == {}: self.__scanUnits_ll()
@@ -143,7 +140,6 @@ class Connection:
 		except KeyError as e:
 			raise ErrorUnitNotPresent(portID, slaveID)
 	
-
 	def __scanUnits_ll(self):
 		activeUnits = {}
 		activeBiasSlots = {}
@@ -391,7 +387,10 @@ class Connection:
 			# (b) a distributed trigger
 			# Generate sync in the unit responsible for CLK and TGR
 			portID, slaveID = self.getTriggerUnit()
-			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
+			if [(portID,slaveID)] != self.getActiveFEBDs():
+				print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
+			else:
+				print("INFO: Evaluation kit: FEB/D with GBE connection @ (%2d, %2d)" % (portID, slaveID))
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
