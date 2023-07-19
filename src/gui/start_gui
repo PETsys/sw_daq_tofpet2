@@ -1084,13 +1084,7 @@ class GUI:
                 self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
                 self.__bias_switch_handle_set = False
             return True
-        if self.__workingFolder == None:
-            if not self.__bias_switch_handle_set:
-                self.show_error_dialog("Please choose a working folder.")
-                self.__bias_switch_handle_set = True
-                self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
-                self.__bias_switch_handle_set = False
-            return True 
+   
         if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
             if not self.__bias_switch_handle_set:
                 self.show_error_dialog("Please save bias voltage settings")
@@ -1572,7 +1566,7 @@ class GUI:
         self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
               
     def show_error_dialog(self, string):
-        dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = string)
+        dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = string)
         dialog.format_secondary_text(string)
         dialog.run()
         dialog.destroy()
@@ -1581,7 +1575,7 @@ class GUI:
         if parent is None:
             parent = self.MainWindow
 
-        dialog = Gtk.MessageDialog(parent = parent, flags = 0, type = Gtk.MessageType.QUESTION, buttons = Gtk.ButtonsType.YES_NO, text = title)
+        dialog = Gtk.MessageDialog(parent = parent, flags = 0, message_type = Gtk.MessageType.QUESTION, buttons = Gtk.ButtonsType.YES_NO, text = title)
         dialog.format_secondary_text(query)     
         rtn = dialog.run() 
         dialog.destroy()
@@ -1590,7 +1584,7 @@ class GUI:
     def show_info_dialog(self, title, text, parent = None):
         if parent is None:
             parent = self.MainWindow
-        dialog = Gtk.MessageDialog(parent = parent, flags = 0, type = Gtk.MessageType.INFO, buttons = Gtk.ButtonsType.OK, text = title)
+        dialog = Gtk.MessageDialog(parent = parent, flags = 0, message_type = Gtk.MessageType.INFO, buttons = Gtk.ButtonsType.OK, text = title)
         dialog.format_secondary_text(text)
         dialog.run()
         dialog.destroy()
