@@ -1572,7 +1572,7 @@ class GUI:
         self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
               
     def show_error_dialog(self, string):
-        dialog = Gtk.MessageDialog(self.MainWindow, 0, Gtk.MessageType.ERROR, Gtk.ButtonsType.OK, "ERROR")
+        dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = string)
         dialog.format_secondary_text(string)
         dialog.run()
         dialog.destroy()
@@ -1581,7 +1581,7 @@ class GUI:
         if parent is None:
             parent = self.MainWindow
 
-        dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO, title)
+        dialog = Gtk.MessageDialog(parent = parent, flags = 0, type = Gtk.MessageType.QUESTION, buttons = Gtk.ButtonsType.YES_NO, text = title)
         dialog.format_secondary_text(query)     
         rtn = dialog.run() 
         dialog.destroy()
@@ -1590,7 +1590,7 @@ class GUI:
     def show_info_dialog(self, title, text, parent = None):
         if parent is None:
             parent = self.MainWindow
-        dialog = Gtk.MessageDialog(parent, 0, Gtk.MessageType.INFO, Gtk.ButtonsType.OK, title)
+        dialog = Gtk.MessageDialog(parent = parent, flags = 0, type = Gtk.MessageType.INFO, buttons = Gtk.ButtonsType.OK, text = title)
         dialog.format_secondary_text(text)
         dialog.run()
         dialog.destroy()
