@@ -3,7 +3,7 @@
 
 import sys, re
 import argparse
-from petsys import daqd, fe_eeprom
+from petsys import daqd, fe_eeprom, fe_power # type: ignore 
 
 def expand_ranges(s): #Magical input parser
     lst = re.sub(r'(\d+)-(\d+)',lambda match: ','.join(str(i) for i in range(int(match.group(1)),int(match.group(2)) + 1)), s).split(",")
@@ -57,7 +57,7 @@ def main(argv):
     fe_eeprom.program_m95080(conn,fem_type,new_sn_lst,new_s_cfg_lst)
     
     for portID, slaveID in conn.getActiveFEBDs():
-        conn.write_config_register(portID, slaveID, 2, 0x0213, 0)
+        fe_power.set_fem_power(conn, portID, slaveID, 'off')
 
     return 0
 
