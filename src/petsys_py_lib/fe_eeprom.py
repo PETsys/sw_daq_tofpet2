@@ -14,8 +14,8 @@ DEVICE_TO_BYTE = {'asic' : 0xAA, 'sipm' : 0xBB}
 SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB}
 
 FEM_PARAMETERS = {  
-                    'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107, 29, 77, 96, 165, 101, 77, 72, 252, 163, 63, 202]  },
-                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147, 77, 48, 100, 252, 163, 223, 74, 225, 183, 251, 54, 93] }
+                    'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202] },
+                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] }
                  }
 
 S_CFG_BYTES_PER_CH = 3                          
@@ -83,6 +83,9 @@ class m95080_eeprom:
     def read(self, adr, n_bytes):
         return spi.m95080_read(self.__conn, self.__portID, self.__slaveID, self.__spiID, adr, n_bytes)
     
+    def read_entry(self, entry):
+        return self.read(self.PROM_TEMPLATE[entry][0], self.PROM_TEMPLATE[entry][1])
+    
     def erase(self):
         print(f'INFO: Erasing EEPROM.')
         for adr in range(self.MEMORY_SIZE):
@@ -110,12 +113,45 @@ class m95080_eeprom:
         header = [x for x in self.read(0x00,self.HEADER_SIZE)]
         if header == self.HEADER_BYTES: return True
         return False
+    
+    def read_sn(self):
+        r = self.read_entry('sn')
+        if r:
+            return int.from_bytes(r, "big")
+        else:
+            return None
+        
+    def read_fem_type(self):
+        r = [x for x in self.read_entry('uid')]
+        for key, value in FEM_PARAMETERS.items():
+            if r == value['unique_id']: return key
+        return 'unknown'
+    
+    def verify_checksum(self):
+        chksum, chksum_reading = 0, []
+        for key in self.PROM_TEMPLATE.keys():
+            r = self.read_entry(key)
+            if key is 'chksum':
+                chksum_reading = [x for x in r]
+            else:
+                chksum += sum(r)
+        chksum = list(chksum.to_bytes(self.PROM_TEMPLATE['chksum'][1], byteorder ='big'))  
+        return (chksum == chksum_reading)
+
 
 ###############################################
 #
 # Programing Functions
 #
 ###############################################
+
+def verify_checksum_m95080(conn, portID, slaveID, moduleID):
+    eeprom = m95080_eeprom(conn,portID,slaveID,moduleID)
+    if not eeprom.detect():
+        print(f'WARNING: Verify CHECKSUM - EEPROM not Detected @ moduleID {portID},{slaveID},{moduleID}')
+        return False
+    else: 
+        return eeprom.verify_checksum()
 
 def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
     #Get list of modules 
@@ -211,10 +247,8 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
             #print(f'Writing {key}: {value[2]}') #*For Debug
             eeprom.write(value[0], value[2])
 
-        #CONFIRM CHECKSUM #! Should probably recompute the checksum by reading all written data
-        chksum_adr, chksum_size, chksum_value = prom_mapping['chksum']
-        r = eeprom.read(chksum_adr, chksum_size)
-        if chksum_value != [x for x in r]:
+        #CONFIRM CHECKSUM 
+        if not eeprom.verify_checksum():
             print('ERROR: WRITE FAILED! INVALID CHECKSUM!')
             input('Press ENTER to acknowledge..')
     
