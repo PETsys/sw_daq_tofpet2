@@ -10,7 +10,7 @@ from . import tofpet2c
 from . import info
 from . import bias
 from . import spi
-from . import fe_power
+from . import fe_power, fe_power_8k
 import socket
 from random import randrange
 import struct
@@ -28,8 +28,6 @@ MAX_SLAVES = 32
 MAX_CHIPS = 64
 
 PROTOCOL_VERSION = 0x102
-
-
 
 # Handles interaction with the system via daqd
 class Connection:
@@ -81,7 +79,7 @@ class Connection:
 	## Returns the system reference clock frequency
 	def getSystemFrequency(self):
 		return self.__systemFrequency
-	
+
 	## Returns an array with the active ports
 	def getActivePorts(self):
 		if self.__activePorts == []:
@@ -129,7 +127,6 @@ class Connection:
 		else:
 			raise ErrorTooManyTriggerUnits(triggerUnits)
 
-		
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
 		if self.__activeUnits == {}: self.__scanUnits_ll()
@@ -143,7 +140,6 @@ class Connection:
 		except KeyError as e:
 			raise ErrorUnitNotPresent(portID, slaveID)
 	
-
 	def __scanUnits_ll(self):
 		activeUnits = {}
 		activeBiasSlots = {}
@@ -391,7 +387,10 @@ class Connection:
 			# (b) a distributed trigger
 			# Generate sync in the unit responsible for CLK and TGR
 			portID, slaveID = self.getTriggerUnit()
-			print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
+			if [(portID,slaveID)] != self.getActiveFEBDs():
+				print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
+			else:
+				print("INFO: Evaluation kit: FEB/D with GBE connection @ (%2d, %2d)" % (portID, slaveID))
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
 			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
@@ -519,11 +518,11 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs():
 			if self.__activeUnits[(portID, slaveID)][0] in [ 0x0005 ]:
 				print(f'INFO: Found FEB\D 8K @ ({portID},{slaveID}). Ramping up VDD1 rail after ASIC configuration.')
-				busID_lst = fe_power.detect_active_bus(self, portID, slaveID)
+				busID_lst = fe_power_8k.detect_active_bus(self, portID, slaveID)
 				for busID, moduleVersion in busID_lst:
-					current_dac_setting = fe_power.read_dac(self, portID, slaveID, busID, moduleVersion, 'vdd1')
-					vdd1_iterable = range(current_dac_setting, fe_power.VDD1_PRESET[moduleVersion]["max"] + 1, 2)
-					new_dac_setting = fe_power.ramp_up_rail(self, portID, slaveID, busID, moduleVersion, "vdd1", vdd1_iterable, fe_power.VDD1_PRESET[moduleVersion]["max"], fe_power.VDD1_TARGET)
+					current_dac_setting = fe_power_8k.read_dac(self, portID, slaveID, busID, moduleVersion, 'vdd1')
+					vdd1_iterable = range(current_dac_setting, fe_power_8k.VDD1_PRESET[moduleVersion]["max"] + 1, 2)
+					new_dac_setting = fe_power_8k.ramp_up_rail(self, portID, slaveID, busID, moduleVersion, "vdd1", vdd1_iterable, fe_power_8k.VDD1_PRESET[moduleVersion]["max"], fe_power_8k.VDD1_TARGET)
 					#print(portID, slaveID, busID, moduleVersion, current_dac_setting, new_dac_setting)
 		
 		# Allow some ms for the deserializer to lock to the 8B/10B pattern
@@ -1018,6 +1017,9 @@ class Connection:
 	## - value: an integer
 	## WARNING: As the hardware does not support readback, this always returns the software cache
 	def get_hvdac_config(self):
+		if self.__hvdac_config_cache == {}:
+			for portID, slaveID, slotID, channelID in self.getActiveBiasChannels(): 
+				self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)] = 0
 		return deepcopy(self.__hvdac_config_cache)
 
 	## Sets the bias voltage channels
@@ -1026,26 +1028,28 @@ class Connection:
 	def set_hvdac_config(self, config, forceAccess=False):
 		active_bias_channels = self.getActiveBiasChannels()
 
-		# Store max HV value. Implemented for 32P-AG7200.
+		# Get max HV value. Implemented for 32P-AG7200.
 		max_value = {}
 		for portID, slaveID, slotID, channelID in active_bias_channels: 
 			value = config[(portID, slaveID, slotID, channelID)]
 			max_value[slotID] = max(max_value[slotID], value) if slotID in max_value else value
-		self.__hvdac_max_values = max_value.copy()
 
 		# Set BIAS-32P-AG7200 DCDC output
 		BIAS_32P_DAC_ONEVOLT = int(2**16/60.01)
-		vdc_delta = 2.0 # 2V above max HV output
-		for portID, slaveID, slotID in active_bias_channels: 
-			if self.getBiasSlotInfo(portID, slaveID, slotID) == "BIAS_32P_AG":
+		vdc_delta = 2.0 # Set op-amp rails 2V above max HV output
+		for portID, slaveID, slotID in self.getActiveBiasSlots(): 
+			if self.__activeBiasSlots[(portID, slaveID, slotID)] == "BIAS_32P_AG":
+				vdc_dcdc = (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta
 				for dacID in range(2):
-					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta)
+					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, vdc_dcdc)
 
 		# Set channels
 		for portID, slaveID, slotID, channelID in active_bias_channels: 
 			value = config[(portID, slaveID, slotID, channelID)]
 			self.__write_hv_channel(portID, slaveID, slotID, channelID, value, forceAccess=forceAccess)
 		
+		# Cache max values after applying
+		self.__hvdac_max_values = max_value.copy()
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)

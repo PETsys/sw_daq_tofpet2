@@ -174,10 +174,11 @@ def get_sensor_list(conn,debug=False):
 
         for module_id in range(n_fems):
             eeprom = fe_eeprom.m95080_eeprom(conn,portID,slaveID,module_id)
-            if eeprom.detect() and eeprom.is_programmed():
+            if eeprom.detect():
                 if debug: print(f'INFO: EEPROM Detected @ moduleID {portID},{slaveID},{module_id}')
-                if debug: print(f'INFO: ({portID},{slaveID},{module_id}) has been previously PROGRAMMED. Generating list from memory.')
-                result += list_from_eeprom(conn, portID, slaveID, module_id)
+                if eeprom.is_programmed(): # Nesting required here for improved debugging
+                    if debug: print(f'INFO: ({portID},{slaveID},{module_id}) has been previously PROGRAMMED. Generating list from memory.')
+                    result += list_from_eeprom(conn, portID, slaveID, module_id)
             elif fw_variant == 0x0000:
                 # TB64, pass
                 pass
