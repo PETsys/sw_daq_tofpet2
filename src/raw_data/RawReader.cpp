@@ -298,18 +298,47 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 		currentPosition += r;
 		
 		int N = dataFrame->getNEvents();
-		if(N == 0) continue;
-
 		assert((N+2) <= MaxRawDataFrameSize);
+
+		long long frameID = dataFrame->getFrameID();
+		if(lastFrameID == -1) lastFrameID = frameID - 1;
+		bool frameLost = dataFrame->getFrameLost();
+
+		// Account skipped frames
+		if (frameID != lastFrameID + 1) {
+			int skippedFrames = (frameID - lastFrameID) - 1;
+
+			// We have skipped frames...
+			nFrames += skippedFrames;
+
+			if(lastFrameWasLost0) {
+				// ... and they indicate lost frames
+				nFramesLost0 += skippedFrames;
+			}
+		}
+
+		// Increament frame counter
+		nFrames += 1;
+
+		// Account frames with lost data
+		if(frameLost && (N == 0)) nFramesLost0 += 1;
+		if(frameLost && (N != 0)) nFramesLostN += 1;
+		
+		if(frameLost) 
+			nEventsSomeLost += N;
+		else
+			nEventsNoLost += N;
+		
+		// Keep track of frame with all event lost
+		lastFrameWasLost0 = (frameLost && (N == 0));
+		lastFrameID = frameID;
+
+		if(N == 0) continue;
 
 		r = readFromDataFile((char*)((dataFrame->data)+2), N*sizeof(uint64_t));
 		assert(r == N*sizeof(uint64_t));
 		currentPosition += r;
 
-		long long frameID = dataFrame->getFrameID();
-		if(lastFrameID == -1) lastFrameID = frameID - 1;
-		bool frameLost = dataFrame->getFrameLost();
-		
 		// Blocksize
 		// Best block size from profiling: 2048
 		// but handle larger frames correctly
@@ -326,35 +355,7 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 			outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
 			seqN += 1;
 		}
-		
-		
-		// Account skipped frames
-		if (frameID != lastFrameID + 1) {
-			// We have skipped frames...
-			nFrames += (frameID - lastFrameID) - 1;
 
-			if(lastFrameWasLost0) {
-				// ... and they indicate lost frames
-				nFramesLost0 += (frameID - lastFrameID) - 1;
-			}
-		}
-
-		// Increament frame counter
-		nFrames += 1;
-
-		// Account frames with lost data
-		if(frameLost && N == 0) nFramesLost0 += 1;
-		if(frameLost && N != 0) nFramesLostN += 1;
-		
-		if(frameLost) 
-			nEventsSomeLost += N;
-		else
-			nEventsNoLost += N;
-		
-		// Keep track of frame with all event lost
-		lastFrameWasLost0 = (frameLost && N == 0);
-		lastFrameID = frameID;
-		
 		UndecodedHit *p = outBuffer->getPtr() + outBuffer->getUsed();
 		for(int i = 0; i < N; i++) {
 			p[i].frameID = frameID - currentBufferFirstFrame;
