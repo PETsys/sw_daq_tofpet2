@@ -1,7 +1,6 @@
 #include <shm_raw.hpp>
 #include "RawReader.hpp"
 #include <ThreadPool.hpp>
-
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -380,7 +379,7 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 		fprintf(stderr, " data frames\n");
 		fprintf(stderr, " %10lld total\n", nFrames);
 		fprintf(stderr, " %10lld (%4.1f%%) were missing all data\n", nFramesLost0, 100.0 * nFramesLost0 / (nFrames));
-		fprintf(stderr, " %10lld (%4.1f%%) were missing some data\n", nFramesLostN, 100.0 * nFramesLost0 / (nFrames));
+		fprintf(stderr, " %10lld (%4.1f%%) were missing some data\n", nFramesLostN, 100.0 * nFramesLostN / (nFrames));
 		fprintf(stderr, " events\n");
 		fprintf(stderr, " %10lld total\n", nEventsNoLost + nEventsSomeLost);
 		long long goodFrames = nFrames - nFramesLost0 - nFramesLostN;
