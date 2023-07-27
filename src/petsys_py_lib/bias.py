@@ -1,7 +1,7 @@
 # kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off;
 # vim: tabstop=8 shiftwidth=8
 
-from . import spi
+from . import spi, fe_power
 from math import ceil
 
 BIAS_32P_MAGIC         = [ 0x27, 0x43, 0xd4, 0x9c, 0x28, 0x41, 0x47, 0xe2, 0xbb, 0xa2, 0xff, 0x81, 0xd0, 0x60, 0x12, 0xd3 ]
@@ -87,8 +87,7 @@ def set_channel(conn, portID, slaveID, slotID, channelID , value):
 		# For the particular case of trying to set the DAC to zero do not bother
 		# trying to communicate with the DAC if bias_enable is off
 		if value == 0:
-			power_feedback = conn.read_config_register(portID, slaveID, 8, 0x021C)
-			if power_feedback & 0b10 == 0:
+			if fe_power.get_bias_power_status(conn, portID, slaveID) == 0:
 				return None
 
 		# Impose minimum 1V bias voltage
