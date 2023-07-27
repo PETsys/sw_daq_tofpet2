@@ -127,15 +127,13 @@ class Config:
 				
 				dacSet = self.mapBiasChannelVoltageToDAC(key, Vset)
 				hvdacHwConfig[key] = dacSet
+			daqd.set_hvdac_config(hvdacHwConfig)
 		elif bias_enable == APPLY_BIAS_OFF:
 			for portID, slaveID in daqd.getActiveFEBDs(): 
 				fe_power.set_bias_power(daqd, portID, slaveID, 'off')
 		else:
 			raise Exception('Unknown value for bias_enable')
 				
-		daqd.set_hvdac_config(hvdacHwConfig)
-
-		
 		asicsConfig = daqd.getAsicsConfig()
 
 		# Apply ASIC parameters from file
