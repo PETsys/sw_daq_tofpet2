@@ -47,7 +47,7 @@ def set_fem_power_original(conn, portID, slaveID, power):
     if power == 'on':
         power_state = 0b01 | (bias_en << 1) # Keep BIAS_EN state
         conn.write_config_register(portID, slaveID, FEM_POWER_EN_REG_LEN, FEM_POWER_EN_REG, power_state)
-        sleep(0.01) # Stabilization time
+        sleep(0.02) # Stabilization time
         if not chk_power_good_original(conn, portID, slaveID): 
             set_fem_power(conn, portID, slaveID, "off")
             raise PowerGoodError(portID, slaveID)
