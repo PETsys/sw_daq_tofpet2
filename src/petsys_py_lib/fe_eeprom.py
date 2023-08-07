@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from . import spi, info
+from copy import deepcopy
 
 #################################
 #
@@ -91,6 +92,9 @@ class m95080_eeprom:
         for adr in range(self.MEMORY_SIZE):
             self.write(adr, [0x00])
 
+    def max10_erase(self):
+        return spi.m95080_ll(self.__conn, self.__portID, self.__slaveID, self.__spiID, [0b00001000], 0)
+    
     def rdsr(self): #Read Status Register
         return spi.m95080_ll(self.__conn, self.__portID, self.__slaveID, self.__spiID, [0b00000101], 1)
     
@@ -186,7 +190,7 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
         else:
             print(f'INFO: ({portID},{slaveID},{moduleID}) was NOT previously programmed.')
 
-        prom_mapping = m95080_eeprom.PROM_TEMPLATE.copy()
+        prom_mapping = deepcopy(m95080_eeprom.PROM_TEMPLATE)
 
         #Set Unique ID
         prom_mapping['uid'][2] = FEM_PARAMETERS[fem_type]['unique_id']
@@ -240,6 +244,10 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
             if last_adr >= m95080_eeprom.MEMORY_SIZE:
                 print(f'ERROR: Trying to write outside PROM limits. Memory Size is {m95080_eeprom.MEMORY_SIZE} bytes.')
                 return False
+
+        #ERASE MAX10 EMULATED EEPROM (mandatory before every write)
+        print(f'INFO: Erasing ({portID},{slaveID},{moduleID}). (only valid for MAX10 emulated EEPROM)')
+        eeprom.max10_erase()
 
         #WRITE TO EEPROM
         print(f'INFO: Programming ({portID},{slaveID},{moduleID}).')
