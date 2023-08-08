@@ -12,11 +12,12 @@ from copy import deepcopy
 #################################
 
 DEVICE_TO_BYTE = {'asic' : 0xAA, 'sipm' : 0xBB}
-SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB}
+SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB, 'NA': 0x12}
 
 FEM_PARAMETERS = {  
                     'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202] },
-                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] }
+                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] },
+                    'radialis'      : { 'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2] }
                  }
 
 S_CFG_BYTES_PER_CH = 3                          
@@ -46,6 +47,16 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
+                            ],
+                'radialis' :[
+                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA']
                             ] 
                 }                 
 
