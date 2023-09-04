@@ -3,6 +3,7 @@
 
 from datetime import datetime
 from . import spi, info
+from copy import deepcopy
 
 #################################
 #
@@ -11,11 +12,12 @@ from . import spi, info
 #################################
 
 DEVICE_TO_BYTE = {'asic' : 0xAA, 'sipm' : 0xBB}
-SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB}
+SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB, 'NA': 0x12}
 
 FEM_PARAMETERS = {  
                     'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202] },
-                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] }
+                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] },
+                    'radialis'      : { 'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2] }
                  }
 
 S_CFG_BYTES_PER_CH = 3                          
@@ -45,6 +47,16 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
                             1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
+                            ],
+                'radialis' :[
+                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
+                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
+                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA']
                             ] 
                 }                 
 
@@ -91,6 +103,9 @@ class m95080_eeprom:
         for adr in range(self.MEMORY_SIZE):
             self.write(adr, [0x00])
 
+    def max10_erase(self):
+        return spi.m95080_ll(self.__conn, self.__portID, self.__slaveID, self.__spiID, [0b00001000], 0)
+    
     def rdsr(self): #Read Status Register
         return spi.m95080_ll(self.__conn, self.__portID, self.__slaveID, self.__spiID, [0b00000101], 1)
     
@@ -186,7 +201,7 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
         else:
             print(f'INFO: ({portID},{slaveID},{moduleID}) was NOT previously programmed.')
 
-        prom_mapping = m95080_eeprom.PROM_TEMPLATE.copy()
+        prom_mapping = deepcopy(m95080_eeprom.PROM_TEMPLATE)
 
         #Set Unique ID
         prom_mapping['uid'][2] = FEM_PARAMETERS[fem_type]['unique_id']
@@ -240,6 +255,10 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
             if last_adr >= m95080_eeprom.MEMORY_SIZE:
                 print(f'ERROR: Trying to write outside PROM limits. Memory Size is {m95080_eeprom.MEMORY_SIZE} bytes.')
                 return False
+
+        #ERASE MAX10 EMULATED EEPROM (mandatory before every write)
+        print(f'INFO: Erasing ({portID},{slaveID},{moduleID}). (only valid for MAX10 emulated EEPROM)')
+        eeprom.max10_erase()
 
         #WRITE TO EEPROM
         print(f'INFO: Programming ({portID},{slaveID},{moduleID}).')

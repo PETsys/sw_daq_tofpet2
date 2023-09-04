@@ -49,6 +49,10 @@ class max111xx_sensor:
             self.__function = lambda u: lmt87(u*2.5/4.096)
         elif chip_type == "LMT70":
             self.__function = lambda u: lmt70(u*2.5/4.096)
+        elif chip_type == "LMT85":
+            self.__function = lambda u: lmt85(u*2.5/4.096)
+        elif chip_type == "NA":
+            self.__function = lambda u: u*0.0
         else:
             raise UnknownTemperatureSensorType()
         

@@ -33,9 +33,9 @@ def read_bias_slot_info(conn, portID, slaveID, slotID, allowUnknown=False):
 		elif allowUnknown:
 			bias_name = "UNKNOWN_BIAS"
 		else:
-			raise BadBiasMagic()
+			raise BadBiasMagic(f'{portID},{slaveID},{slotID},{bias_interface}')
 	else:
-		raise UnknownBiasType(f'{bias_interface}')
+		raise UnknownBiasType(f'{portID},{slaveID},{slotID},{bias_interface}')
 	
 	return bias_name
 
