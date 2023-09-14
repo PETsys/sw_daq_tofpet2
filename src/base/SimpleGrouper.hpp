@@ -26,6 +26,7 @@ private:
 	u_int64_t nPhotonsFound;
 	u_int64_t nPhotonsHits[GammaPhoton::maxHits];
 	u_int64_t nPhotonsHitsOverflow;
+	u_int64_t nPhotonsHitsUnderflow;
 	u_int64_t nPhotonsLowEnergy;
 	u_int64_t nPhotonsHighEnergy;
 	u_int64_t nPhotonsPassed;

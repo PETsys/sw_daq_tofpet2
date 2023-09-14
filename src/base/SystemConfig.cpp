@@ -113,6 +113,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 
 	// Load trigger configuration
 	 config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
+	 config->sw_trigger_group_min_hits = iniparser_getint(configFile, "sw_trigger:group_min_hits", 1);
 	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
 	 config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
 	 config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);

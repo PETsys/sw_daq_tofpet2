@@ -55,6 +55,7 @@ namespace PETSYS {
 
 		// Software trigger configuration
 		int sw_trigger_group_max_hits;
+		int sw_trigger_group_min_hits;
 		float sw_trigger_group_min_energy;
 		float sw_trigger_group_max_energy;
 		float sw_trigger_group_max_distance;
