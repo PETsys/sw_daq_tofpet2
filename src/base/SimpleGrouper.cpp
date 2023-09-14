@@ -15,6 +15,7 @@ SimpleGrouper::SimpleGrouper(SystemConfig *systemConfig, EventSink<GammaPhoton> 
 	nHitsReceivedValid = 0;
 	nPhotonsFound = 0;
 	nPhotonsHitsOverflow = 0;
+	nPhotonsHitsUnderflow = 0;
 	nPhotonsLowEnergy = 0;
 	nPhotonsHighEnergy = 0;
 	nPhotonsPassed = 0;
@@ -28,6 +29,7 @@ void SimpleGrouper::report()
 {
 	int maxHits = systemConfig->sw_trigger_group_max_hits;
 	if (maxHits > GammaPhoton::maxHits) maxHits = maxHits;
+	int minHits = systemConfig->sw_trigger_group_min_hits;
 
 	fprintf(stderr, ">> SimpleGrouper report\n");
 	fprintf(stderr, " hits received\n");
@@ -41,8 +43,10 @@ void SimpleGrouper::report()
 			fprintf(stderr, "  %10lu (%4.1f%%) with %d hits\n", nPhotonsHits[i], 100.0*fraction, i+1);
 		}
 	}
-	fprintf(stderr, "  %10lu (%4.1f%%) with more than %d hits\n", nPhotonsHitsOverflow, 100.0*nPhotonsHitsOverflow/nPhotonsFound, maxHits);
+	fprintf(stderr, "  %4.1f hits/photon\n", float(nHitsReceived)/nPhotonsFound);
 	fprintf(stderr, " photons rejected\n");
+	fprintf(stderr, "  %10lu (%4.1f%%) with more than %d hits\n", nPhotonsHitsOverflow, 100.0*nPhotonsHitsOverflow/nPhotonsFound, maxHits);
+	fprintf(stderr, "  %10lu (%4.1f%%) with less than %d hits\n", nPhotonsHitsUnderflow, 100.0*nPhotonsHitsUnderflow/nPhotonsFound, minHits);
 	fprintf(stderr, "  %10lu (%4.1f%%) failed minimum energy\n", nPhotonsLowEnergy, 100.0*nPhotonsLowEnergy/nPhotonsFound);
 	fprintf(stderr, "  %10lu (%4.1f%%) failed maximim energy\n", nPhotonsHighEnergy, 100.0*nPhotonsHighEnergy/nPhotonsFound);
 	fprintf(stderr, " photons passed\n");
@@ -60,6 +64,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 	float maxEnergy = systemConfig->sw_trigger_group_max_energy;
 	int maxHits = systemConfig->sw_trigger_group_max_hits;
 	if (maxHits > GammaPhoton::maxHits) maxHits = maxHits;
+	int minHits = systemConfig->sw_trigger_group_min_hits;
 
 	
 	u_int64_t lPhotonsHits[maxHits];
@@ -71,6 +76,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 	u_int64_t lHitsReceivedValid = 0;
 	u_int64_t lPhotonsFound = 0;
 	u_int64_t lPhotonsHitsOverflow = 0;
+	u_int64_t lPhotonsHitsUnderflow = 0;
 	u_int64_t lPhotonsLowEnergy = 0;
 	u_int64_t lPhotonsHighEnergy = 0;
 	u_int64_t lPhotonsPassed = 0;
@@ -130,6 +136,9 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			// and set the number of hits to maximum hits, as code below depends on it
 			nHits = maxHits;
 		}
+		else if (nHits < minHits) {
+			eventFlags |= 0x8;
+		}
 		
 		// Buble sorting to put highest energy event first
 		bool sorted = false;
@@ -172,6 +181,8 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 		else {
 			lPhotonsHitsOverflow += 1;
 		}
+
+		if((eventFlags & 0x8) != 0) lPhotonsHitsUnderflow += 1;
 		
 		if((eventFlags & 0x2) != 0) lPhotonsLowEnergy += 1;
 		if((eventFlags & 0x4) != 0) lPhotonsHighEnergy += 1;
@@ -190,6 +201,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 	atomicAdd(nHitsReceivedValid, lHitsReceivedValid);
 	atomicAdd(nPhotonsFound, lPhotonsFound);
 	atomicAdd(nPhotonsHitsOverflow, lPhotonsHitsOverflow);
+	atomicAdd(nPhotonsHitsUnderflow, lPhotonsHitsUnderflow);
 	atomicAdd(nPhotonsLowEnergy, lPhotonsLowEnergy);
 	atomicAdd(nPhotonsHighEnergy, lPhotonsHighEnergy);
 	atomicAdd(nPhotonsPassed, lPhotonsPassed);
