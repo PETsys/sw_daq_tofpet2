@@ -81,7 +81,7 @@ struct bar_t {
 };
 
 #define NUM_PARTITION 32
-#define MAX_TLP_SIZE 256
+#define MAX_TLP_SIZE 512
 #define BUF_SIZE 2048*8*NUM_PARTITION
 
 /* Private structure */
