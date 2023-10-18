@@ -339,7 +339,6 @@ class Connection:
 		self.setTestPulseNone()
 		self.disableEventGate()
 		self.disableCoincidenceTrigger()
-		self.disableAuxIO()
 
 		# Set all bias to minimum
 		# Setting to zero DAC but will be saturated by mezzanine specific code
