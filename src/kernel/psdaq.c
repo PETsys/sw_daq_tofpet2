@@ -18,6 +18,7 @@
 #include <linux/kernel.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/version.h>
 
 #include "psdaq.h"
 
@@ -106,7 +107,11 @@ static struct class *psdaq_dev_class;
 static unsigned device_counter = 0;
 
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,0,0)
 static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+# else
+static int psdaq_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#endif
 {
 	add_uevent_var(env, "DEV_NAME=psdaq%d", device_counter);
 	return 0;
