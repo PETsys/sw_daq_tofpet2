@@ -38,15 +38,16 @@ Different software releases may require different firmware versions in order to 
 # Installation
 
 1. Download the latest [release](https://github.com/PETsys/sw_daq_tofpet2/releases) from our website or this repository and extract the files into a folder.
-2. Navigate to this new folder and create a 'build' folder:
-   ```sh
-   mkdir build
-   ```
-3. Install all requirements by running:
+2. Install all requirements by running:
    ```sh
    su -
    sh petsys-setup.sh
    exit
+   ```
+3. Navigate to this new folder and create a 'build' folder:
+   ```sh
+   mkdir build
+   cd build
    ```
 4. Prepare the build compliation:
    * If using CENTOS7-2009:
