@@ -48,6 +48,7 @@ DAQFrameServer::DAQFrameServer(std::vector<AbstractDAQCard *> cards, unsigned da
 
 DAQFrameServer::~DAQFrameServer()
 {
+	stopWorker();
 }
 
 void DAQFrameServer::startAcquisition(int mode)
@@ -65,7 +66,6 @@ void DAQFrameServer::startAcquisition(int mode)
 void DAQFrameServer::stopAcquisition()
 {
 	FrameServer::stopAcquisition();
-
 	for(auto card = cards.begin(); card != cards.end(); card++) {
 		(*card)->setAcquistionOnOff(false);
 	}
