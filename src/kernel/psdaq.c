@@ -26,13 +26,13 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ricardo Bugalho rbugalho at petsyselectronics dot com");
 MODULE_DESCRIPTION("PETsys DAQ driver");
 
-static const int DRIVER_VERSION = 210;
+static const int DRIVER_VERSION = 400;
 
 const static struct
 pci_device_id psdaq_pci_id_tbl[] =
 {
 	// { VENDOR_ID, DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0 },
-	{ PCI_DEVICE(0x10EE, 0x7024) },
+	{ PCI_DEVICE(0x10EE, 0x7025) },
 	{ 0, }
 };
 
@@ -83,7 +83,7 @@ struct bar_t {
 
 #define NUM_PARTITION 32
 #define MAX_TLP_SIZE 512
-#define BUF_SIZE 2048*8*NUM_PARTITION
+#define BUF_SIZE 4096*8*NUM_PARTITION
 
 /* Private structure */
 struct psdaq_dev_t {
