@@ -25,7 +25,7 @@
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 #include "../kernel/psdaq.h"
-static const int REQUIRED_DRIVER_VERSION = 210;
+static const int REQUIRED_DRIVER_VERSION = 400;
 
 static unsigned long long TARGET_EXT_CLK_FREQUENCY = 200000000;
 #define MAP_SIZE (4*1024*1024UL)
