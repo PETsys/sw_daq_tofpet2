@@ -8,6 +8,8 @@
 #include <limits.h>
 #include <string>
 #include <boost/algorithm/string/replace.hpp>
+#include <iostream>
+
 
 extern "C" {
 #include <iniparser.h>
@@ -77,28 +79,30 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 		}	
 	}
 	
-
-
 	config->hasXYZ = false;
 	if((mask & LOAD_MAPPING) != 0) {
-		const char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
+
+		const char	*entry = iniparser_getstring(configFile, "main:channel_map", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: channel_map not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
+		
 		replace_variables(fn, entry, cdir);
 		loadChannelMap(config, fn);
 		config->hasXYZ = true;
-		
+
+
 		entry = iniparser_getstring(configFile, "main:trigger_map", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: trigger_map not specified in section 'main' of '%s'\n", configFileName);
 			exit(1);
 		}
 		replace_variables(fn, entry, cdir);
-		loadTriggerMap(config, fn);
-	}
+		loadTriggerMap(config, fn);	
 	
+	}
+
 	config->hasTimeOffsetCalibration = false;
 	if ((mask & LOAD_TIMEALIGN_CALIBRATION) != 0) {
 		const char *entry = iniparser_getstring(configFile, "main:time_offset_calibration_table", NULL);
@@ -111,15 +115,47 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 			fprintf(stderr, "WARNING: time_offset_calibration_table not specified in section 'main' of '%s': timestamps of different channels may present offsets\n", configFileName);
 	}
 
+	config->hasListModeControlData = false;
+	if ((mask & LOAD_LISTMODE_CONTROL_DATA) != 0) {
+		const char *entry = iniparser_getstring(configFile, "hw_trigger:listmode_control_data", NULL);
+		if(entry != NULL) {
+			replace_variables(fn, entry, cdir);
+			loadMultiHitPhotopeakData(config, fn);
+			config->hasListModeControlData = true;
+		}
+	}
+
+	config->hasFirmwareEmpiricalCalibrations = false;
+	if ((mask & LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS) != 0){
+		const char *entry = iniparser_getstring(configFile, "hw_trigger:energy_empirical_calibration_table", NULL);
+		if(entry == NULL) {
+			fprintf(stderr, "ERROR: energy_empirical_calibration_table not specified in section 'hw_trigger' of '%s'\n", configFileName);
+			exit(1);
+		}
+		replace_variables(fn, entry, cdir);
+		loadFirmwareEmpiricalCalibrations(config, fn);
+		config-> hasFirmwareEmpiricalCalibrations = true;
+		
+	}
+
 	// Load trigger configuration
-	 config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
-	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
-	 config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
-	 config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
-	 config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 20.0);
-	 config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 2.0);
+	config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
+	config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
+	config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
+	config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
+	config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 20.0);
+	config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 2.0);
+	
+	config->sw_fw_trigger_group_min_energy = iniparser_getdouble(configFile, "hw_trigger:group_min_energy", -1E6);
+	config->sw_fw_trigger_group_max_energy = iniparser_getdouble(configFile, "hw_trigger:group_max_energy", +1E6);
+	config->sw_fw_trigger_group_min_nhits = iniparser_getdouble(configFile, "hw_trigger:group_min_multiplicity", 1);
+	config->sw_fw_trigger_group_max_nhits = iniparser_getdouble(configFile, "hw_trigger:group_max_multiplicity", 64); 
+	config->sw_fw_trigger_pre_window = iniparser_getdouble(configFile, "hw_trigger:pre_window", 2);
+	config->sw_fw_trigger_post_window = iniparser_getdouble(configFile, "hw_trigger:post_window", 3);
+	config->sw_fw_trigger_coinc_window = iniparser_getdouble(configFile, "hw_trigger:coincidence_window", 2);
 	
 	iniparser_freedict(configFile);
+
 	delete [] fn;
 	delete [] path;
 	return config;
@@ -297,6 +333,75 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 	fclose(f);
 }
 
+void SystemConfig::loadFirmwareEmpiricalCalibrations(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[PATH_MAX];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+	
+		unsigned portID, slaveID, chipID, channelID, tacID;
+		float p0, p1, p2, k0;
+		
+		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t\t%f\t%f\t%f\t%f\n",
+			&portID, &slaveID, &chipID, &channelID, &tacID,
+			  &p0, &p1, &p2, &k0) != 9) continue;
+
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+		
+		FirmwareConfig &empConfig = channelConfig.empConfig[tacID];
+		
+		empConfig.p0 = p0;
+		empConfig.p1 = p1;
+		empConfig.p2 = p2;
+		empConfig.k0 = k0;
+		
+	}
+	fclose(f);
+}
+
+void SystemConfig::loadMultiHitPhotopeakData(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+
+    float totalEnergy1, totalEnergy2;
+    double time1, time2;
+   
+	fseek(f, 0, SEEK_SET);
+
+	int count = 0;
+	char line[PATH_MAX];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		count++;
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;		
+
+		if(sscanf(line, "%lf\t%f\t%lf\t%f\n", 
+			&time1, &totalEnergy1, &time2, &totalEnergy2) != 4) continue;
+
+		long long index1 = time1/0.01E12;
+		config->MultiHitPhotopeakTimes[index1].push_back((long long)(time1));	
+		config->CoincPhotopeakTimes[index1].push_back(std::make_pair((long long)(time1), (long long)(time2)));
+
+		long long index2 = time2/0.01E12;	
+		config->MultiHitPhotopeakTimes[index2].push_back((long long)(time2));
+	}
+	fclose(f);
+}
+
+
 void SystemConfig::loadEnergyCalibration(SystemConfig *config, const char *fn)
 {
 	FILE *f = fopen(fn, "r");
@@ -356,9 +461,9 @@ void SystemConfig::loadTimeOffsetCalibration(SystemConfig *config, const char *f
 		config->touchChannelConfig(gChannelID);
 		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
 				
-		channelConfig.t0 = t0;
-               
+		channelConfig.t0 = t0;      
         }
+
 	fclose(f);
 }
 
@@ -370,6 +475,9 @@ void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
+
+	std::set<unsigned> triggerRegionsSet;
+
 	char line[PATH_MAX];
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		normalizeLine(line);
@@ -384,9 +492,20 @@ void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 			&region, &xi, &yi,
 			&x, &y, &z) != 10) continue;
 		
+		
+		if (triggerRegionsSet.find(region) != triggerRegionsSet.end()){
+			config->mapTriggerRegions[region] = triggerRegionsSet.size()-1;
+			config->mapTriggerRegionsInverted[triggerRegionsSet.size()-1] = region;
+		}
+		triggerRegionsSet.insert(region);
+
+		
 		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
 		
 		config->touchChannelConfig(gChannelID);
+
+		
+
 		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
 		channelConfig.triggerRegion = region;
 		channelConfig.xi = xi;

@@ -161,12 +161,12 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 			
 		}
 		
-			lReceived += 1;
-			if((eventFlags & 0x1) != 0) lReceivedInvalid += 1;
-			if((eventFlags & 0x2) != 0) lTDCCalibrationMissing += 1;
-			if((eventFlags & 0x4) != 0) lQDCCalibrationMissing += 1;
-			if((eventFlags & 0x8) != 0) lXYZMissing += 1;
-			if((eventFlags & 0x16) != 0) lEnergyCalibrationMissing += 1;
+		lReceived += 1;
+		if((eventFlags & 0x1) != 0) lReceivedInvalid += 1;
+		if((eventFlags & 0x2) != 0) lTDCCalibrationMissing += 1;
+		if((eventFlags & 0x4) != 0) lQDCCalibrationMissing += 1;
+		if((eventFlags & 0x8) != 0) lXYZMissing += 1;
+		if((eventFlags & 0x16) != 0) lEnergyCalibrationMissing += 1;
 
 		if(eventFlags == 0) {
 			out.valid = true;

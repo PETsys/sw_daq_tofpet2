@@ -120,6 +120,7 @@ add_library ( common STATIC
 	"src/base/Instrumentation.cpp"
 	"src/base/CoarseSorter.cpp"
 	"src/base/ProcessHit.cpp"
+	"src/base/HwTriggerSimulator.cpp"
 	"src/base/SimpleGrouper.cpp"
 	"src/base/CoincidenceGrouper.cpp"
 	"src/online_monitor/Monitor.cpp"
@@ -131,6 +132,12 @@ target_link_libraries("process_tdc_calibration" common)
 
 add_executable("process_qdc_calibration" "src/petsys_util/process_qdc_calibration.cpp" )
 target_link_libraries("process_qdc_calibration" common)
+
+add_executable("process_qdc_empirical_calibration" "src/petsys_util/process_qdc_empirical_calibration.cpp" )
+target_link_libraries("process_qdc_empirical_calibration" common)
+
+add_executable("process_qdc_empirical_calibration_i3m" "src/petsys_util/process_qdc_empirical_calibration_i3m.cpp" )
+target_link_libraries("process_qdc_empirical_calibration_i3m" common)
 
 add_executable("convert_raw_to_raw" "src/petsys_util/convert_raw_to_raw.cpp" )
 target_link_libraries("convert_raw_to_raw" common)
