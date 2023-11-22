@@ -105,7 +105,8 @@ configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade" COPYONLY)
 configure_file("src/gui/logo_PETsys.png" "gui/logo_PETsys.png" COPYONLY)
 configure_file("src/gui/logo_PETsys2.png" "gui/logo_PETsys2.png" COPYONLY)
 configure_file("src/online_monitor/launch_monitor" "launch_monitor" COPYONLY)
-configure_file("src/petsys_util/acquire_sipm_data_with_monitoring" "acquire_sipm_data_with_monitoring" COPYONLY)
+configure_file("src/petsys_util/acquire_sipm_data_with_online_monitoring" "acquire_sipm_data_with_online_monitoring" COPYONLY)
+configure_file("src/petsys_util/acquire_sipm_data_with_online_processing" "acquire_sipm_data_with_online_processing" COPYONLY)
 configure_file("config.ini" "config.ini" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
@@ -152,3 +153,6 @@ target_link_libraries("merge_raw" common)
 
 add_executable("online_monitor" "src/online_monitor/online_monitor.cpp")
 target_link_libraries("online_monitor" common)
+
+add_executable("online_process" "src/online_monitor/online_process.cpp")
+target_link_libraries("online_process" common)
