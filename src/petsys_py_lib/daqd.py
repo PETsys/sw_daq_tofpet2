@@ -1057,7 +1057,7 @@ class Connection:
 		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, None, "./online_process", output_format, event_type, fractionToWrite, hitLimit)
 
 
-	def openRawAcquisitionWithMonitoring(self, fileNamePrefix, monitor_config, monitor_toc):
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc):
 		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, "./online_monitor", None, None, None, None)
 		
 	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec, eventType, fileType, writeFraction, hitLimit):		
@@ -1097,7 +1097,6 @@ class Connection:
 			triggerID = 32 * portID + slaveID
 		
 		if monitor_exec != "./online_process":
-			print("hello23")
 			cmd = [ "./write_raw", \
 			self.__shmName, \
 			fileNamePrefix, \
@@ -1122,6 +1121,11 @@ class Connection:
 			str(hitLimit)
 			]
 			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+
+		template = "@?"
+		n = struct.calcsize(template)
+		data = self.__writerPipe.stdout.read(n)
+	
 		if monitor_exec == "./online_monitor":
 			cmd = [
 				monitor_exec,
@@ -1134,6 +1138,8 @@ class Connection:
 				"%1.12f" % self.getAcquisitionStartTime()
 				]
 			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			data = self.__monitorPipe.stdout.read(n)
+			
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
@@ -1161,7 +1167,7 @@ class Connection:
 		workers = []
 		if self.__monitorPipe is not None:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
-		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
+		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout)]
 			
 		#sleep(0.25)
 		frameLength = 1024.0 / self.__systemFrequency

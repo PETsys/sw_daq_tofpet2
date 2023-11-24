@@ -126,102 +126,6 @@ protected:
 	OnlineEventStream *stream;
 };
 
-class Filler  : public OrderedEventHandler<Coincidence, Coincidence> {
-private:
-	Monitor *monitor;
-	SingleValue *acquisition_t0 ;
-	SingleValue *acquisition_elapsed;
-	SingleValue *coincidence_counter;
-	map<int, SingleValue *> channel_counter;
-	map<int, Histogram1D *> channel_energy;
-
-public:
-	Filler(char * tocFileName, Monitor *m, EventSink<Coincidence> *sink) :
-		OrderedEventHandler<Coincidence, Coincidence>(sink), 
-		monitor(m),
-		acquisition_t0(NULL),
-		acquisition_elapsed(NULL),
-		coincidence_counter(NULL),
-		channel_counter(),
-		channel_energy()
-	{
-		FILE *tocFile = fopen(tocFileName, "r");
-		char l[256];
-		while(fscanf(tocFile, "%[^\n]\n", l) == 1) {
-			boost::cmatch what;
-			if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+acquisition_t0"})) {
-				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				acquisition_t0 = new SingleValue("acquisition_t0", m, m->getPtr() + offset);
-			}
-			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+acquisition_elapsed"})) {
-				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				acquisition_elapsed = new SingleValue("acquisition_elapsed", m, m->getPtr() + offset);
-			}
-			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+coincidence_counter"})) {
-				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				coincidence_counter = new SingleValue("coincidence_counter", m, m->getPtr() + offset);
-			}
-			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+SINGLEVALUE\\s+channel_counter/(\\d+)"})) {
-				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				int channelID = boost::lexical_cast<int>(what[2]);
-				channel_counter[channelID] = new SingleValue("channel_counter", m, m->getPtr() + offset);
-			}
-			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+HISTOGRAM1D\\s+channel_energy/(\\d+)\\s+(\\d+)\\s+(\\S+)\\s+(\\S+)"})) {
-				size_t offset = boost::lexical_cast<size_t>(what[1]);
-				int channelID = boost::lexical_cast<int>(what[2]);
-				int nBins = boost::lexical_cast<int>(what[3]);
-				double lowerX = boost::lexical_cast<double>(what[4]);
-				double upperX = boost::lexical_cast<double>(what[5]);
-				channel_energy[channelID] = new Histogram1D(nBins, lowerX, upperX, "channel_energy", m, m->getPtr() + offset);
-			}
-			
-			else if(boost::regex_match(l, what, boost::regex {"(\\d+)\\s+END"})) {
-			}
-			else {
-				fprintf(stderr, "UNMATCHED: '%s'\n", l);
-			}
-		}		
-	};
-	
-	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
-		
-		monitor->lock();
-		int N = buffer->getSize();
-		for (int i = 0; i < N; i++) {
-			Coincidence &e = buffer->get(i);
-			
-			for(int j = 0; j < e.nPhotons; j++) {
-				GammaPhoton *group = e.photons[j];
-				
-				for(int k = 0; k < group->nHits; k++) {
-					Hit *hit = group->hits[k];
-					
-					int channel = hit->raw->channelID;
-					
-					auto hcounter = channel_counter.find(channel);
-					if(hcounter != channel_counter.end()) hcounter->second->addToValue(1);
-					
-					auto henergy = channel_energy.find(channel);
-					if(henergy != channel_energy.end()) henergy->second->fill(hit->energy, 1);
-					
-				}
-			}		
-		}
- 		if(acquisition_elapsed != NULL) acquisition_elapsed->setValue(buffer->getTMax());
- 		if(coincidence_counter != NULL) coincidence_counter->addToValue(N);
-		monitor->unlock();
-		
-		return buffer;
-	};
-	
-	
-	void pushT0(double t0) {
-		if(acquisition_t0 != NULL) acquisition_t0->setValue(t0);
-		
-	}
-};
-
-
 
 class DataFileWriter {
 private:
@@ -384,13 +288,9 @@ public:
 			dataFile = fopen(fName2, "w");
 			sprintf(fName2, "%s.lidx", fName);
 			indexFile = fopen(fName2, "w");
-			//assert(dataFile != NULL);
-			//assert(indexFile != NULL);
 		}
 		else {
 			dataFile = fopen(fName, "w");
-			//assert(dataFile != NULL);
-			//indexFile = NULL;
 		}
 	};
 	
@@ -707,7 +607,7 @@ struct BlockHeader  {
 	float step2;	
 	uint32_t wrPointer;
 	uint32_t rdPointer;
-	int32_t endOfStep;
+	int32_t blockType;
 };
 
 
@@ -761,7 +661,7 @@ int main(int argc, char *argv[])
 
 	BlockHeader blockHeader;
 	
-       	long long stepEvents = 0;
+    long long stepEvents = 0;
 	long long stepMaxFrame = 0;
 	long long stepAllFrames = 0;
 	long long stepLostFramesN = 0;
@@ -806,12 +706,9 @@ int main(int argc, char *argv[])
 			eventStream->setMode(gChannelID, strcmp(mode, "qdc") == 0);
 	}
 
-	//auto monitor = new Monitor(false);
-
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, eventStream->getFrequency(),  eventType, fileType, hitLimitToWrite, eventFractionToWrite);
-	
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, eventStream->getFrequency(),  eventType, fileType, hitLimitToWrite, eventFractionToWrite);	
 
 	Decoder *pipeline;
 	if(eventType == SINGLE){
@@ -841,14 +738,20 @@ int main(int argc, char *argv[])
 			new NullSink<Coincidence>()
 			))))));
 	}
-	//monitor->resetAllObjects();
+
 	pipeline->pushT0(acquisitionStartTime);
-	
+
+	bool isReadyToAcquire = true; 
+	fwrite(&isReadyToAcquire, sizeof(bool), 1, stdout);
+	fflush(stdout);
+	sleep(0.05);
+
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
 	size_t seqN = 0;
 	long long currentBufferFirstFrame = 0;	
-       
-	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1) {
+
+	
+	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1){
 
 		dataFileWriter->setStep1(blockHeader.step1);
 		dataFileWriter->setStep2(blockHeader.step2);
@@ -911,12 +814,12 @@ int main(int argc, char *argv[])
 			}
 
 			// Do not write sequences of normal empty frames, unless we're closing a step
-			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
 				continue;
 			}
 
 			// Do not write sequences of all lost frames, unless we're closing a step
-			if(blockHeader.endOfStep == 0 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
 				continue;
 			}
 			lastFrameType = frameType;
@@ -958,7 +861,7 @@ int main(int argc, char *argv[])
 		}
 		pool->completeQueue();
 		//fprintf(stderr,"Completed queue\n");
-		if(blockHeader.endOfStep != 0){
+		if(blockHeader.blockType == 2){
 			
 			fprintf(stderr, "onlineRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 				stepAllFrames, stepEvents, 
@@ -981,14 +884,16 @@ int main(int argc, char *argv[])
 			lastFrameType = FRAME_TYPE_UNKNOWN;
 		}
 
-			
-	
 	
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
+		long long dummy = 0;
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
 		fflush(stdout);
 	}
 
-	pool->completeQueue();
+	//pool->completeQueue();
 	delete pool;		
 	
 	
