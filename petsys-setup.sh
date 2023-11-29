@@ -44,6 +44,9 @@ if [ $currentUser != "root" ]; then echo "ERROR: Running as "$actualUser". Pleas
 if [[ $(echo $osPrettyName | grep buntu) ]]; then
 	hostOS="ubuntu";
 	echo "INFO: Running on Ubuntu";
+elif [[ $(echo $osPrettyName | grep CentOS) ]] && [[ $(echo $centosVersion | grep 9) ]]; then
+	hostOS="centos9";
+	echo "INFO: Running on CentOS version $centosVersion";
 elif [[ $(echo $osPrettyName | grep CentOS) ]] && [[ $(echo $centosVersion | grep 8) ]]; then
 	hostOS="centos8";
 	echo "INFO: Running on CentOS version $centosVersion";
@@ -97,6 +100,7 @@ fi;
 #declare the package lists
 #may need to add libblas-dev liblapack-dev for ubuntu 20.04
 debPackages=(cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git);
+centos9Packages=(gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms);
 centos8Packages=(gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms);
 centos7Packages=(gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject.x86_64 boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel);
 
@@ -104,6 +108,8 @@ if [ $hostOS == "ubuntu" ]; then
 	packageList=(${debPackages[@]});
 elif [ $hostOS == "rhel" ]; then
 	packageList=(${centos8Packages[@]});
+elif [ $hostOS == "centos9" ]; then
+	packageList=(${centos9Packages[@]});
 elif [ $hostOS == "centos8" ]; then
 	packageList=(${centos8Packages[@]});
 elif [ $hostOS == "centos7" ]; then
@@ -120,6 +126,8 @@ elif [ $hostOS == "centos7" ]; then
 	packageCommand="yum";	
 elif [ $hostOS == "centos8" ]; then
 	packageCommand="dnf";	
+elif [ $hostOS == "centos9" ]; then
+	packageCommand="dnf";	
 elif [ $hostOS == "rhel" ]; then
 	packageCommand="dnf";
 fi;
@@ -135,6 +143,10 @@ elif [ $hostOS == "centos7" ]; then
 elif [ $hostOS == "centos8" ]; then
 	sudo $packageCommand install epel-release;
 	sudo $packageCommand config-manager --set-enabled powertools;
+	sudo $packageCommand makecache;
+elif [ $hostOS == "centos9" ]; then
+	sudo $packageCommand install epel-release;
+	sudo $packageCommand config-manager --set-enabled crb
 	sudo $packageCommand makecache;
 elif [ $hostOS == "rhel" ]; then
 	sudo $packageCommand install epel-release;
@@ -164,7 +176,7 @@ for package in "${packageList[@]}"; do
 			fi;
 			sudo $packageInstallCommand $package;
 		fi;
-	elif [ $hostOS == "rhel" ] || [ $hostOS == "centos7" ] || [ $hostOS == "centos8" ]; then
+	elif [ $hostOS == "rhel" ] || [ $hostOS == "centos7" ] || [ $hostOS == "centos8" ] || [ $hostOS == "centos9" ]; then
 		if [[ $($packageCommand list installed | grep $package) ]]; then
 			echo "INSTALLED! Skipping."
 		else
@@ -190,7 +202,7 @@ done;
 if   [ $hostOS == "centos7" ] && [ $debug -eq 0 ]; then
 	echo "INFO: Installing pandas bitarray matplotlib pycairo using pip3 commands";
 	pip3 install pandas bitarray matplotlib pycairo;
-elif ([ $hostOS == "rhel" ] || [ $hostOS == "centos8" ]) && [ $debug -eq 0 ]; then
+elif ([ $hostOS == "rhel" ] || [ $hostOS == "centos8" ] || [ $hostOS == "centos9" ]) && [ $debug -eq 0 ]; then
 	echo "INFO: Installing bitarray using pip3 commands";
 	pip3 install bitarray;
 elif [ $debug -eq 1 ]; then

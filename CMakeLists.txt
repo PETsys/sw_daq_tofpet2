@@ -14,6 +14,8 @@ execute_process(COMMAND ${LSB_RELEASE_EXEC} -rs
 find_package(PythonLibs 3.6 REQUIRED)
 if((${LSB_ID_SHORT} STREQUAL "Ubuntu") AND (${LSB_RELEASE_SHORT} VERSION_LESS_EQUAL "20.04"))
 	find_package(Boost REQUIRED python regex)
+elseif((EXISTS "/etc/redhat-release") AND (${LSB_RELEASE_SHORT} VERSION_GREATER_EQUAL "9"))
+	find_package(Boost REQUIRED python39 regex)
 else()
 	find_package(Boost REQUIRED python3 regex)
 endif()
