@@ -1051,16 +1051,15 @@ class Connection:
 		self.__hvdac_max_values = max_value.copy()
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
-		return self.__openRawAcquisition(fileNamePrefix, calMode,None,None, None, None, None, None, None)
+		return self.__openRawAcquisition(fileNamePrefix, calMode,None,None, None, None, None, None, None, None)
 		
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, monitor_config, output_format, event_type, fractionToWrite, hitLimit):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, None, "./online_process", output_format, event_type, fractionToWrite, hitLimit)
-
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, monitor_config, event_type, output_format, fractionToWrite, hitLimit, splitTime):
+		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, None, "./online_process", event_type, output_format, fractionToWrite, hitLimit, splitTime)
 
 	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, "./online_monitor", None, None, None, None)
+		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, "./online_monitor", None, None, None, None, None)
 		
-	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec, eventType, fileType, writeFraction, hitLimit):		
+	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec, eventType, output_format, fractionToWrite, hitLimit, splitTime):
 		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
 			modeFileName = fileNamePrefix + ".modf"
@@ -1110,21 +1109,22 @@ class Connection:
 			monitor_exec,
 			str(int(self.__systemFrequency)),
 			fileNamePrefix,
-			fileType,
 			eventType,
+			output_format,
 			qdcMode,
 			monitor_config,
 			self.__shmName,
 			str(triggerID), 
 			"%1.12f" % self.getAcquisitionStartTime(),
-			str(writeFraction),
-			str(hitLimit)
+			str(fractionToWrite),
+			str(hitLimit),
+			str(splitTime),
 			]
 			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
-		template = "@?"
-		n = struct.calcsize(template)
-		data = self.__writerPipe.stdout.read(n)
+			template = "@?"
+			n = struct.calcsize(template)
+			data = self.__writerPipe.stdout.read(n)
 	
 		if monitor_exec == "./online_monitor":
 			cmd = [
