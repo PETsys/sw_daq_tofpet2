@@ -404,9 +404,10 @@ class Connection:
 			
 		# Power on ASICs
 		if not power_lst:
-			power_lst = self.getActiveFEBDs()
+			for portID, slaveID in self.getActiveFEBDs(): fe_power.set_fem_power(self, portID, slaveID, "on")
+		else:
+			for portID, slaveID in power_lst: fe_power.set_fem_power(self, portID, slaveID, "on")
 
-		for portID, slaveID in power_lst: fe_power.set_fem_power(self, portID, slaveID, "on")
 		sleep(0.1) # Wait for power to stabilize
 
 		# Reset the ASICs configuration
@@ -583,7 +584,7 @@ class Connection:
 			
 			if maxTries > 1: 
 				print("Retrying...")
-				return self.initializeSystem(maxTries - 1)
+				return self.initializeSystem(maxTries - 1, power_lst = power_lst)
 			else:
 				raise ErrorAsicPresenceInconsistent(inconsistentStateAsics)
 
