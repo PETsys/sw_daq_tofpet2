@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(sw_daq_tofpet2)
 
-find_program(LSB_RELEASE_EXEC lsb_release)
+find_program(LSB_RELEASE_EXEC lsb_release REQUIRED)
 execute_process(COMMAND ${LSB_RELEASE_EXEC} -is
 	OUTPUT_VARIABLE LSB_ID_SHORT
 	OUTPUT_STRIP_TRAILING_WHITESPACE
