@@ -107,7 +107,11 @@ PFP_KX7::PFP_KX7(int fd)
 	}
 
 	temp_value = getDAQTemp()/100;
-	printf("PFP KX7 temp = %.2f ºC.\n", temp_value);
+	if(temp_value > -273) {
+		// Older firmware versions without support for reading the DAQ temperature
+		// return 0 K (-273.15 ºC).
+		printf("PFP KX7 temp = %.2f ºC.\n", temp_value);
+	}
 
 	if(pfp_kx7old) {
 		uint32_t ExtClkFreq;
