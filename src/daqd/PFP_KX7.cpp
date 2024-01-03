@@ -25,7 +25,7 @@
 #include "boost/date_time/posix_time/posix_time.hpp"
 
 #include "../kernel/psdaq.h"
-static const int REQUIRED_DRIVER_VERSION = 210;
+static const int REQUIRED_DRIVER_VERSION = 400;
 
 static unsigned long long TARGET_EXT_CLK_FREQUENCY = 200000000;
 #define MAP_SIZE (4*1024*1024UL)
@@ -107,7 +107,11 @@ PFP_KX7::PFP_KX7(int fd)
 	}
 
 	temp_value = getDAQTemp()/100;
-	printf("PFP KX7 temp = %.2f ºC.\n", temp_value);
+	if(temp_value > -273) {
+		// Older firmware versions without support for reading the DAQ temperature
+		// return 0 K (-273.15 ºC).
+		printf("PFP KX7 temp = %.2f ºC.\n", temp_value);
+	}
 
 	if(pfp_kx7old) {
 		uint32_t ExtClkFreq;

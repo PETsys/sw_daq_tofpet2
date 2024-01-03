@@ -270,7 +270,7 @@ public:
 					brN  = p.nHits;
 					brJ = m;
 					brTime = ((long long)(h.time * Tps)) + tMin;
-					brTimeDelta = (long long)(h.time - h0.time) * Tps;
+					brTimeDelta = (long long)((h.time - h0.time) * Tps);
 					brChannelID = h.raw->channelID;
 					brToT = (h.timeEnd - h.time) * Tps;
 					brEnergy = h.energy * Eunit;
