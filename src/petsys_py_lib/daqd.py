@@ -693,7 +693,7 @@ class Connection:
 		
 		return None
 	
-	
+
 	def read_config_register(self, portID, slaveID, word_width, base_address):
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))
 		reply = self.read_mem_ctrl(portID, slaveID, 0x00, 8, base_address, n_bytes_per_word)

@@ -127,9 +127,9 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 
 	config->hasFirmwareEmpiricalCalibrations = false;
 	if ((mask & LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS) != 0){
-		const char *entry = iniparser_getstring(configFile, "hw_trigger:energy_empirical_calibration_table", NULL);
+		const char *entry = iniparser_getstring(configFile, "hw_trigger:qdc_empirical_calibration_table", NULL);
 		if(entry == NULL) {
-			fprintf(stderr, "ERROR: energy_empirical_calibration_table not specified in section 'hw_trigger' of '%s'\n", configFileName);
+			fprintf(stderr, "ERROR: qdc_empirical_calibration_table not specified in section 'hw_trigger' of '%s'\n", configFileName);
 			exit(1);
 		}
 		replace_variables(fn, entry, cdir);

@@ -15,6 +15,7 @@ LOAD_DISC_CALIBRATION	= 0x00000004
 LOAD_DISC_SETTINGS	= 0x00000008
 LOAD_MAP		= 0x00000010
 LOAD_QDCMODE_MAP	= 0x00000020
+LOAD_FIRMWARE_QDC_CALIBRATION = 0x00000040
 LOAD_ALL		= 0xFFFFFFFF
 
 APPLY_BIAS_OFF		= 0x0
@@ -71,11 +72,22 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		config._Config__asicChannelQDCModeTable = t
 		config._Config__loadMask |= LOAD_QDCMODE_MAP
 
+	if (loadMask & LOAD_FIRMWARE_QDC_CALIBRATION) != 0:
+		fn = configParser.get("hw_trigger", "qdc_empirical_calibration_table")
+		fn = replace_variables(fn, cdir)
+		t = readQDCEmpiricalCalibrationTable(fn)
+		config._Config__asicTacQDCEmpiricalCalibrationTable = t
+		config._Config__loadMask |= LOAD_FIRMWARE_QDC_CALIBRATION
+
 
 	# Load hw_trigger configuration IF hw_trigger section exists
 	hw_trigger_config = { "type" : None }
 	if (loadMask & LOAD_MAP) != 0:
-		hw_trigger_config["threshold"] = configParser.getint("hw_trigger", "threshold")
+		hw_trigger_config["group_min_energy"] = configParser.getint("hw_trigger", "group_min_energy")
+		hw_trigger_config["group_max_energy"] = configParser.getint("hw_trigger", "group_max_energy")
+		hw_trigger_config["group_min_multiplicity"] = configParser.getint("hw_trigger", "group_min_multiplicity")
+		hw_trigger_config["group_max_multiplicity"] = configParser.getint("hw_trigger", "group_max_multiplicity")
+
 		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
 		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
 		hw_trigger_config["coincidence_window"] = configParser.getint("hw_trigger", "coincidence_window")
@@ -92,7 +104,6 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	t = parseAsicParameters(configParser)
 	config._Config__asicParameterTable = t
 
-
 	return config
 
 class Config:
@@ -104,6 +115,7 @@ class Config:
 		self.__asicChannelThresholdCalibrationTable = {}
 		self.__asicChannelThresholdSettingsTable = {}
 		self.__asicChannelQDCModeTable = {}
+		self.__asicTacQDCEmpiricalCalibrationTable = {}
 		self.__asicParameterTable = {}
 		self.__hw_trigger = None
 
@@ -168,9 +180,7 @@ class Config:
 					cc.setValue("vth_t1", vth_t1)
 					cc.setValue("vth_t2", vth_t2)
 					cc.setValue("vth_e", vth_e)
-
 					cc.setValue("trigger_mode_1", 0b00)
-
 
 				if qdc_mode == "tot":
 					channel_qdc_mode = "tot"
@@ -199,10 +209,10 @@ class Config:
 				
 				# Trigger setup
 				portID, slaveID = daqd.getTriggerUnit()
-				daqd.write_config_register(portID, slaveID, 1, 0x0602, 0b1)
+				daqd.write_config_register(portID, slaveID, 1, 0x0602, 0b1)				
 				daqd.write_config_register(portID, slaveID, 3, 0x0606, self.__hw_trigger["coincidence_window"])
-				daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
-				daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
+				#daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
+				#daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
 
 
 				daqd.write_config_register(portID, slaveID, 32, 0x060C, self.__hw_trigger["single_acceptance_length"] << 16 | self.__hw_trigger["single_acceptance_period"] )
@@ -220,10 +230,61 @@ class Config:
 					region_data = region_mask.tobytes()
 					daqd.write_mem_ctrl(portID, slaveID, 6, 8, r1 * bytes_per_region, region_data)
 				
+
+
+
+				# new trigger enabling
+				enable = 0b1
+				calibration_enable = 0b1
+				accumulator_on = 0b1
+				energy_threshold_bypass = 0b0				
+				nHits_threshold_bypass = 0b0
+				setupWord = enable | (calibration_enable << 1) | (accumulator_on << 4) | (energy_threshold_bypass << 8) | (nHits_threshold_bypass << 9)
+
+				energy_sum_vector = 0b00110
+				hits_sum_vector =  0b11111
+				referenceVectors = energy_sum_vector | ( hits_sum_vector << 8 )
+
 				# FEB/D setup
 				for portID, slaveID in daqd.getActiveFEBDs():
-					daqd.write_config_register(portID, slaveID, 10, 0x0604,  self.__hw_trigger["threshold"])
+					# new trigger enabling
+					daqd.write_config_register(portID, slaveID, 9, 0x0602, setupWord)
+					daqd.write_config_register(portID, slaveID, 12, 0x0612, referenceVectors)
+					daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
+					daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
+
+					daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.__hw_trigger["group_min_energy"])
+					daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.__hw_trigger["group_max_energy"])
+					daqd.write_config_register(portID, slaveID, 16, 0x0618,  self.__hw_trigger["group_min_multiplicity"])
+					daqd.write_config_register(portID, slaveID, 16, 0x061A,  self.__hw_trigger["group_max_multiplicity"])
 			
+				for portID, slaveID, chipID in list(asicsConfig.keys()):
+					for channelID in range(64):
+						for tacID in range(4):
+							address = tacID & 0b11
+							address |= (channelID & 0x3F) << 2
+							address |= (chipID & 0b11) << 8 # FEB/D 1K with FEM128, must make it generic for all possible cases
+							address |= (chipID & 0b1100) << 13 # FEB/D 1K with FEM128, must make it generic for all possible cases
+
+							c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))
+							
+							c0_fixedPoint = self.getFixedPointBinaryCalibrationValue(c0, 10, 7)
+							c1_fixedPoint = self.getFixedPointBinaryCalibrationValue(c1, 10, 0)
+							c2_fixedPoint = self.getFixedPointBinaryCalibrationValue(c2, 10, -8, True)
+							k0_fixedPoint = self.getFixedPointBinaryCalibrationValue(k0, 6, 2)
+
+							data = (k0_fixedPoint << 30) | (c2_fixedPoint << 20) | (c1_fixedPoint << 10) | c0_fixedPoint
+
+							data_bitarray = bitarray.bitarray(map(int, bin(data)[2:]), endian = "little")
+							print("k0: ", k0, bin(k0_fixedPoint))
+							print("c2: ", c2, bin(c2_fixedPoint))
+							print("c1: ", c1, bin(c1_fixedPoint))
+							print("c0: ", c0, bin(c0_fixedPoint))
+							print("data: ", data, data_bitarray)
+
+							daqd.write_mem_ctrl(portID, slaveID, 7, 36, address, data_bitarray)
+
+
 			# WARNING missing DAQ trigger setup
 
 		
@@ -231,6 +292,25 @@ class Config:
 
 		return None
 	
+	def getFixedPointBinaryCalibrationValue(self, value, nBits, msb, isSigned = False):
+		sign = 0
+		if isSigned and (value < 0):
+			nBits -= 1
+			sign = 1
+
+		decBits = nBits-msb		
+		value = abs(value)
+
+		intPart = int(value)
+		decPart = int((value % 1) * 2**(decBits-1))
+		fixedPointRep = (intPart << decBits) | decPart
+		result = (sign << nBits) | fixedPointRep if sign == 1 else fixedPointRep
+
+		return result
+
+
+
+
 	def getCalibratedBiasChannels(self):
 		return list(self.__biasChannelCalibrationTable.keys())
 	
@@ -263,6 +343,9 @@ class Config:
 	
 	def getAsicChannelQDCMode(self, key):
 		return self.__asicChannelQDCModeTable[key]
+
+	def getAsicTacQDCEmpiricalCalibrationTable(self, key):
+		return self.__asicTacQDCEmpiricalCalibrationTable[key]	
 			
 	def mapAsicChannelThresholdToDAC(self, key, vth_str, value):
 		vth_t1, vth_t2, vth_e = self.__asicChannelThresholdCalibrationTable[key]
@@ -436,5 +519,17 @@ def readTopologyMap(fn):
 		portID, slaveID, chipID = [ int(v) for v in l[0:3] ]
 		c[(portID, slaveID, chipID)] = [ v for v in l[3:4] ]
 	
+	f.close()
+	return c
+
+
+def readQDCEmpiricalCalibrationTable(fn):
+	f = open(fn)
+	c = {}
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, chipID, channelID, tacID = [ int(v) for v in l[0:5] ]
+		c[(portID, slaveID, chipID, channelID, tacID)] = [ float(v) for v in l[5:9] ]
 	f.close()
 	return c
