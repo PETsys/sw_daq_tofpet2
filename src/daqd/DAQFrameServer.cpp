@@ -264,6 +264,7 @@ void *DAQFrameServer::doWork()
 				frameID0 = tmp0[0] & 0xFFFFFFFFFULL;
 				frameID1 = tmp1[0] & 0xFFFFFFFFFULL;
 				//fprintf(stderr, "D1 %016llx %016llx\n", frameID0, frameID1);
+				if(frameID0 == frameID1) break;
 
 				if(frameID0 < frameID1) tmp0 = cards[0]->getNextFrame();
 				if(frameID1 < frameID0) tmp1 = cards[1]->getNextFrame();
