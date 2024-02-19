@@ -17,7 +17,7 @@
 #include <boost/lexical_cast.hpp>
 #include <pthread.h>
 #include <unistd.h>
-
+#include <iostream>
 #include <pthread.h>
 #include <cstring>
 
@@ -34,7 +34,7 @@ struct CalibrationData{
 class DataWriter {
 
     static const size_t BUFFER_SIZE = 1048576; // 1MB buffers to better handle very large rates
-	static const int N_BUFFERS = 2;
+	static const int N_BUFFERS = 32;
 	static const size_t WORD_SIZE = sizeof(uint64_t); 
 
 	struct Buffer {
@@ -67,6 +67,7 @@ public:
 private:
     int currentBufferIndex = 0;
 	uint64_t global_offset = 0;
+	int nSubmissions = 0;
 	bool acqStdMode = true;
 };
 
@@ -129,6 +130,15 @@ void DataWriter::splitFrameToBuffers(PETSYS::RawDataFrame *dataFrame , int frame
 	memcpy((char*)currentBuffer.data + currentBuffer.size, (void *)(dataFrame->data), bytesForCurrentBuffer);
 	writeCurrentDataBuffer();
 
+	if(nSubmissions == N_BUFFERS){
+		struct io_event events[nSubmissions];
+		int completed = io_getevents(ctx, nSubmissions, nSubmissions, events, NULL);
+		assert(completed == nSubmissions);
+		nSubmissions = 0;
+	}
+
+
+
 	//Copy the reminder of the data frame to the nex buffer and swap buffers for further writing
 	void *startDataPtr = (char *)(dataFrame->data) + bytesForCurrentBuffer;
     memcpy(nextBuffer.data, startDataPtr, bytesForNextBuffer);
@@ -148,9 +158,11 @@ void DataWriter::writeCurrentDataBuffer(bool resetBuffer){
 	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
     io_submit(ctx, 1, cbs);
 
-	struct io_event events[1];
-    int completed = io_getevents(ctx, 1, 1, events, NULL);
-
+	nSubmissions++;
+	
+	//struct io_event events[1];
+	//int completed = io_getevents(ctx, 1, 1, events, NULL);
+	
 	if(resetBuffer){
 		currentBuffer.size = 0;
 		return;
