@@ -1,5 +1,5 @@
 #!/bin/sh
-find /lib/modules -name psdaq.ko.xz | xargs rm
+find /lib/modules -name psdaq.ko -or -name psdaq.ko.xz | xargs rm
 rm -rf /var/lib/dkms/psdaq
 modprobe -r psdaq
 
