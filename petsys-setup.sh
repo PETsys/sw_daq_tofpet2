@@ -106,11 +106,11 @@ fi;
 if [[ $osPrettyName == "ubuntu" ]]; then
 	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git;
 elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
-	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel;
+	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel libaio libaio-devel;
 elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 8 ]]; then
-	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms;
+	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel;
 elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 9 ]]; then
-	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms;
+	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel;
 fi
 
 
