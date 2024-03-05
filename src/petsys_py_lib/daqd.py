@@ -1188,9 +1188,13 @@ class Connection:
 		nFrames = 0
 		lastUpdateFrame = currentFrame
 		while currentFrame < stopFrame:
-			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
-			while wrPointer == rdPointer:
+			try:
 				wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+				while wrPointer == rdPointer:
+					wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
+			except ErrorAcquisitionStopped as e:
+				# Acquisition must have been stopped by a different program
+				break
 
 			nFramesInBlock = abs(wrPointer - rdPointer)
 			if nFramesInBlock > bs:
