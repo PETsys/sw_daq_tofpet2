@@ -84,8 +84,8 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	# Load hw_trigger configuration IF hw_trigger section exists
 	hw_trigger_config = { "type" : None }
 	if (loadMask & LOAD_MAP) != 0:
-		hw_trigger_config["group_min_energy"] = configParser.getint("hw_trigger", "group_min_energy")
-		hw_trigger_config["group_max_energy"] = configParser.getint("hw_trigger", "group_max_energy")
+		hw_trigger_config["group_min_energy"] = configParser.getfloat("hw_trigger", "group_min_energy")
+		hw_trigger_config["group_max_energy"] = configParser.getfloat("hw_trigger", "group_max_energy")
 		hw_trigger_config["group_min_multiplicity"] = configParser.getint("hw_trigger", "group_min_multiplicity")
 		hw_trigger_config["group_max_multiplicity"] = configParser.getint("hw_trigger", "group_max_multiplicity")
 
@@ -200,8 +200,6 @@ class Config:
 					cc.setValue("qdc_mode", 1)
 					cc.setValue("intg_en", 1)
 					cc.setValue("intg_signal_en", 1)
-			      
-					
 					
 		daqd.setAsicsConfig(asicsConfig)
 		daqd.disableCoincidenceTrigger()
@@ -239,7 +237,7 @@ class Config:
 			febd_tgr_enable = 0b1
 			setupWord = enable | (calibration_enable << 1) | (accumulator_on << 4) | (energy_threshold_enable << 8) | (nHits_threshold_enable << 9) | (febd_tgr_enable << 10)
 
-			energy_sum_vector = 0b00110
+			energy_sum_vector = 0b01100
 			hits_sum_vector =  0b11111
 			referenceVectors = energy_sum_vector | ( hits_sum_vector << 8 )
 
@@ -249,9 +247,9 @@ class Config:
 				daqd.write_config_register(portID, slaveID, 16, 0x0612, referenceVectors)
 				daqd.write_config_register(portID, slaveID, 2, 0x061C, self.__hw_trigger["febd_pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x061E, self.__hw_trigger["febd_post_window"])
-
-				daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.__hw_trigger["group_min_energy"])
-				daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.__hw_trigger["group_max_energy"])
+				
+				daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.float_to_u5_5(self.__hw_trigger["group_min_energy"]))
+				daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.float_to_u5_5(self.__hw_trigger["group_max_energy"]))
 				daqd.write_config_register(portID, slaveID, 16, 0x0618,  self.__hw_trigger["group_max_multiplicity"])
 				daqd.write_config_register(portID, slaveID, 16, 0x061A,  self.__hw_trigger["group_min_multiplicity"])
 				
@@ -260,9 +258,9 @@ class Config:
 					for tacID in range(4):
 						address = tacID & 0b11
 						address |= (channelID & 0x3F) << 2
-						address |= chipID  << 8
-						#address |= (chipID & 0b111) << 8 
-						#address |= (chipID & 0b11000) << 10 
+						#address |= chipID  << 8
+						address |= (chipID & 0b111) << 8 
+						address |= (chipID & 0b11000) << 10 
 
 						c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))
 
@@ -280,7 +278,7 @@ class Config:
 						data2 = data2_bitarray.tobytes()
 						reversed_data = data2[::-1]
 
-						daqd.write_mem_ctrl2(portID, slaveID, 7, 40, address, reversed_data)
+						daqd.write_mem_ctrl2(portID, slaveID, 7, 40, address, reversed_data)	
 		return None
 	
 	def getFixedPointBinaryCalibrationValue(self, value, nBits, msb, isSigned = False):
@@ -296,6 +294,14 @@ class Config:
 		result = self.twos_complement( fixedPointRep) if sign == 1 else fixedPointRep
 		
 		return result
+
+	def float_to_u5_5(self, f):
+		f = max(0, min(f, 31.96875))
+		integer_part = int(f)
+		fractional_part = int((f - integer_part) * 32)
+		u5_5 = (integer_part << 5) | fractional_part
+		print(u5_5)
+		return u5_5
         
 	def twos_complement(self, value):
 		return (value ^ ((1 << 10) - 1)) + 1

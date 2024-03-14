@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 	}
 
 	unsigned long long mask = SystemConfig::LOAD_ALL;
-	mask ^= (SystemConfig::LOAD_ENERGY_CALIBRATION | SystemConfig::LOAD_TIMEALIGN_CALIBRATION);
+	mask ^= (SystemConfig::LOAD_ENERGY_CALIBRATION | SystemConfig::LOAD_TIMEALIGN_CALIBRATION | SystemConfig::LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS);
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 
 	char fName[1024];
