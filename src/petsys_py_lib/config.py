@@ -258,9 +258,12 @@ class Config:
 					for tacID in range(4):
 						address = tacID & 0b11
 						address |= (channelID & 0x3F) << 2
-						#address |= chipID  << 8
-						address |= (chipID & 0b111) << 8 
-						address |= (chipID & 0b11000) << 10 
+						
+						#address |= (chipID & 0b111) << 8  # FEM128 in FEB/D-1K
+						#address |= (chipID & 0b11000) << 10 # FEM128 in FEB/D-1K
+
+						address |= (chipID & 0b1111) << 8 # FEM256 in FEB/D-8K 
+						address |= (chipID >> 4) << 13 # FEM256 in FEB/D-8K
 
 						c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))
 
