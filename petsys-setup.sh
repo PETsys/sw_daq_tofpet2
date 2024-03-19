@@ -110,7 +110,7 @@ elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 
 elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 8 ]]; then
 	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel redhat-lsb;
 elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 9 ]]; then
-	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel lsb_release;
+	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel lsb_release;
 fi
 
 
@@ -118,9 +118,12 @@ fi
 if [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
 	echo "INFO: Installing pandas bitarray matplotlib pycairo using pip3 commands";
 	pip3 install pandas bitarray matplotlib pycairo;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 8 || $osVersion == 9) ]]; then
+elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 8) ]]; then
 	echo "INFO: Installing bitarray using pip3 commands";
 	pip3 install bitarray;
+elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 9) ]]; then
+        echo "INFO: Installing pandas bitarray using pip3 commands";
+        pip3 install pandas bitarray;
 fi;
 
 
