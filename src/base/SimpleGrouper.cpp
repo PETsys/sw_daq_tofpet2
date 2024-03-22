@@ -190,6 +190,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 		if((eventFlags & 0x4) != 0) lPhotonsHighEnergy += 1;
 		
 		if(eventFlags == 0) {
+			lPhotonsPassed += 1;
 			photon.valid = true;
 			outBuffer->pushWriteSlot();
 		}

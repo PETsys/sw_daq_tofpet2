@@ -78,9 +78,9 @@ struct CalibrationEntry {
 	float p0;
 	float p1;
 	float p2;
-	float gC;
-	float gA;
 	float k0;
+	float chi2_E;
+	float chi2_T;
 	bool valid;
 };
 
@@ -168,9 +168,9 @@ int main(int argc, char *argv[])
 	}
 
 	unsigned long long mask = SystemConfig::LOAD_ALL;
-	mask ^= (SystemConfig::LOAD_ENERGY_CALIBRATION | SystemConfig::LOAD_TIMEALIGN_CALIBRATION);
+	mask ^= (SystemConfig::LOAD_ENERGY_CALIBRATION | SystemConfig::LOAD_TIMEALIGN_CALIBRATION | SystemConfig::LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS);
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
-	
+
 	char fName[1024];
 	
 	CalibrationEntry *calibrationTable = (CalibrationEntry *)mmap(NULL, sizeof(CalibrationEntry)*MAX_N_TACS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
@@ -183,9 +183,9 @@ int main(int argc, char *argv[])
 	calibrateAllModules(config, calibrationTable, outputFilePrefix);
 
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
-	if(!keepTemporary) {
-		deleteTemporaryFiles(outputFilePrefix);
-	}
+	if(!keepTemporary){
+	 	deleteTemporaryFiles(outputFilePrefix);
+	 }
 	return 0;
 }
 
@@ -201,17 +201,22 @@ private:
 	FILE **tmpDataFiles2;
 
 	FILE *tmpListFile1;
-	FILE *tmpListFile2;
 
-	bool doGainAdjust;
 
 	SystemConfig *config;
 
+	vector<int> i3mFem256TimeChannels{35,36,33,34,31,32,29,30,52,55,54,57,56,59,58,61,92,75,90,74,89,77,87,85,80,84,86,88,83,82,81,91,21,19,17,18,15,16,8,0,2,4,6,14,10,12,13,11,69,66,67,64,
+	                                  65,112,114,113,101,102,103,104,105,106,107,108,172,171,170,169,168,167,166,165,177,178,176,129,128,131,130,133,203,205,204,202,206,198, 196,194,192,200,
+					  208,207,210,209,211,213,155,145,146,147,152,150,148,144,149,151,141,153,138,154,139,156,253,250,251,248,249,246,247,244,222,221,224,223,226,225,228,227};
+
+	vector<int> i3mFem256EnergyChannels{44,45,42,40,43,38,39,37,27,28,26,24,25,22,20,23,190,191,189,188,187,175,174,173,163,161,140,160,159,142,157,143,47,49,46,48,41,50,51,53,60,63,62,1,3,5,7,
+					   9,186,185,184,183,182,181,180,179,132,164,135,162,134,137,158,136,72,94,73,70,98,71,100,68,115,116,117,118,119,120,121,122,201,199,197,195,193,254,255,252,
+					    245,243,242,233,240,238,241,239,79,93,78,95,96,76,97,99,109,110,111,123,124,125,127,126,215,212,214,217,216,218,220,219,229,231,230,235,232,234,237,236};
+
 public:
-	EventWriter(char *outputFilePrefix, char *inputPhotopeakFileName, bool doGainAdjust, double frequency, SystemConfig *config)
+	EventWriter(char *outputFilePrefix, char *inputPhotopeakFileName, double frequency, SystemConfig *config)
 	{
 		this->outputFilePrefix = outputFilePrefix;
-		this->doGainAdjust = doGainAdjust;
 		this->frequency = frequency;
 		this->config = config;
 
@@ -239,16 +244,8 @@ public:
 			fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
 			exit(1);
 		}
-	
-		if(doGainAdjust){
-			sprintf(fName, "%s_photopeakOnly_event_list.tmp", outputFilePrefix);
-			tmpListFile2 = fopen(fName, "w");
-			if(tmpListFile2 == NULL) {
-				fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
-				exit(1);
-			}
-		}
 	};
+
 
 	void handleEvents(EventBuffer<GammaPhoton> *buffer)
 	{
@@ -288,8 +285,12 @@ public:
 			}
 
 			for(int m = 0; m < p.nHits; m++) {
+
 				Hit &h0 = *p.hits[0];
 				Hit &h = *p.hits[m];
+				if (std::find(i3mFem256EnergyChannels.begin(), i3mFem256EnergyChannels.end(), h.raw->channelID%256) != i3mFem256EnergyChannels.end()) {
+					continue;
+				}
 				EnergyEmpiricalCalibrationEvent e;
 				e.gTacID = int(h.raw->channelID)*4 + int(h.raw->tacID);
 				e.energy = h.energy;
@@ -302,44 +303,7 @@ public:
 				}
 				fwrite((void*)&e, sizeof(e), 1, f1);
 			}
-		
-			if(doGainAdjust){
-				if(p.nHits==1) continue;
-				Hit &h1 = *p.hits[1];
-				long long timeInPs = ((long long)(h1.time * Tps)) + tMin;
-				long long index = timeInPs/0.01E12;
-
-				if (std::find(config->MultiHitPhotopeakTimes[index].begin(), config->MultiHitPhotopeakTimes[index].end(), timeInPs) == config->MultiHitPhotopeakTimes[index].end()) {
-					continue;
-				}
-				
-				FILE * f2 = tmpDataFiles2[gAsicID];
-				if(f2 == NULL) {
-					// We haven't opened this file yet.
-					unsigned asicID = (gChannelID >> 6) % 64;
-					unsigned slaveID = (gChannelID >> 12) % 32;
-					unsigned portID = (gChannelID >> 17) % 32;
-					char *fn2 = new char[1024];
-				
-					sprintf(fn2, "%s_%02u_%02u_%02u_photopeakOnly_event_data.tmp", outputFilePrefix, portID, slaveID, asicID);				
-					f2 = fopen(fn2, "w");
-					if(f2 == NULL) {
-						fprintf(stderr, "Could not open '%s' for reading: %s\n", fn2, strerror(errno));
-						exit(1);
-					}
-					tmpDataFiles2[gAsicID] = f2;
-					tmpDataFileNames2[gAsicID] = fn2;
-				}
-				int header = (int)p.nHits;
-				fwrite((void*)&header, sizeof(int), 1, f2);
-				for(int m = 0; m < p.nHits; m++){
-					Hit &h = *p.hits[m];
-					GainAdjustCalibrationEvent ePhotopeak;
-					ePhotopeak.energy = h.energy;
-					ePhotopeak.gChannelID = int(h.raw->channelID);
-					fwrite((void*)&ePhotopeak, sizeof(ePhotopeak), 1, f2);
-				}
-			}
+	
 		}
 	};
 	
@@ -352,17 +316,8 @@ public:
 			}
 			tmpDataFiles1[gAsicID] = NULL;
 			delete [] tmpDataFileNames1[gAsicID];
-
-			if(tmpDataFiles2[gAsicID] != NULL) {
-				fprintf(tmpListFile2, "%lu %s\n", gAsicID, tmpDataFileNames2[gAsicID]);
-				fclose(tmpDataFiles2[gAsicID]);
-			}
-			tmpDataFiles2[gAsicID] = NULL;
-			delete [] tmpDataFileNames2[gAsicID];
-
 		}
 		fclose(tmpListFile1);
-		fclose(tmpListFile2);
 	};
 };
 
@@ -391,11 +346,12 @@ void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefi
 	assert(!reader->isTOT());
 	EventWriter *eventWriter;
 	if(inputFilePrefix2 != NULL){
-		eventWriter = new EventWriter(outputFilePrefix, inputFilePrefix2, true, reader->getFrequency(), config);
+		eventWriter = new EventWriter(outputFilePrefix, inputFilePrefix2, reader->getFrequency(), config);
 	}
 	else{
-		eventWriter = new EventWriter(outputFilePrefix, NULL, false, reader->getFrequency(), config);
+		eventWriter = new EventWriter(outputFilePrefix, NULL, reader->getFrequency(), config);
 	}
+	
 
 	while(reader->getNextStep()) {
 		
@@ -424,8 +380,7 @@ void calibrateAsic(
 		   int dataFile1, int dataFile2,
 		   CalibrationEntry *calibrationTable,
 		   char *summaryFilePrefix,
-		   SystemConfig *config,
-		   double &meanEnergy
+		   SystemConfig *config
 )
 {
 	
@@ -443,13 +398,22 @@ void calibrateAsic(
 	
 	unsigned long gChannelStart = gAsicID * nChannels;
 	unsigned long gChannelEnd = (gAsicID+1) * nChannels;
-		
+
+
+	vector<int> i3mFem256TimeChannels{35,36,33,34,31,32,29,30,52,55,54,57,56,59,58,61,92,75,90,74,89,77,87,85,80,84,86,88,83,82,81,91,21,19,17,18,15,16,8,0,2,4,6,14,10,12,13,11,69,66,67,64,
+	                                  65,112,114,113,101,102,103,104,105,106,107,108,172,171,170,169,168,167,166,165,177,178,176,129,128,131,130,133,203,205,204,202,206,198, 196,194,192,200,
+					  208,207,210,209,211,213,155,145,146,147,152,150,148,144,149,151,141,153,138,154,139,156,253,250,251,248,249,246,247,244,222,221,224,223,226,225,228,227};
+
+	vector<int> i3mFem256EnergyChannels{44,45,42,40,43,38,39,37,27,28,26,24,25,22,20,23,190,191,189,188,187,175,174,173,163,161,140,160,159,142,157,143,47,49,46,48,41,50,51,53,60,63,62,1,3,5,7,
+					    9,186,185,184,183,182,181,180,179,132,164,135,162,134,137,158,136,72,94,73,70,98,71,100,68,115,116,117,118,119,120,121,122,201,199,197,195,193,254,255,252,
+					   245,243,242,233,240,238,241,239,79,93,78,95,96,76,97,99,109,110,111,123,124,125,127,126,215,212,214,217,216,218,220,219,229,231,230,235,232,234,237,236};
+
+
 	TH2F **hEnergy_vs_efine = new TH2F *[nTacs];
 	TH2F **hTime_vs_energy = new TH2F *[nTacs];
-	TH2F **hTime_vs_energyEmp = new TH2F *[nTacs];
 
 	TH1D **hTotalEnergy = new TH1D *[nChannels];
-
+	
 	for(int n = 0; n < nTacs ; n++) {
 		hEnergy_vs_efine[n] = NULL;	
 	}
@@ -466,9 +430,7 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%02d_hEnergy_vs_efine", portID, slaveID, asicID, channelID, tacID);
 		hEnergy_vs_efine[gid-gTacStart] = new TH2F(hName, hName, 500, 0, 500, 250, 0, 50);
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%02d_hTime_vs_energy", portID, slaveID, asicID, channelID, tacID);
-		hTime_vs_energy[gid-gTacStart] = new TH2F(hName, hName, 100, 0, 50, 2000, 0, 10000);
-		sprintf(hName, "c_%02d_%02d_%02d_%02d_%02d_hTime_vs_energyEmp", portID, slaveID, asicID, channelID, tacID);
-		hTime_vs_energyEmp[gid-gTacStart] = new TH2F(hName, hName, 100, 0, 50 ,2000, 0, 10000);
+		hTime_vs_energy[gid-gTacStart] = new TH2F(hName, hName, 100, 0, 50, 2000, 0, 2.);
 	}
 
 	for(int n = 0; n < nChannels ; n++) {
@@ -504,7 +466,7 @@ void calibrateAsic(
 			if(event.gTacID-gTacStart < 0){
 				continue;
 			}
-		
+
 			assert(hEnergy_vs_efine[event.gTacID-gTacStart] != NULL);
 			hEnergy_vs_efine[event.gTacID-gTacStart]->Fill(event.eFine, event.energy);
 		}
@@ -520,13 +482,23 @@ void calibrateAsic(
 		unsigned portID = (gid >> 19) % 32;			
 
 		char hName[128];
+		CalibrationEntry &entry = calibrationTable[gid];
+
+		if (std::find(i3mFem256EnergyChannels.begin(), i3mFem256EnergyChannels.end(), gChannelID%256) != i3mFem256EnergyChannels.end()){
+			entry.p0 = 0;
+			entry.p1 = 0;
+			entry.p2 = 0;
+			entry.chi2_E = 0;
+			entry.valid = true;
+			continue;
+		}	
 
 		TProfile *profileTAC  = hEnergy_vs_efine[gid-gTacStart]->ProfileX();
 	
 		assert(profileTAC!= NULL);
 			
-		if(profileTAC->GetEntries() < 5000) {
-			fprintf(stderr, "WARNING: Not enough data to calibrate empirical QDC. Skipping Calibration of TAC (%02u %02d %02d %02d %02d)\n",
+		if(profileTAC->GetEntries() < 3000){
+			fprintf(stderr, "WARNING: Not enough data to calibrate empirical QDC. Skipping Calibration of TAC (%02u %02u %02u %02u %02u)\n",
 					portID, slaveID, asicID, channelID, tacID);
 			continue;
 		}
@@ -540,15 +512,31 @@ void calibrateAsic(
 			}	  
 		}
 		
-		Int_t binHigh = profileTAC->FindLastBinAbove(1);
-		if (slaveID == 1 && portID ==0 && asicID == 28 && channelID == 41 && tacID ==3) continue; ///For Cornell data only!!!!
-		profileTAC->Fit("pol2","Q","",float(binLow+2),float(binHigh));
-		TF1 *fitFunc = profileTAC->GetFunction("pol2");
+		Int_t binHigh = hEnergy_vs_efine[gid-gTacStart]->FindLastBinAbove(0.5,1);
+		
+		int binDist = 0;
+		bool found = false;
+		for (int binX = binHigh-1; binX > binHigh-100; binX--){
+			for (int binY = 1; binY < hEnergy_vs_efine[gid-gTacStart]->GetNbinsY(); binY++) {
+				if(hEnergy_vs_efine[gid-gTacStart]->GetBinContent(binX,binY)!= 0){
+					found = true;
+					break;
+				}				
+			}
+			if(found) break;
+			binDist++;
+		}
 
-		CalibrationEntry &entry = calibrationTable[gid];
+		int maxRange = binDist > 10 ?  binHigh-binDist : binHigh;
+
+	
+		hEnergy_vs_efine[gid-gTacStart]->Fit("pol2","FQ","",float(binLow+1),float(maxRange));
+		TF1 *fitFunc = hEnergy_vs_efine[gid-gTacStart]->GetFunction("pol2");
+
 		entry.p0 = fitFunc->GetParameter(0);
 		entry.p1 = fitFunc->GetParameter(1);
 		entry.p2 = fitFunc->GetParameter(2);
+		entry.chi2_E = fitFunc->GetChisquare()/fitFunc->GetNDF();
 		entry.valid = true;
 	}
 
@@ -557,7 +545,8 @@ void calibrateAsic(
 		int nEvents = r / sizeof(EnergyEmpiricalCalibrationEvent);
 		for(int i = 0; i < nEvents; i++) {
 			EnergyEmpiricalCalibrationEvent &event = eventBuffer[i];
-							
+		
+						
 			if(event.gTacID-gTacStart >= nTacs){
 				continue;
 			}
@@ -569,8 +558,7 @@ void calibrateAsic(
 
 			if(event.time != -1E10){
 				hTime_vs_energy[event.gTacID-gTacStart]->Fill(event.energy, event.time);
-			}
-			
+			}		
 		}
 	}
 
@@ -584,109 +572,31 @@ void calibrateAsic(
 		unsigned asicID = (gid >> 8) % 64;
 		unsigned slaveID = (gid >> 14) % 32;
 		unsigned portID = (gid >> 19) % 32;			
+	
+		if (std::find(i3mFem256EnergyChannels.begin(), i3mFem256EnergyChannels.end(), gChannelID%256) != i3mFem256EnergyChannels.end()){
+			entry.k0 = 0;
+			entry.valid = true;
+			entry.chi2_T = 0;
+			continue;
+		}	
+		if(hTime_vs_energy[gid-gTacStart]->GetEntries() < 3000){
+			fprintf(stderr, "WARNING: Not enough data to calibrate for time walk. Skipping Calibration of TAC (%02u %02u %02u %02u %02u)\n",
+					portID, slaveID, asicID, channelID, tacID);
+			continue;
+		}
 
 		char hName[128];
-
-		TProfile *profileTime1  = hTime_vs_energy[gid-gTacStart]->ProfileX();
 		
 		TF1 *fitFunc1 = new TF1("TimeWalkFitFunction", TimeWalkFitFunction, 0, 50, 1);
 		
 		fitFunc1->SetParameter(0,20);
-		
+	 
 		hTime_vs_energy[gid-gTacStart]->Fit(fitFunc1,"Q","",0.2, 20);
-
+		
 		entry.k0 = fitFunc1->GetParameter(0);
+		entry.chi2_T = fitFunc1->GetChisquare()/fitFunc1->GetNDF();
+		
 		entry.valid = true;
-	}
-
-
-
-	int *header = new int[1]; 
-	if(dataFile2 != -1){
-		lseek(dataFile2, 0, SEEK_SET);
-		while((r = read(dataFile2, header, sizeof(int)) > 0)) {
-			int nEvents = r / sizeof(int);
-			int &nHits = header[0];
-			
-			GainAdjustCalibrationEvent *group = new GainAdjustCalibrationEvent[nHits];
-			r = read(dataFile2, group, sizeof(GainAdjustCalibrationEvent)*nHits);
-			 nEvents = r / sizeof(GainAdjustCalibrationEvent);
-	
-			float totalEnergy = 0;
-			for(int i = 0; i < nHits; i++) {
-				GainAdjustCalibrationEvent &event = group[i];
-		      		       
-				totalEnergy +=event.energy;			
-			}
-			assert(hTotalEnergy[group[0].gChannelID-gChannelStart] != NULL);
-			hTotalEnergy[group[0].gChannelID-gChannelStart]->Fill(totalEnergy);
-			
-			delete [] group;
-		}
-	}
-
-	std::vector<double> means;
-	double gainFactors[nChannels];
-	// Should replace this part by clearly identifing channels as corners and edges instead of using energy mean values
-	for(unsigned gid = gChannelStart; gid < gChannelEnd; gid++) {
-		unsigned channelID = (gid >> 0) % 64;
-		unsigned asicID = (gid >> 6) % 64;
-		unsigned slaveID = (gid >> 12) % 32;
-		unsigned portID = (gid >> 17) % 32;
-
-		hTotalEnergy[gid-gChannelStart]->Smooth();
-		if(hTotalEnergy[gid-gChannelStart]->GetEntries()<100){
-        	fprintf(stderr, "WARNING: Not enough data to calibrate Gain adjust. Skipping Calibration of Channel (%02u %02d %02d %02d)\n",
-			portID, slaveID, asicID, channelID);
-			continue;
-		}	
-		double rms = hTotalEnergy[gid-gChannelStart]->GetRMS();
-        double mean = hTotalEnergy[gid-gChannelStart]->GetMean();
-		means.push_back(mean);
-	}
-
-	double sumAllChannels = std::accumulate(means.begin(), means.end(), 0.0);
-    meanEnergy = sumAllChannels / means.size();
-
-	vector<size_t> sorted_indexes =  sort_indexes(means);
-	std::vector<double> cornerMeanEnergies;
-	std::vector<double> edgesMeanEnergies;
-	std::vector<double> centralMeanEnergies;
-	
-	int nCorners = 4;
-	int nEdges = 24;
-	for(int i = 0 ; i < nCorners; i++) cornerMeanEnergies.push_back(means[sorted_indexes[i]]);
-	for(int i = nCorners ; i < nCorners + nEdges; i++) edgesMeanEnergies.push_back(means[sorted_indexes[i]]);
-	for(int i = nCorners + nEdges ; i < means.size(); i++) centralMeanEnergies.push_back(means[sorted_indexes[i]]);
-
-	double sum1 = std::accumulate(cornerMeanEnergies.begin(), cornerMeanEnergies.end(), 0.0);
-	double cornersMeanEnergy = sum1 / cornerMeanEnergies.size();
-
-	double sum2 = std::accumulate(edgesMeanEnergies.begin(), edgesMeanEnergies.end(), 0.0);
-	double edgesMeanEnergy = sum2 / edgesMeanEnergies.size();
-
-	double sum3 = std::accumulate(centralMeanEnergies.begin(), centralMeanEnergies.end(), 0.0);
-	double centersMeanEnergy = sum3 / centralMeanEnergies.size();
-
-	double factorCorners = 1.1;
-	double factorEdges = 0.8;
-
-	double gainFactorCorners = 1. + (centersMeanEnergy/cornersMeanEnergy-1.) * factorCorners;
-	double gainFactorEdges = 1. + (centersMeanEnergy/edgesMeanEnergy-1.) * factorEdges;
-	
-	int ind = 0;
-	for(int channelID : sorted_indexes){
-		for(int tacID = 0 ; tacID < 4 ; tacID++){
-			float gainFactorChannel = 1;
-			 if (ind < nCorners) gainFactorChannel = gainFactorCorners;
-			 else if (ind < nEdges) gainFactorChannel = gainFactorEdges;
-			unsigned gid = 256*gAsicID + 4*channelID + tacID;
-		 
-			CalibrationEntry &entry = calibrationTable[gid];
-			entry.gC = gainFactorChannel;
-			entry.valid = true;		
-		}
-		ind++;
 	}
 
 	rootFile->Write();
@@ -705,38 +615,21 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 		exit(1);
 	}
 
-	sprintf(fName, "%s_photopeakOnly_event_list.tmp", outputFilePrefix);
-	FILE *tmpListFile2 = fopen(fName, "r");
-	if(tmpListFile2 == NULL) {
-		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
-		exit(1);
-	}
-
-	
-	
-	double * meanEnergies = (double *)mmap(NULL, sizeof(double)*MAX_N_ASICS, PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
-	for(unsigned long gid = 0; gid < MAX_N_ASICS; gid++) meanEnergies[gid] = 0;
-
     struct tmp_entry_t {
 		unsigned long gAsicID;
 		string fileName;
 	};
     
     list<tmp_entry_t> tmp_list1;
-    list<tmp_entry_t> tmp_list2;
-	
+
 	unsigned long gAsicID1;
-	unsigned long gAsicID2;
 
     off_t max_tmp_file_size;
 	off_t max_tmp_file_size1 = 0;
-  	off_t max_tmp_file_size2 = 0;
 
     struct stat tmp_file_stat1;
-    struct stat tmp_file_stat2;
         
 	rewind(tmpListFile1);
-	rewind(tmpListFile2);
     
 	while(fscanf(tmpListFile1, "%lu %[^\n]\n", &gAsicID1, fName) == 2) {
 		int r = stat(fName,  &tmp_file_stat1);
@@ -746,21 +639,10 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 
 		tmp_entry_t tmp_entry1 = { gAsicID1, string(fName) };
 		tmp_list1.push_back(tmp_entry1);
-                
-		fscanf(tmpListFile2, "%lu %[^\n]\n", &gAsicID2, fName2);
-        r = stat(fName2,  &tmp_file_stat2);
-		if (r == 0) {
-			if(tmp_file_stat2.st_size > max_tmp_file_size2) max_tmp_file_size2 = tmp_file_stat2.st_size;
-		}
-		tmp_entry_t tmp_entry2 = { gAsicID2, string(fName2) };
-		tmp_list2.push_back(tmp_entry2);
-
 	}
 	fclose(tmpListFile1);
-   	fclose(tmpListFile2);
 
-
-	max_tmp_file_size = max_tmp_file_size1 + max_tmp_file_size2; //+ max_tmp_file_size3;
+	max_tmp_file_size = max_tmp_file_size1 ;
 	
 	int nCPU = sysconf(_SC_NPROCESSORS_ONLN);
 	
@@ -778,39 +660,29 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 	maxWorkers = maxWorkers > 1 ? maxWorkers : 1;
 	
 	int nWorkers = 0;
-       auto it2 = tmp_list2.begin();
      
 	for( auto it1 = tmp_list1.begin(); it1 != tmp_list1.end(); it1++) {
 	
 		int tmpDataFile1 = open(it1->fileName.c_str(), O_RDONLY);
-	
-		int tmpDataFile2 = open(it2->fileName.c_str(), O_RDONLY);
                 
 		if(tmpDataFile1 == -1) {
 			fprintf(stderr, "Could not open '%s' for reading: %s\n", it1->fileName.c_str(), strerror(errno));
 			exit(1);
 		}
-		if(tmpDataFile2 == -1) {
-			fprintf(stderr, "Could not open '%s' for reading: %s\n", it2->fileName.c_str(), strerror(errno));
-			exit(1);
-		}
-			
+
 		if(fork() == 0) {
-			// We are in child
-			
+			// We are in child		
 			unsigned long gAsicID = it1->gAsicID;
-			unsigned long asicID = gAsicID % 64;
-			unsigned long slaveID = (gAsicID >> 6) % 32;
-			unsigned long portID = (gAsicID >> 11) % 32;
+			int asicID = gAsicID % 64;
+			int slaveID = (gAsicID >> 6) % 32;
+			int portID = (gAsicID >> 11) % 32;
 			
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, asicID);
 			printf("Processing ASIC (%2d %2d %2d)\n", portID, slaveID, asicID);
-            fflush(stdout);
-			double meanEnergy;
-			calibrateAsic(gAsicID, tmpDataFile1, tmpDataFile2, calibrationTable, summaryFilePrefix, config, meanEnergy);
-
-			meanEnergies[gAsicID] = meanEnergy;
+			fflush(stdout);
+		   
+			calibrateAsic(gAsicID, tmpDataFile1, -1, calibrationTable, summaryFilePrefix, config);
 			exit(0);
 		
 		} else {
@@ -827,7 +699,6 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 				exit(1);
 			}
 		}
-		it2++;
 	}
 	
 	while(nWorkers > 0) {
@@ -838,27 +709,6 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 		else if (r < 0) {
 			fprintf(stderr, "Unexpected error on %s:%d: %s\n", __FILE__ , __LINE__, strerror(errno));
 			exit(1);
-		}
-	}
-
-	vector<double> means;
-
-	for(unsigned long gid = 0; gid < MAX_N_ASICS; gid++) {
-		if (meanEnergies[gid]>0){
-			means.push_back(meanEnergies[gid]);		
-		}
-	}
-
-	double sumAllAsics = std::accumulate(means.begin(), means.end(), 0.0);
-    double globalMeanEnergy = sumAllAsics / means.size();
-  
-	for(unsigned long gid = 0; gid < MAX_N_ASICS; gid++) {
-		if (meanEnergies[gid]>1){
-			for(int tac = 0 ; tac < 256 ; tac++){
-				CalibrationEntry &entry = calibrationTable[gid*256+tac];
-				entry.gA = globalMeanEnergy / meanEnergies[gid];
-				entry.valid = true;		
-			}
 		}
 	}
 }
@@ -873,9 +723,23 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
                 exit(1);
 	}
 
-	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tgC\tgA\tk0\n");
 
-	for(unsigned long gid = 0; gid < MAX_N_TACS; gid++) {
+	sprintf(fName, "%s.root", outputFilePrefix);
+	TFile *rootFile = new TFile(fName, "RECREATE");
+	
+	TH1F *h_p0 = new TH1F("h_p0", "h_p0", 2000, -500, 500);
+	TH1F *h_p1 = new TH1F("h_p1", "h_p1", 1000, -20, 20);
+	TH1F *h_p2 = new TH1F("h_p2", "h_p2", 5000, -1, 1);
+	TH1F *h_k0 = new TH1F("h_k0", "h_k0", 1000, 0, 10);
+
+	TH1F *h_chi2_T = new TH1F("h_chi2_T", "h_chi2_T", 50000, 1, 1E7);
+	TH1F *h_chi2_E = new TH1F("h_chi2_E", "h_chi2_E", 500, 1, 1000);
+
+	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tk0\n");
+
+	int count = 0;
+
+	for(unsigned long gid = 0; gid < MAX_N_TACS; gid++){
 		CalibrationEntry &entry = calibrationTable[gid];
 		if(!entry.valid) continue;
 		unsigned tacID = (gid >> 0) % 4;
@@ -884,12 +748,27 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 		unsigned slaveID = (gid >> 14) % 32;
 		unsigned portID = (gid >> 19) % 32;
 		
-		fprintf(f, "%d\t%d\t%d\t%d\t%d\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\t%8.7e\n",
+		fprintf(f, "%d\t%d\t%d\t%d\t%d\t%8.7e\t%8.7e\t%8.7e\t%8.7e\n",
 			portID, slaveID, asicID, channelID, tacID,
-			entry.p0, entry.p1, entry.p2, entry.gC, entry.gA, entry.k0);
-	}
-	fclose(f);
+			entry.p0, entry.p1, entry.p2, entry.k0);
 
+		h_p0->Fill(entry.p0);
+		h_p1->Fill(entry.p1);
+		h_p2->Fill(entry.p2);
+		h_k0->Fill(entry.k0);
+		if(entry.chi2_E > 0 && entry.chi2_E < 1000 && entry.chi2_T > 0 &&  entry.chi2_T < 5E6){
+			h_chi2_T->Fill(entry.chi2_T);
+			h_chi2_E->Fill(entry.chi2_E);
+			if( entry.chi2_E < 1000 &&  entry.chi2_T < 5E6){
+				count++;
+			}
+		}
+	}
+	printf("\nReport: Calibration validated for %d TACS, %d channels\n\n", count, count/4);
+
+	fclose(f);
+	rootFile->Write();
+	delete rootFile;
 }
 
 void deleteTemporaryFiles(const char *outputFilePrefix) 

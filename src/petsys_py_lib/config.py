@@ -74,7 +74,7 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		config._Config__loadMask |= LOAD_QDCMODE_MAP
 
 	if (loadMask & LOAD_FIRMWARE_QDC_CALIBRATION) != 0:
-		fn = configParser.get("hw_trigger", "qdc_empirical_calibration_table")
+		fn = configParser.get("hw_trigger", "hwtrigger_empirical_calibration_table")
 		fn = replace_variables(fn, cdir)
 		t = readQDCEmpiricalCalibrationTable(fn)
 		config._Config__asicTacQDCEmpiricalCalibrationTable = t
@@ -92,8 +92,11 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
 		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
 		hw_trigger_config["coincidence_window"] = configParser.getint("hw_trigger", "coincidence_window")
-		hw_trigger_config["febd_pre_window"] = configParser.getint("hw_trigger", "febd_pre_window")
-		hw_trigger_config["febd_post_window"] = configParser.getint("hw_trigger", "febd_post_window")
+		hw_trigger_config["febd_pre_window"] = 2
+		hw_trigger_config["febd_post_window"] = 2
+        #hw_trigger_config["febd_pre_window"] = configParser.getint("hw_trigger", "febd_pre_window")
+		#hw_trigger_config["febd_post_window"] = configParser.getint("hw_trigger", "febd_post_window")
+		
 		hw_trigger_config["single_acceptance_period"] = configParser.getint("hw_trigger", "single_acceptance_period")
 		hw_trigger_config["single_acceptance_length"] = configParser.getint("hw_trigger", "single_acceptance_length")
 
@@ -303,7 +306,6 @@ class Config:
 		integer_part = int(f)
 		fractional_part = int((f - integer_part) * 32)
 		u5_5 = (integer_part << 5) | fractional_part
-		print(u5_5)
 		return u5_5
         
 	def twos_complement(self, value):
