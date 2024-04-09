@@ -50,6 +50,7 @@ def asic_per_module(d):
 	elif fw_variant == 0x0001: return 2
 	elif fw_variant == 0x0002: return 5
 	elif fw_variant == 0x0011: return 2
+	elif fw_variant == 0x0012: return 2
 	elif fw_variant == 0x0111: return 4
 	elif fw_variant == 0x0211: return 8
 	else: return None
