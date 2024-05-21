@@ -163,10 +163,7 @@ void DataWriter::writeCurrentDataBuffer(bool resetBuffer){
 	//struct io_event events[1];
 	//int completed = io_getevents(ctx, 1, 1, events, NULL);
 	
-	if(resetBuffer){
-		currentBuffer.size = 0;
-		return;
-	}
+	if(resetBuffer) return;
 
 	global_offset += BUFFER_SIZE;
 }
@@ -458,6 +455,7 @@ int main(int argc, char *argv[])
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(tempFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+
 		}
 
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
