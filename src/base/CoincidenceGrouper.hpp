@@ -13,7 +13,7 @@ public:
 	CoincidenceGrouper(SystemConfig *systemConfig, EventSink<Coincidence> *sink);
 	~CoincidenceGrouper();
 	virtual void report();
-	
+	virtual void resetCounters();
 private:
 	virtual EventBuffer<Coincidence> * handleEvents(EventBuffer<GammaPhoton> *inBuffer);
 		

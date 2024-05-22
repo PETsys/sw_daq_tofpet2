@@ -14,7 +14,7 @@ public:
 	~SimpleGrouper();
 	
 	virtual void report();
-	
+	virtual void resetCounters();
 protected:
 	virtual EventBuffer<GammaPhoton> * handleEvents(EventBuffer<Hit> *inBuffer);
 		

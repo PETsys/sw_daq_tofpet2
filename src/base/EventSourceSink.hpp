@@ -11,6 +11,7 @@ namespace PETSYS {
 		virtual void pushEvents(EventBuffer<TEventInput> *buffer) = 0;
 		virtual void finish() = 0;
 		virtual void report() = 0;
+		virtual void resetCounters() = 0;
 		virtual ~EventSink() {};
 	};
 
@@ -42,6 +43,9 @@ namespace PETSYS {
 		};
 		
 		virtual void report() {
+		};
+
+		virtual void resetCounters() {
 		};
 		~NullSink() {
 		};

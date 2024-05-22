@@ -5,13 +5,7 @@ using namespace PETSYS;
 ProcessHit::ProcessHit(SystemConfig *systemConfig, EventStream *eventStream, EventSink<Hit> *sink) :
 UnorderedEventHandler<RawHit, Hit>(sink), systemConfig(systemConfig), eventStream(eventStream)
 {
-	nReceived = 0;
-	nReceivedInvalid = 0;
-	nTDCCalibrationMissing = 0;
-	nQDCCalibrationMissing = 0;
-	nXYZMissing = 0;
-	nEnergyCalibrationMissing = 0;
-	nSent = 0;
+	resetCounters();
 }
 
 EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
@@ -37,7 +31,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	u_int64_t lEnergyCalibrationMissing = 0;
 	u_int64_t lXYZMissing = 0;
 	u_int64_t lSent = 0;
-	
+
 	for(int i = 0; i < N; i++) {
 		RawHit &in = inBuffer->get(i);
 		Hit &out = outBuffer->getWriteSlot();
@@ -185,6 +179,19 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 	
 	return outBuffer;
 }
+
+void ProcessHit::resetCounters()
+{
+	nReceived = 0;
+	nReceivedInvalid = 0;
+	nTDCCalibrationMissing = 0;
+	nQDCCalibrationMissing = 0;
+	nXYZMissing = 0;
+	nEnergyCalibrationMissing = 0;
+	nSent = 0;
+	UnorderedEventHandler<RawHit, Hit>::resetCounters();
+}
+
 
 void ProcessHit::report()
 {
