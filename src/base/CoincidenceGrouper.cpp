@@ -6,20 +6,13 @@ using namespace PETSYS;
 CoincidenceGrouper::CoincidenceGrouper(SystemConfig *systemConfig, EventSink<Coincidence> *sink)
 	: systemConfig(systemConfig), UnorderedEventHandler<GammaPhoton, Coincidence>(sink)
 {
-	nPrompts = 0;
+	resetCounters();
 }
 
 CoincidenceGrouper::~CoincidenceGrouper()
 {
 }
 
-void CoincidenceGrouper::report()
-{
-	printf(">> CoincidenceGrouper report\n");
-	printf(" prompts passed\n");
-	printf("  %10lu \n", nPrompts);
-	UnorderedEventHandler<GammaPhoton, Coincidence>::report();
-}
 
 EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPhoton> *inBuffer)
 {
@@ -52,4 +45,18 @@ EventBuffer<Coincidence> * CoincidenceGrouper::handleEvents(EventBuffer<GammaPho
 	}
 	atomicAdd(nPrompts, lPrompts);
 	return outBuffer;
+}
+
+void CoincidenceGrouper::resetCounters()
+{
+	nPrompts = 0;
+	UnorderedEventHandler<GammaPhoton, Coincidence>::report();
+}
+
+void CoincidenceGrouper::report()
+{
+	fprintf(stderr, ">> CoincidenceGrouper report\n");
+	fprintf(stderr, " prompts passed\n");
+	fprintf(stderr, "  %10lu \n", nPrompts);
+	UnorderedEventHandler<GammaPhoton, Coincidence>::report();
 }

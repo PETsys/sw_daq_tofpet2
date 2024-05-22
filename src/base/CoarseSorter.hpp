@@ -17,7 +17,8 @@ namespace PETSYS {
 	class CoarseSorter : public UnorderedEventHandler<RawHit, RawHit> {
 	public:
 		CoarseSorter (EventSink<RawHit> *sink);
-		void report();
+		virtual void report();
+		virtual void resetCounters();
 	protected:
 		virtual EventBuffer<RawHit> * handleEvents (EventBuffer<RawHit> *inBuffer);
 	private:

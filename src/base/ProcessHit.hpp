@@ -8,7 +8,7 @@
 
 
 namespace PETSYS {
-	
+
 class ProcessHit : public UnorderedEventHandler<RawHit, Hit> {
 private:
 	SystemConfig *systemConfig;
@@ -24,7 +24,7 @@ private:
 public:
 	ProcessHit(SystemConfig *systemConfig, EventStream *eventStream, EventSink<Hit> *sink);
 	virtual void report();
-	
+	virtual void resetCounters();
 protected:
 	virtual EventBuffer<Hit> * handleEvents (EventBuffer<RawHit> *inBuffer);
 };

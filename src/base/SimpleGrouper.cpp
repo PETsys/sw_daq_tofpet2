@@ -8,51 +8,11 @@ using namespace std;
 SimpleGrouper::SimpleGrouper(SystemConfig *systemConfig, EventSink<GammaPhoton> *sink) :
 	systemConfig(systemConfig), UnorderedEventHandler<Hit, GammaPhoton>(sink)
 {
-	for(int i = 0; i < GammaPhoton::maxHits; i++)
-		nPhotonsHits[i] = 0;
-	
-	nHitsReceived = 0;
-	nHitsReceivedValid = 0;
-	nPhotonsFound = 0;
-	nPhotonsHitsOverflow = 0;
-	nPhotonsHitsUnderflow = 0;
-	nPhotonsLowEnergy = 0;
-	nPhotonsHighEnergy = 0;
-	nPhotonsPassed = 0;
+	resetCounters();
 }
 
 SimpleGrouper::~SimpleGrouper()
 {
-}
-
-void SimpleGrouper::report()
-{
-	int maxHits = systemConfig->sw_trigger_group_max_hits;
-	if (maxHits > GammaPhoton::maxHits) maxHits = maxHits;
-	int minHits = systemConfig->sw_trigger_group_min_hits;
-
-	fprintf(stderr, ">> SimpleGrouper report\n");
-	fprintf(stderr, " hits received\n");
-	fprintf(stderr, "  %10lu total\n", nHitsReceived);
-	fprintf(stderr, "  %10lu (%4.1f%%) invalid\n", nHitsReceived - nHitsReceivedValid, 100.0 * (nHitsReceived - nHitsReceivedValid)/nHitsReceived);
-	fprintf(stderr, " photons found\n");
-	fprintf(stderr, "  %10lu total\n", nPhotonsFound);
-	for(int i = 0; i < maxHits; i++) {
-		float fraction = nPhotonsHits[i]/((float)nPhotonsFound);
-		if(fraction > 0.05) {
-			fprintf(stderr, "  %10lu (%4.1f%%) with %d hits\n", nPhotonsHits[i], 100.0*fraction, i+1);
-		}
-	}
-	fprintf(stderr, "  %4.1f hits/photon\n", float(nHitsReceived)/nPhotonsFound);
-	fprintf(stderr, " photons rejected\n");
-	fprintf(stderr, "  %10lu (%4.1f%%) with more than %d hits\n", nPhotonsHitsOverflow, 100.0*nPhotonsHitsOverflow/nPhotonsFound, maxHits);
-	fprintf(stderr, "  %10lu (%4.1f%%) with less than %d hits\n", nPhotonsHitsUnderflow, 100.0*nPhotonsHitsUnderflow/nPhotonsFound, minHits);
-	fprintf(stderr, "  %10lu (%4.1f%%) failed minimum energy\n", nPhotonsLowEnergy, 100.0*nPhotonsLowEnergy/nPhotonsFound);
-	fprintf(stderr, "  %10lu (%4.1f%%) failed maximim energy\n", nPhotonsHighEnergy, 100.0*nPhotonsHighEnergy/nPhotonsFound);
-	fprintf(stderr, " photons passed\n");
-	fprintf(stderr, "  %10lu (%4.1f%%) passed\n", nPhotonsPassed, 100.0*nPhotonsPassed/nPhotonsFound);
-			
-	UnorderedEventHandler<Hit, GammaPhoton>::report();
 }
 
 EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffer)
@@ -209,3 +169,49 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 	return outBuffer;
 }
 
+void SimpleGrouper::resetCounters()
+{
+	for(int i = 0; i < GammaPhoton::maxHits; i++)
+		nPhotonsHits[i] = 0;
+	
+	nHitsReceived = 0;
+	nHitsReceivedValid = 0;
+	nPhotonsFound = 0;
+	nPhotonsHitsOverflow = 0;
+	nPhotonsHitsUnderflow = 0;
+	nPhotonsLowEnergy = 0;
+	nPhotonsHighEnergy = 0;
+	nPhotonsPassed = 0;
+	UnorderedEventHandler<Hit, GammaPhoton>::resetCounters();
+}
+
+
+void SimpleGrouper::report()
+{
+	int maxHits = systemConfig->sw_trigger_group_max_hits;
+	if (maxHits > GammaPhoton::maxHits) maxHits = maxHits;
+	int minHits = systemConfig->sw_trigger_group_min_hits;
+
+	fprintf(stderr, ">> SimpleGrouper report\n");
+	fprintf(stderr, " hits received\n");
+	fprintf(stderr, "  %10lu total\n", nHitsReceived);
+	fprintf(stderr, "  %10lu (%4.1f%%) invalid\n", nHitsReceived - nHitsReceivedValid, 100.0 * (nHitsReceived - nHitsReceivedValid)/nHitsReceived);
+	fprintf(stderr, " photons found\n");
+	fprintf(stderr, "  %10lu total\n", nPhotonsFound);
+	for(int i = 0; i < maxHits; i++) {
+		float fraction = nPhotonsHits[i]/((float)nPhotonsFound);
+		if(fraction > 0.05) {
+			fprintf(stderr, "  %10lu (%4.1f%%) with %d hits\n", nPhotonsHits[i], 100.0*fraction, i+1);
+		}
+	}
+	fprintf(stderr, "  %4.1f hits/photon\n", float(nHitsReceived)/nPhotonsFound);
+	fprintf(stderr, " photons rejected\n");
+	fprintf(stderr, "  %10lu (%4.1f%%) with more than %d hits\n", nPhotonsHitsOverflow, 100.0*nPhotonsHitsOverflow/nPhotonsFound, maxHits);
+	fprintf(stderr, "  %10lu (%4.1f%%) with less than %d hits\n", nPhotonsHitsUnderflow, 100.0*nPhotonsHitsUnderflow/nPhotonsFound, minHits);
+	fprintf(stderr, "  %10lu (%4.1f%%) failed minimum energy\n", nPhotonsLowEnergy, 100.0*nPhotonsLowEnergy/nPhotonsFound);
+	fprintf(stderr, "  %10lu (%4.1f%%) failed maximim energy\n", nPhotonsHighEnergy, 100.0*nPhotonsHighEnergy/nPhotonsFound);
+	fprintf(stderr, " photons passed\n");
+	fprintf(stderr, "  %10lu (%4.1f%%) passed\n", nPhotonsPassed, 100.0*nPhotonsPassed/nPhotonsFound);
+			
+	UnorderedEventHandler<Hit, GammaPhoton>::report();
+}
