@@ -124,6 +124,7 @@ add_library ( common STATIC
 	"src/base/ProcessHit.cpp"
 	"src/base/SimpleGrouper.cpp"
 	"src/base/CoincidenceGrouper.cpp"
+	"src/base/DataFileWriter.cpp"
 	"src/online_monitor/Monitor.cpp"
 	"src/online_monitor/SingleValue.cpp"
 	"src/online_monitor/Histogram1D.cpp"

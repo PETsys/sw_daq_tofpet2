@@ -9,7 +9,7 @@ using namespace PETSYS;
 CoarseSorter::CoarseSorter(EventSink<RawHit> *sink) :
 	UnorderedEventHandler<RawHit, RawHit>(sink)
 {
-	nSingleRead = 0;
+	resetCounters();
 }
 
 struct SortEntry {
@@ -49,12 +49,17 @@ EventBuffer<RawHit> * CoarseSorter::handleEvents (EventBuffer<RawHit> *inBuffer)
 		po++;
 		lSingleRead++;
 	}
-
-	
+		
 	atomicAdd(nSingleRead, lSingleRead);
 
 	outBuffer->setUsed(lSingleRead);
 	return outBuffer;
+}
+
+void CoarseSorter::resetCounters()
+{
+	nSingleRead = 0;
+	UnorderedEventHandler<RawHit, RawHit>::resetCounters();
 }
 
 void CoarseSorter::report()
