@@ -35,10 +35,13 @@ namespace PETSYS {
 		virtual void report() {
 			this->sink->report();
 		};
+
+		virtual void resetCounters() {
+			this->sink->resetCounters();
+		};
 		
 	protected:
-		virtual EventBuffer<TEventOutput> * handleEvents(EventBuffer<TEventInput> *inBuffer) = 0;		
-
+		virtual EventBuffer<TEventOutput> * handleEvents(EventBuffer<TEventInput> *inBuffer) = 0;
 	};
 
 }
