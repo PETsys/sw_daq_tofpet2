@@ -121,7 +121,7 @@ static int __init psdaq_init(void)
 {
 	int err;
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(6, 3, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
 	psdaq_dev_class = class_create("psdaq");
 #else
 	psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
