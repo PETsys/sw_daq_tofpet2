@@ -1,3 +1,7 @@
+ifneq ("$(wildcard /etc/redhat-release)","")
+	EXTRA_CFLAGS += -DPETSYS_RHEL_PATCH
+endif
+
 obj-m := psdaq.o
 
 path := $(shell uname -r)
