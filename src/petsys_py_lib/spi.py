@@ -122,7 +122,7 @@ def ltc2668_ll(conn, portID, slaveID, chipID, command):
 
 
 def ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value):
-	"""! Set AD5535 channel
+	"""! Set LTC2668LTC2668 channel
 
 	@param conn daqd connection object
 	@param portID FEB/D portID
@@ -138,7 +138,7 @@ def ltc2668_set_channel(conn, portID, slaveID, chipID, channelID, value):
 	for attempt in range(2):
 		if ltc2668_set_channel_(conn, portID, slaveID, chipID, channelID, value):
 			return True
-	raise DACException("LTC2668 set failed")
+	raise DACException("(%2d, %2d, 0x%04X) LTC2668 set CH %02d = 0x%04X failed" % (portID, slaveID, chipID, channelID, value))
 	
 def ltc2668_set_channel_(conn, portID, slaveID, chipID, channelID, value):	
 	command = [ 0b00110000 + channelID, (value >> 8) & 0xFF , value & 0xFF ]
