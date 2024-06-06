@@ -1,5 +1,5 @@
-# kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off;
-# vim: tabstop=8 shiftwidth=8
+# kate: indent-mode: python
+# vim: tabstop=4 shiftwidth=4
 
 from math import sqrt
 from . import info, spi, fe_eeprom
@@ -183,6 +183,9 @@ def get_sensor_list(conn,debug=False):
                 if eeprom.is_programmed(): # Nesting required here for improved debugging
                     if debug: print(f'INFO: ({portID},{slaveID},{module_id}) has been previously PROGRAMMED. Generating list from memory.')
                     result += list_from_eeprom(conn, portID, slaveID, module_id)
+                else:
+                    raise Exception(f'ERROR: ({portID},{slaveID},{module_id}) is present but NOT programmed.')
+
             elif fw_variant == 0x0000:
                 # TB64, pass
                 pass
