@@ -27,10 +27,15 @@ static bool operator< (SortEntry lhs, SortEntry rhs) { return lhs.time < rhs.tim
 EventBuffer<RawHit> * HwTriggerSimulator::handleEvents (EventBuffer<RawHit> *inBuffer)
 {
 	unsigned N =  inBuffer->getSize();
+	
+	long long firstFrameID = inBuffer->getTMin()/1024;
+
 	EventBuffer<RawHit> * outBuffer = new EventBuffer<RawHit>(N, inBuffer);
 	u_int64_t lReceived = 0;
 	u_int64_t lSent = 0;
 	
+	int count = 0;
+
 	vector<SortEntry> sortList;
 	sortList.reserve(N);
 
@@ -65,6 +70,12 @@ EventBuffer<RawHit> * HwTriggerSimulator::handleEvents (EventBuffer<RawHit> *inB
 		}
 	}
 
+	long long t0;
+	long long t1;
+
+	bool isFirst = true;
+	bool printMore = false;
+
 	for(auto iter = sortList.begin(); iter != sortList.end(); iter++) {
 
 		auto p = (*iter).p;
@@ -72,35 +83,46 @@ EventBuffer<RawHit> * HwTriggerSimulator::handleEvents (EventBuffer<RawHit> *inB
 		SystemConfig::ChannelConfig &cc = systemConfig->getChannelConfig(p->channelID);
 		SystemConfig::FirmwareConfig &cf = cc.empConfig[p->tacID];
 	
-		double energy = cf.p0 + cf.p1 * p->efine + cf.p2 * p->efine * p->efine;
-	
-		if(energy < 0.2) energy = 0.2;
+		double energy1 = cf.p0 + cf.p1 * p->efine + cf.p2 * p->efine * p->efine;
+		double energy = energy1;
+		if(energy1 < 0.1875) energy = 0.1875;
 
 		double timeWalkCorrection =  0.06 + cf.k0 / energy ;
 		long long timeCorrected = p->time - (long long)(timeWalkCorrection);
 		long long bufferBinnedTime = timeCorrected - timeMin;
+		unsigned reducedTriggerRegion = systemConfig->mapTriggerRegions[cc.triggerRegion];
+		
 
 		if(bufferBinnedTime <  -100) continue;
 		if(bufferBinnedTime >  triggerArraySize + 100) continue;
-
-		unsigned reducedTriggerRegion = systemConfig->mapTriggerRegions[cc.triggerRegion];
+	
 		energyArray[reducedTriggerRegion][bufferBinnedTime] += energy;
 		multiplicityArray[reducedTriggerRegion][bufferBinnedTime] += 1;
+
 	}
 	
+	
+
+
 	vector<int> *triggerRequestTimeBins = new vector<int>[nTriggerRegions];
 	for (int i = 0; i < nTriggerRegions ; i++) {
 		for (int j = 0; j < triggerArraySize; j++) {
-			if( (energyArray[i][j] + energyArray[i][j+1]) > systemConfig->sw_fw_trigger_group_min_energy && (energyArray[i][j] + energyArray[i][j+1]) < systemConfig->sw_fw_trigger_group_max_energy  &&  energyArray[i][j]>0.2) { 
-				int multiplicity = 0;
-				for (int k = -2 ; k <= 2 ; k++) multiplicity += multiplicityArray[i][j+k];
+			long long t = inBuffer->getTMin()+timeMin+j;
+			int multiplicity = 0;
+			double energySum = 0;
+			for (int k = -2 ; k <= 2 ; k++){
+				energySum += energyArray[i][j+k];
+				multiplicity += multiplicityArray[i][j+k];
+			}
+			if( energySum > systemConfig->sw_fw_trigger_group_min_energy && energySum < systemConfig->sw_fw_trigger_group_max_energy) { 	
 				if(multiplicity >= systemConfig->sw_fw_trigger_group_min_nhits && multiplicity <= systemConfig->sw_fw_trigger_group_max_nhits){
 					triggerRequestTimeBins[i].push_back(j);
+					count++;
 				}						
 			}	
 		}
 	}
-	
+
 	vector<int> *coincidenceRegionsAllowed = new vector<int>[nTriggerRegions];
 	vector<int> *triggerRequestCoincidenceTimeBins = new vector<int>[nTriggerRegions];
 	vector<int> *triggerAcceptedTimeBins = new vector<int>[nTriggerRegions];
@@ -129,7 +151,7 @@ EventBuffer<RawHit> * HwTriggerSimulator::handleEvents (EventBuffer<RawHit> *inB
 			for (int tBin2 : triggerRequestCoincidenceTimeBins[i]){
 				if (fabs(float(tBin1-tBin2)) <= systemConfig->sw_fw_trigger_coinc_window){
 					triggerExtendedAcceptedTimeBins[i/4].push_back(tBin1);
-					continue;			
+					continue;		
 				}
 			}
 		}
@@ -154,7 +176,7 @@ EventBuffer<RawHit> * HwTriggerSimulator::handleEvents (EventBuffer<RawHit> *inB
 	
 		double energy = cf.p0 + cf.p1 * p->efine + cf.p2 * p->efine * p->efine;
 
-		if(energy <0.2) energy= 0.2;
+		if(energy < 0.1875) energy = 0.1875;
 
 		double timeWalkCorrection =  0.06 + cf.k0 / energy ;
 

@@ -89,11 +89,11 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		hw_trigger_config["group_min_multiplicity"] = configParser.getint("hw_trigger", "group_min_multiplicity")
 		hw_trigger_config["group_max_multiplicity"] = configParser.getint("hw_trigger", "group_max_multiplicity")
 
-		hw_trigger_config["pre_window"] = configParser.getint("hw_trigger", "pre_window")
-		hw_trigger_config["post_window"] = configParser.getint("hw_trigger", "post_window")
+		hw_trigger_config["febd_pre_window"] = configParser.getint("hw_trigger", "pre_window")
+		hw_trigger_config["febd_post_window"] = configParser.getint("hw_trigger", "post_window")
 		hw_trigger_config["coincidence_window"] = configParser.getint("hw_trigger", "coincidence_window")
-		hw_trigger_config["febd_pre_window"] = 2
-		hw_trigger_config["febd_post_window"] = 2
+		hw_trigger_config["pre_window"] = 0
+		hw_trigger_config["post_window"] = 0
         #hw_trigger_config["febd_pre_window"] = configParser.getint("hw_trigger", "febd_pre_window")
 		#hw_trigger_config["febd_post_window"] = configParser.getint("hw_trigger", "febd_post_window")
 		
@@ -173,7 +173,7 @@ class Config:
 					cc.setValue("baseline_t", baseline_t)
 					cc.setValue("baseline_e", baseline_e)
 
-		# Apply discriminator settings and energy acquisition mdoe 
+		# Apply discriminator settings and energy acquisition mode 
 		for portID, slaveID, chipID in list(asicsConfig.keys()):
 			ac = asicsConfig[(portID, slaveID, chipID)]
 			for channelID in range(64):
@@ -215,7 +215,6 @@ class Config:
 				daqd.write_config_register(portID, slaveID, 2, 0x0608, self.__hw_trigger["pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x060A, self.__hw_trigger["post_window"])
 
-
 				daqd.write_config_register(portID, slaveID, 32, 0x060C, self.__hw_trigger["single_acceptance_length"] << 16 | self.__hw_trigger["single_acceptance_period"] )
 
 				hw_trigger_regions = self.__hw_trigger["regions"]
@@ -240,7 +239,7 @@ class Config:
 			febd_tgr_enable = 0b1
 			setupWord = enable | (calibration_enable << 1) | (accumulator_on << 4) | (energy_threshold_enable << 8) | (nHits_threshold_enable << 9) | (febd_tgr_enable << 10)
 
-			energy_sum_vector = 0b01100
+			energy_sum_vector = 0b11111
 			hits_sum_vector =  0b11111
 			referenceVectors = energy_sum_vector | ( hits_sum_vector << 8 )
 
@@ -248,6 +247,7 @@ class Config:
 			for portID, slaveID in daqd.getActiveFEBDs():
 				daqd.write_config_register(portID, slaveID, 9, 0x0602, setupWord)
 				daqd.write_config_register(portID, slaveID, 16, 0x0612, referenceVectors)
+				#daqd.write_config_register(portID, slaveID, 32, 0x0620, referenceVectors2)
 				daqd.write_config_register(portID, slaveID, 2, 0x061C, self.__hw_trigger["febd_pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x061E, self.__hw_trigger["febd_post_window"])
 				
@@ -262,14 +262,17 @@ class Config:
 						address = tacID & 0b11
 						address |= (channelID & 0x3F) << 2
 						
-						#address |= (chipID & 0b111) << 8  # FEM128 in FEB/D-1K
-						#address |= (chipID & 0b11000) << 10 # FEM128 in FEB/D-1K
+						address |= (chipID & 0b111) << 8  # FEM128 in FEB/D-1K
+						address |= (chipID & 0b11000) << 10 # FEM128 in FEB/D-1K
 
-						address |= (chipID & 0b1111) << 8 # FEM256 in FEB/D-8K 
-						address |= (chipID >> 4) << 13 # FEM256 in FEB/D-8K
+						#address |= (chipID & 0b1111) << 8 # FEM256 in FEB/D-8K 
+						#address |= (chipID >> 4) << 13 # FEM256 in FEB/D-8K
 
-						c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))
-
+						try:
+								c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))
+						except:
+								c0, c1, c2, k0 = (0,0,0,0)
+                                                                
 						c0_fixedPoint = self.getFixedPointBinaryCalibrationValue(c0, 10, 6)
 						c1_fixedPoint = self.getFixedPointBinaryCalibrationValue(c1, 10, -1)
 						c2_fixedPoint = self.getFixedPointBinaryCalibrationValue(c2, 9, -8, True)
@@ -283,7 +286,7 @@ class Config:
 						data2_bitarray = (leading_zeros + data_bitarray)
 						data2 = data2_bitarray.tobytes()
 						reversed_data = data2[::-1]
-
+                                                
 						daqd.write_mem_ctrl2(portID, slaveID, 7, 40, address, reversed_data)	
 		return None
 	
