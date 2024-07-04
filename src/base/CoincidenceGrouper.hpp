@@ -19,6 +19,8 @@ private:
 		
 	SystemConfig *systemConfig;
 	u_int64_t nPrompts;
+	u_int64_t nCoincPhotopeak;
+	u_int64_t nListModeControl;
 };
 }
 #endif // __PETSYS__COINCIDENCEGROUPER_HPP__DEFINED__

@@ -1,6 +1,7 @@
 #include "SimpleGrouper.hpp"
 #include <vector>
 #include <math.h>
+#include <algorithm>
 
 using namespace PETSYS;
 using namespace std;
@@ -45,7 +46,7 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 	EventBuffer<GammaPhoton> * outBuffer = new EventBuffer<GammaPhoton>(N, inBuffer);
 	vector<bool> taken(N, false);
 	Hit * hits[maxHits];
-	
+
 	for(unsigned i = 0; i < N; i++) {
 		// Do accounting first
 		Hit &hit = inBuffer->get(i);
@@ -114,11 +115,12 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			}
 		}
 		
-		
+		float totalEnergy = 0;
 		// Assemble the output structure
 		GammaPhoton &photon = outBuffer->getWriteSlot();
 		for(int k = 0; k < nHits; k++) {
 			photon.hits[k] = hits[k];
+			totalEnergy += photon.hits[k]->energy;
 		}
 		
 		photon.nHits = nHits;
@@ -127,12 +129,11 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 		photon.x = photon.hits[0]->x;
 		photon.y = photon.hits[0]->y;
 		photon.z = photon.hits[0]->z;
-		photon.energy = photon.hits[0]->energy;
+		photon.energy = totalEnergy;
 
 		if(photon.energy < minEnergy) eventFlags |= 0x2;
 		if(photon.energy > maxEnergy) eventFlags |= 0x4;
 
-		
 		// Count photons
 		lPhotonsFound += 1;
 		if((eventFlags & 0x1) == 0) {

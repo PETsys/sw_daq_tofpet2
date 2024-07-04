@@ -47,6 +47,10 @@ if args.paramTable is not None:
 mask = config.LOAD_ALL
 if args.mode != "mixed":
         mask ^= config.LOAD_QDCMODE_MAP
+
+if not args.hwTrigger:
+        mask ^= config.LOAD_FIRMWARE_QDC_CALIBRATION
+
 systemConfig = config.ConfigFromFile(args.config, loadMask=mask)
 
 daqd = daqd.Connection()
