@@ -10,8 +10,8 @@ PROM_CHIP_ID = 0xFFEF
 
 def main(argv):
 	parser = argparse.ArgumentParser(description='Update FPGA PROM')
-	parser.add_argument("--port", default=0, help="Unit port ID")
-	parser.add_argument("--slave", default=0, help="Unit slaveID ID")
+	parser.add_argument("--port", default=0, type=int, help="Unit port ID")
+	parser.add_argument("--slave", default=0, type=int, help="Unit slaveID ID")
 	parser.add_argument("--bin", type=str, required=True, help="BIN file name")
 	parser.add_argument("--force", default=False, action="store_true", help="Force updating")
 	parser.add_argument("--method", required=True, choices=["soft", "alternate", "unprotect"], help="Update method")
