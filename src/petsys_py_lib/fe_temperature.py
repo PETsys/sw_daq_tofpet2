@@ -129,6 +129,29 @@ def list_fem128(conn, portID, slaveID, module_id):
         
         
     return result
+
+def list_fem128mux(conn, portID, slaveID, module_id):
+    result = []
+
+    spi_id = get_max111xx_spiID(module_id)
+
+    if not spi.max111xx_check(conn, portID, slaveID, spi_id):
+        return result
+
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 12, (portID, slaveID, module_id, 1, "asic"), "LMT86"))
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 13, (portID, slaveID, module_id, 0, "asic"), "LMT86"))
+
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 7, (portID, slaveID, module_id, 0, "sipm"), "LMT86"))
+    result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 0, (portID, slaveID, module_id, 1, "sipm"), "LMT86"))
+    ## TODO enable missing temperature sensors
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 6, (portID, slaveID, module_id, 2, "sipm"), "LMT86"))
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 1, (portID, slaveID, module_id, 3, "sipm"), "LMT86"))
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 5, (portID, slaveID, module_id, 4, "sipm"), "LMT86"))
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 2, (portID, slaveID, module_id, 5, "sipm"), "LMT86"))
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 4, (portID, slaveID, module_id, 6, "sipm"), "LMT86"))
+    #result.append(max111xx_sensor(conn, portID, slaveID, spi_id, 3, (portID, slaveID, module_id, 7, "sipm"), "LMT86"))
+
+    return result
         
 def list_fem256(conn, portID, slaveID, module_id):
     result = []
@@ -197,6 +220,9 @@ def get_sensor_list(conn,debug=False):
                 pass
             elif fw_variant == 0x0011:
                 result += list_fem128(conn, portID, slaveID, module_id)
+
+            elif fw_variant == 0x0012:
+                result += list_fem128mux(conn, portID, slaveID, module_id)
 
             elif fw_variant == 0x0111:
                 result += list_fem256(conn, portID, slaveID, module_id)
