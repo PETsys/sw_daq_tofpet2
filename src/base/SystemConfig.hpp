@@ -101,6 +101,7 @@ namespace PETSYS
 		inline bool useQDCCalibration() { return hasQDCCalibration; };
 		inline bool useEnergyCalibration() { return hasEnergyCalibration; };
 		inline bool useFirmwareEmpiricalCalibrations() { return hasFirmwareEmpiricalCalibrations; };
+		inline bool useListModeControlData() { return hasListModeControlData; };
 		inline bool useTimeOffsetCalibration() { return hasTimeOffsetCalibration; };
 		inline bool useXYZ() { return hasXYZ; };
 
