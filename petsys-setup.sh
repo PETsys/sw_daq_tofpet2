@@ -159,7 +159,7 @@ elif [ $debug -eq 1 ]; then
 fi;
 
 
-install DAQ card drivers
+# Install DAQ card drivers
 if [ $debug -eq 1 ]; then 
 	echo "DEBUG: Would now install DAQ card drivers.";
 else
