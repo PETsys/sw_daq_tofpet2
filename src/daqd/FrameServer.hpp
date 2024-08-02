@@ -63,7 +63,6 @@ protected:
 	
 	bool parseDataFrame(RawDataFrame *dataFrame);
 	
-	int debugLevel;
 	
 	int8_t *feTypeMap;
 
@@ -72,6 +71,7 @@ protected:
 	const char *shmName;
 	int shmfd;
 	RawDataFrame *shmPtr;
+	int debugLevel;
 	
 	static void *runWorker(void *);
 	virtual void * doWork() = 0;

@@ -109,7 +109,7 @@ int Client::doAcqOnOff()
 	struct { uint16_t length; } header;
 	header.length = 0;
 	int status = send(socket, &header, sizeof(header), MSG_NOSIGNAL);
-	if(status < sizeof(header)) return -1;
+	if(status < int(sizeof(header))) return -1;
 
 	return 0;
 }
@@ -123,7 +123,7 @@ int Client::doGetDataFrameWriteReadPointer()
 	header.acqStatus = frameServer->amAcquiring() ? 1 : 0;
 
 	int status = send(socket, &header, sizeof(header), MSG_NOSIGNAL);
-	if(status < sizeof(header)) return -1;
+	if(status < int(sizeof(header))) return -1;
 	return 0;
 }
 
@@ -133,7 +133,7 @@ int Client::doSetDataFrameReadPointer()
 	memcpy(&readPointer, socketBuffer + sizeof(CmdHeader_t), sizeof(readPointer));	
 	frameServer->setDataFrameReadPointer(readPointer);	
 	int status = send(socket, &readPointer, sizeof(readPointer), MSG_NOSIGNAL);
-	if(status < sizeof(readPointer)) return -1;
+	if(status < int(sizeof(readPointer))) return -1;
 	return 0;
 	
 }
@@ -150,10 +150,10 @@ int Client::doGetDataFrameSharedMemoryName()
 	
 	int status = 0;
 	status = send(socket, &header, sizeof(header), MSG_NOSIGNAL);
-	if(status < sizeof(header)) return -1;
+	if(status < int(sizeof(header))) return -1;
 	
 	status = send(socket, name, strlen(name), MSG_NOSIGNAL);
-	if(status < strlen(name)) return -1;
+	if(status < int(strlen(name))) return -1;
 	
 	return 0;
 }
@@ -165,7 +165,7 @@ int Client::doGetPortUp()
 	reply.channelUp = frameServer->getPortUp();
 	int status = 0;
 	status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if (status < sizeof(reply)) return -1;
+	if (status < int(sizeof(reply))) return -1;
 	
 	return 0;
 }
@@ -177,7 +177,7 @@ int Client::doGetDAQTemp()
 	reply.temp = frameServer->getDAQTemp();
 	int status = 0;
 	status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if (status < sizeof(reply)) return -1;
+	if (status < int(sizeof(reply))) return -1;
 	
 	return 0;
 }
@@ -196,7 +196,7 @@ int Client::doGetPortCounts()
 	
 	int status = 0;
 	status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if (status < sizeof(reply)) return -1;
+	if (status < int(sizeof(reply))) return -1;
 	
 	return 0;
 }
@@ -209,7 +209,7 @@ int Client::doSetSorter()
 
 	uint32_t reply = 0;
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if(status < sizeof(reply)) return -1;
+	if(status < int(sizeof(reply))) return -1;
 	return 0;
 }
 
@@ -219,7 +219,7 @@ int Client::doSetTrigger()
 	memcpy(&triggerConfig, socketBuffer + sizeof(CmdHeader_t), sizeof(triggerConfig));
 	int32_t reply = frameServer->setCoincidenceTrigger(&triggerConfig);;
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if(status < sizeof(reply)) return -1;
+	if(status < int(sizeof(reply))) return -1;
 	return 0;
 }
 
@@ -231,7 +231,7 @@ int Client::doSetIdleTimeCalculation()
 
 	uint32_t reply = 0;
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if(status < sizeof(reply)) return -1;
+	if(status < int(sizeof(reply))) return -1;
 	return 0;
 }
 
@@ -242,7 +242,7 @@ int Client::doSetGateEnable()
 	int32_t reply = frameServer->setGateEnable(mode);
 	
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if(status < sizeof(reply)) return -1;
+	if(status < int(sizeof(reply))) return -1;
 	return 0;
 }
 
@@ -253,6 +253,6 @@ int Client::doSetMinimumFrameID()
 	int32_t reply = frameServer->setMinimumFrameID(minimumFrameID);
 
 	int status = send(socket, &reply, sizeof(reply), MSG_NOSIGNAL);
-	if(status < sizeof(reply)) return -1;
+	if(status < int(sizeof(reply))) return -1;
 	return 0;
 }

@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 	
 	int daqType = -1;
 	std::vector<std::string> daqCardList;
-	unsigned daqCardPortBits = -1;
+	int daqCardPortBits = -1;
 	
 	static struct option longOptions[] = {
 		{ "socket-name", required_argument, 0, 0 },
@@ -201,7 +201,6 @@ int createListeningSocket(const char *clientSocketName)
 {
 	struct sockaddr_un address;
 	int socket_fd = -1;
-	socklen_t address_length;
 	
 	if((socket_fd = socket(PF_UNIX, SOCK_STREAM, 0)) == -1) {
 		fprintf(stderr, "ERROR: Could not allocate socket (%d)\n", errno);
