@@ -213,7 +213,7 @@ public:
 	void writeOut(DataWriter *writer);
 
 private:
-	int n_cpu;
+	unsigned n_cpu;
 	PETSYS::SHM_RAW *shm;
 	vector<map<uint64_t, unsigned>> calEventSet;
 
@@ -529,7 +529,7 @@ void * CalibrationPool::thread_routine(void *arg)
 		int frameSize = shm->getNEvents(index);
 		for(int i = 0; i < frameSize; i++) {
 			unsigned g = shm->getChannelID(index, i);
-			unsigned channelID = channelID % 64;
+			unsigned channelID = g % 64;
 			unsigned asicID = (g >> 6) % 64;
 			unsigned slaveID = (g >> 12) % 32;
 			unsigned portID = (g >> 17) % 32;
