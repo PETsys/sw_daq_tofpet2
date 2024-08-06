@@ -24,6 +24,7 @@ namespace PETSYS {
 		};
 		
 		virtual void pushT0(double t0) {
+			this->t0 = t0;
 			this->sink->pushT0(t0);
 		};
 		
@@ -68,12 +69,14 @@ namespace PETSYS {
 		};
 		
 	protected:
-		virtual EventBuffer<TEventOutput> * handleEvents(EventBuffer<TEventInput> *inBuffer) = 0;		
+		virtual EventBuffer<TEventOutput> * handleEvents(EventBuffer<TEventInput> *inBuffer) = 0;
+		double getT0() { return t0; };
 
 	private:
 		u_int64_t expectedSeqN;
 		pthread_mutex_t lock;
 		std::map<size_t, pthread_cond_t *> queue;
+		double t0;
 		
 	};
 

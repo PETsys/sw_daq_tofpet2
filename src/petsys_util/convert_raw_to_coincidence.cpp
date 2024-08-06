@@ -32,6 +32,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
 	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
+	fprintf(stderr,  "  --timebase [sync|wall|step|user] \t\t Select timebase for written data\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 
@@ -50,17 +51,19 @@ int main(int argc, char *argv[])
 	int hitLimitToWrite = 1;
 	long long eventFractionToWrite = 1024;
 	double fileSplitTime = 0;
+	RawReader::timebase_t tb = RawReader::SYNC;
 
-    static struct option longOptions[] = {
-        { "help", no_argument, 0, 0 },
-        { "config", required_argument, 0, 0 },
+	static struct option longOptions[] = {
+		{ "help", no_argument, 0, 0 },
+		{ "config", required_argument, 0, 0 },
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeTextCompact", no_argument, 0, 0 },
 		{ "writeBinaryCompact", no_argument, 0, 0 },
 		{ "writeMultipleHits", required_argument, 0, 0},
 		{ "writeFraction", required_argument },
-		{ "splitTime", required_argument, 0, 0}
+		{ "splitTime", required_argument, 0, 0},
+		{ "timebase", required_argument, 0, 0}
     };
 
 	while(true) {
@@ -78,16 +81,24 @@ int main(int argc, char *argv[])
 		}
 		else if(c == 0) {
 			switch(optionIndex) {
-				case 0:		displayHelp(argv[0]); exit(0); break;
-				case 1:		configFileName = optarg; break;
-				case 2:		fileType = FILE_BINARY; break;
-				case 3:		fileType = FILE_ROOT; break;
-				case 4:		fileType = FILE_TEXT_COMPACT; break;
-				case 5:		fileType = FILE_BINARY_COMPACT; break;
-				case 6:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
-				case 7:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
-				case 8:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
-				default:	displayUsage(argv[0]); exit(1);
+			case 0:		displayHelp(argv[0]); exit(0); break;
+			case 1:		configFileName = optarg; break;
+			case 2:		fileType = FILE_BINARY; break;
+			case 3:		fileType = FILE_ROOT; break;
+			case 4:		fileType = FILE_TEXT_COMPACT; break;
+			case 5:		fileType = FILE_BINARY_COMPACT; break;
+			case 6:		hitLimitToWrite = boost::lexical_cast<int>(optarg); break;
+			case 7:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
+			case 8:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
+
+			case 9:		if(strcmp(optarg, "sync") == 0) tb = RawReader::SYNC;
+					else if(strcmp(optarg, "wall") == 0) tb = RawReader::WALL;
+					else if(strcmp(optarg, "step") == 0) tb = RawReader::STEP;
+					else if(strcmp(optarg, "user") == 0) tb = RawReader::USER;
+					else { fprintf(stderr, "ERROR: unkown timebase '%s'\n", optarg); exit(1); }
+					break;
+
+			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
 		else {
@@ -110,7 +121,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	RawReader *reader = RawReader::openFile(inputFilePrefix);
+	RawReader *reader = RawReader::openFile(inputFilePrefix, tb);
 	
 	unsigned long long mask = SystemConfig::LOAD_ALL;
 	// If data was taken in full ToT mode, do not attempt to load these files

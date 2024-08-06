@@ -54,7 +54,7 @@ RawReader::~RawReader()
 	if(indexFile != NULL) fclose(indexFile);
 }
 
-RawReader *RawReader::openFile(const char *fnPrefix)
+RawReader *RawReader::openFile(const char *fnPrefix, timebase_t tb)
 {
 	RawReader *reader = new RawReader();
 
@@ -126,10 +126,16 @@ RawReader *RawReader::openFile(const char *fnPrefix)
 			reader->qdcMode[gChannelID] = strcmp(mode, "qdc") == 0;
 		}
 	}
-	else{
+	else {
 		for(unsigned long gChannelID = 0; gChannelID < MAX_NUMBER_CHANNELS; gChannelID++)
 			reader->qdcMode[gChannelID] = (header[0] & 0x100000000UL) != 0;
 	}
+	
+	uint32_t systemFrequency = header[0] & 0xFFFFFFFFUL;
+	memcpy((void*)&(reader->daqSynchronizationEpoch), &header[1], sizeof(double));
+	reader->daqSynchronizationEpoch *= systemFrequency;
+	reader->fileCreationDAQTime = header[4];
+	reader->tb = tb;
 
 	return reader;
 }
@@ -218,8 +224,8 @@ int RawReader::readFromDataFile(char *buf, int count)
 bool  RawReader::getNextStep() {
 
 	if(!indexIsTemp) {
-		int r = fscanf(indexFile, "%llu\t%llu\t%*lld\t%*lld\t%f\t%f\n", &stepBegin, &stepEnd, &stepValue1, &stepValue2);
-		if(r == 4)
+		int r = fscanf(indexFile, "%llu\t%llu\t%llu\t%*llu\t%f\t%f\n", &stepBegin, &stepEnd, &stepFirstFrameID, &stepValue1, &stepValue2);
+		if(r == 5)
 			return true;
 	}
 
@@ -228,6 +234,7 @@ bool  RawReader::getNextStep() {
 		while(fscanf(indexFile, "%f\t", &stepValue1) < 1);
 		while(fscanf(indexFile, "%f\t", &stepValue2) < 1);
 		while(fscanf(indexFile, "%llu\t", &stepBegin) < 1);
+		while(fscanf(indexFile, "%llu\t", &stepFirstFrameID) < 1);
 		stepEnd = ULLONG_MAX;
 
 		if(stepBegin < ULLONG_MAX)
@@ -268,7 +275,22 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 {
 	auto pool = new ThreadPool<UndecodedHit>();
 	auto mysink = new Decoder(this, sink);
-	mysink->pushT0(0);
+
+	double t0 = 0;
+	switch(tb) {
+		case SYNC:	t0 = 0;
+				break;
+		case WALL:	t0 = daqSynchronizationEpoch;
+				break;
+		case STEP:	t0 = -double(stepFirstFrameID) * 1024;
+				break;
+		case USER:	t0 = -double(fileCreationDAQTime);
+				break;
+		default:
+				t0 = 0;
+	}
+
+	mysink->pushT0(t0);
 	
 	RawDataFrame *dataFrame = new RawDataFrame;
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
