@@ -21,7 +21,7 @@ import math
 import subprocess
 from sys import stdout
 from copy import deepcopy
-import os
+import os, stat
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
@@ -1050,6 +1050,16 @@ class Connection:
 		
 		# Cache max values after applying
 		self.__hvdac_max_values = max_value.copy()
+
+
+	def waitOnNamedPipe(self, fn):
+		if not stat.S_ISFIFO(os.stat(fn).st_mode):
+			raise Exception("'%s' is not a FIFO" % fn)
+		print("Waiting for a byte to be written to '%s'" % fn)
+		f = open(fn, 'r')
+		d = f.read(1)
+		f.close()
+		return None
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
