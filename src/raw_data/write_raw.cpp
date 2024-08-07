@@ -240,7 +240,7 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 8);
+	assert(argc == 9);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
