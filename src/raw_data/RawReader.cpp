@@ -54,7 +54,7 @@ RawReader::~RawReader()
 	if(indexFile != NULL) fclose(indexFile);
 }
 
-RawReader *RawReader::openFile(const char *fnPrefix, timebase_t tb)
+RawReader *RawReader::openFile(const char *fnPrefix, timeref_t tb)
 {
 	RawReader *reader = new RawReader();
 

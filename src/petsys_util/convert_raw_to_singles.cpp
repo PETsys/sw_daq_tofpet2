@@ -27,7 +27,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
 	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
 	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
-	fprintf(stderr,  "  --timebase [sync|wall|step|user] \t\t Select timebase for written data\n");
+	fprintf(stderr,  "  --timeref [sync|wall|step|user] \t\t Select timeref for written data\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 	FILE_TYPE fileType = FILE_TEXT;
 	long long eventFractionToWrite = 1024;
 	double fileSplitTime = 0.0;
-	RawReader::timebase_t tb = RawReader::SYNC;
+	RawReader::timeref_t tb = RawReader::SYNC;
 
 
 	static struct option longOptions[] = {
@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeFraction", required_argument, 0, 0},
 		{ "splitTime", required_argument, 0, 0},
-		{ "timebase", required_argument, 0, 0}
+		{ "timeref", required_argument, 0, 0}
 	};
 
 	while(true) {
@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 					else if(strcmp(optarg, "wall") == 0) tb = RawReader::WALL;
 					else if(strcmp(optarg, "step") == 0) tb = RawReader::STEP;
 					else if(strcmp(optarg, "user") == 0) tb = RawReader::USER;
-					else { fprintf(stderr, "ERROR: unkown timebase '%s'\n", optarg); exit(1); }
+					else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 					break;
 
 			default:	displayUsage(argv[0]); exit(1);

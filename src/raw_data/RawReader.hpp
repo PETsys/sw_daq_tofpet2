@@ -14,7 +14,7 @@ namespace PETSYS {
 
 	class RawReader : public EventStream {
 	public:
-		enum timebase_t {
+		enum timeref_t {
 			SYNC,
 			WALL,
 			STEP,
@@ -40,7 +40,7 @@ namespace PETSYS {
 
 	public:
 		~RawReader();
-		static RawReader *openFile(const char *fnPrefix, timebase_t tb);
+		static RawReader *openFile(const char *fnPrefix, timeref_t tb);
 		bool isQDC(unsigned int gChannelID);
 		bool isTOT();
 		double getFrequency();
@@ -74,7 +74,7 @@ namespace PETSYS {
 		bool qdcMode[MAX_NUMBER_CHANNELS];		
 		int triggerID;
 
-		timebase_t tb;
+		timeref_t tb;
 		double daqSynchronizationEpoch;
 		unsigned long long fileCreationDAQTime;
 
