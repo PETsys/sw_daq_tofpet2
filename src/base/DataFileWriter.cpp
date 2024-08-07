@@ -210,7 +210,7 @@ void DataFileWriter::renameFile() {
 };
 
 
-void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer) {
+void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
     
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
@@ -250,12 +250,12 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer) {
 }
 
 
-void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer) {
+void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
     
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
-    long long tMin = buffer->getTMin() * (long long)Tps;
+    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
 
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
@@ -305,11 +305,11 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer) {
     }	
 }
 
-void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer) {
+void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
 
-    long long tMin = buffer->getTMin() * (long long)Tps;
+    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
     
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
@@ -394,11 +394,11 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer) {
 }
 
 
-void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer) {
+void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
 
-    long long tMin = buffer->getTMin() * (long long)Tps;
+    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
     
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {

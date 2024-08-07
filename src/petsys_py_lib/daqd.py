@@ -21,7 +21,7 @@ import math
 import subprocess
 from sys import stdout
 from copy import deepcopy
-import os
+import os, stat
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
@@ -1051,6 +1051,16 @@ class Connection:
 		# Cache max values after applying
 		self.__hvdac_max_values = max_value.copy()
 
+
+	def waitOnNamedPipe(self, fn):
+		if not stat.S_ISFIFO(os.stat(fn).st_mode):
+			raise Exception("'%s' is not a FIFO" % fn)
+		print("Waiting for a byte to be written to '%s'" % fn)
+		f = open(fn, 'r')
+		d = f.read(1)
+		f.close()
+		return None
+
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
 		
@@ -1093,12 +1103,19 @@ class Connection:
 		else:
 			portID, slaveID = trigger
 			triggerID = 32 * portID + slaveID
+  		
+
+		# Determine current time and and estimate acquisition wallclock start time
+		fileCreationDAQTime = self.getCurrentTimeTag()
+		currentTime = time()
+		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
 		
 		cmd = [ "./write_raw", \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
-			str(qdcMode), "%1.12f" % self.getAcquisitionStartTime(),
+			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
+			str(fileCreationDAQTime),
 			calMode and 'T' or 'N', 
 			str(triggerID) ]
 		self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
@@ -1112,7 +1129,7 @@ class Connection:
 				self.__shmName,
 				monitor_toc,
 				str(triggerID), 
-				"%1.12f" % self.getAcquisitionStartTime()
+				"%1.12f" % daqSynchronizationEpoch
 				]
 			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
@@ -1149,6 +1166,7 @@ class Connection:
 			
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
+		nRequiredFrames = max(nRequiredFrames, 1) # Attempt to acquire at least 1 frame
 
 		template1 = "@ffIIi"
 		template2 = "@I"
@@ -1168,20 +1186,6 @@ class Connection:
 		stopFrame = startFrame + nRequiredFrames
 
 		t0 = time()
-
-		# Send start of step block (with wrPointer = rdPointer)
-		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 0)
-		for pin, pout in workers:
-			pin.write(data); pin.flush()
-
-		for pin, pout in workers:
-			data = pout.read(n2)
-		rdPointer,  = struct.unpack(template2, data)
-		self.__setDataFrameReadPointer(rdPointer)
-
-		for pin, pout in workers:
-			data = pout.read(n3)
-		stepFrames, stepFramesLost, stepEvents = struct.unpack(template3, data)
 
 		nBlocks = 0
 		currentFrame = startFrame
@@ -1215,7 +1219,12 @@ class Connection:
 
 			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
-			data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
+			if nBlocks == 0:
+				# First block in step
+				data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 0)
+			else:
+				# Other blocks in step
+				data = struct.pack(template1, step1, step2, wrPointer, rdPointer, 1)
 			for pin, pout in workers:
 				pin.write(data); pin.flush()
 			
@@ -1496,13 +1505,6 @@ class Connection:
 				raise ErrorNoFEB()
 
 		return self.read_config_register(portID, 0, 46, 0x0203)
-
-
-	def getAcquisitionStartTime(self):
-		currentTimeTag = self.getCurrentTimeTag()
-		currentTime = time()
-		return currentTime - currentTimeTag / self.__systemFrequency
-
 
 		
 	## Returns a 3 element tupple with the number of transmitted, received, and error packets for a given port 

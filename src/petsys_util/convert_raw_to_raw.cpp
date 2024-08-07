@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	
-	RawReader *reader = RawReader::openFile(inputFilePrefix);
+	RawReader *reader = RawReader::openFile(inputFilePrefix, RawReader::SYNC);
 	
 	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, 0, RAW, fileType , 0, eventFractionToWrite, fileSplitTime);
 
