@@ -28,10 +28,10 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeBinary \t Set the output data format to binary\n");
 	fprintf(stderr,  "  --writeBinaryCompact \t Set the output data format to compact binary\n");
 	fprintf(stderr,  "  --writeTextCompact \t Set the output data format to compact text \n");
-	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT TTree\n");
-	fprintf(stderr,  "  --writeMultipleHits N \t\t Writes multiple hits, up to the Nth hit\n");
-	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
-	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
+	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT (TTree)\n");
+	fprintf(stderr,  "  --writeMultipleHits N  Writes multiple hits, up to the Nth hit\n");
+	fprintf(stderr,  "  --writeFraction N \t Fraction of events to write, in percentage\n");
+	fprintf(stderr,  "  --splitTime t \t Split output into different files every t seconds\n");
 	fprintf(stderr,  "  --timeref [sync|wall|step|user] \t\t Select timeref for written data\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };

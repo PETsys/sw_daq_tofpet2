@@ -17,10 +17,11 @@ void displayHelp(char * program)
 	fprintf(stderr, "Arguments:\n");
 	fprintf(stderr,  "  --config \t\t Configuration file containing path to tdc calibration table \n");
 	fprintf(stderr,  "  -i \t\t\t Input file prefix - raw data\n");
-	fprintf(stderr,  "  -o \t\t\t Output file name - containins raw event data in ROOT format.\n");
+	fprintf(stderr,  "  -o \t\t\t Output file name - by default in text data format\n");
 	fprintf(stderr, "Optional flags:\n");
-	fprintf(stderr,  "  --writeFraction N \t\t Fraction of events to write. Default: 100%%.\n");
-	fprintf(stderr,  "  --splitTime t \t\t Split output into different files every t seconds.\n");
+	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT (TTree)\n");
+	fprintf(stderr,  "  --writeFraction N \t Fraction of events to write, in percentage\n");
+	fprintf(stderr,  "  --splitTime t \t Split output into different files every t seconds\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 

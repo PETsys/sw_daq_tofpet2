@@ -1055,7 +1055,8 @@ class Connection:
 	def waitOnNamedPipe(self, fn):
 		if not stat.S_ISFIFO(os.stat(fn).st_mode):
 			raise Exception("'%s' is not a FIFO" % fn)
-		print("Waiting for a byte to be written to '%s'" % fn)
+		print("INFO: Waiting for a byte to be written to '%s' to start acquiring" % fn)
+		print("INFO: If using the GUI, press Start")
 		f = open(fn, 'r')
 		d = f.read(1)
 		f.close()
