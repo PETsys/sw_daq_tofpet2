@@ -826,6 +826,9 @@ void calibrateAsic(
 	TCanvas *c = new TCanvas();
 	c->Divide(3,2);
 	TH1F *hCount_list[2];
+
+	sprintf(fName, "%s.tsv", summaryFilePrefix);
+	auto summaryFile = fopen(fName, "w");
 	for(unsigned long branchID = 0; branchID < 2; branchID++) {
 		char bStr = (branchID == 0) ? 'T' : 'E';
 		char hName[128];
@@ -845,24 +848,33 @@ void calibrateAsic(
 			for(unsigned long tacID = 0; tacID < 4; tacID++) {
 				unsigned long gid = gidStart | (channelID << 3) | (tacID << 1) | branchID;
 				CalibrationEntry &entry = calibrationTable[gid];
-				if(!entry.valid) continue;
-				
 				TH1S *hControlE = hControlE_list[gid-gidStart];
-				double counts = hControlE->GetEntries();
-				hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
 				
-				if(hControlE->GetEntries() < 1000) continue;
-				hControlE->Fit("gaus", "Q");
-				TF1 *fit = hControlE->GetFunction("gaus");
-				if(fit == NULL) continue;
+				unsigned counts = 0;
+				float sigma = 5000;
 				
-				float sigma = fit->GetParameter(2);
-				float sigmaError = fit->GetParError(2);
-				gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
-				gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
-				hResolution->Fill(sigma);
+				if(hControlE != NULL) {
+					counts = hControlE->GetEntries();
+					hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
 				
-				gResolutionNPoints += 1;
+					if(entry.valid) {
+						if(hControlE->GetEntries() >= 1000) {
+							hControlE->Fit("gaus", "Q");
+							TF1 *fit = hControlE->GetFunction("gaus");
+							if(fit != NULL) {
+								sigma = fit->GetParameter(2);
+								float sigmaError = fit->GetParError(2);
+								gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
+								gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
+								hResolution->Fill(sigma);
+								
+								gResolutionNPoints += 1;					
+							}
+						}
+					}
+				}
+				
+				fprintf(summaryFile, "%u\t%u\t%c\t%u\t%f\n", channelID, tacID, (branchID == 0) ? 'T' : 'E', counts, sigma);
 			}
 		}
 		delete tmp1;
@@ -888,6 +900,9 @@ void calibrateAsic(
 		hResolution->Draw("HIST");
 		
 	}
+	
+	fclose(summaryFile);
+	
 	sprintf(fName, "%s.svg", summaryFilePrefix);
 	c->SaveAs(fName);
 	delete c;

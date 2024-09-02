@@ -22,6 +22,9 @@ osPrettyName=$( source /etc/os-release ; echo $ID);
 osVersion=$( source /etc/os-release ; echo ${VERSION_ID});
 osKernelVer=`uname -r`;
 
+# Cut minor OS version of present
+osVersion=${osVersion%.*}
+
 echo "***************************************************************";
 echo "PETSys Software Setup Tool";
 echo "Running on $osPrettyName ($osKernelVer)";
@@ -49,6 +52,8 @@ elif [[ $osPrettyName == "centos" && $osVersion == "8" ]]; then
 	echo "INFO: Running on CentOS 8";	
 elif [[ $osPrettyName == "centos" && $osVersion == "9" ]]; then
 	echo "INFO: Running on CentOS 9";	
+elif [[ $osPrettyName == "almalinux" && $osVersion == "9" ]]; then
+	echo "INFO: Running on AlmaLinux 9";	
 elif [[ $osPrettyName == "rhel" && $osVersion == "7" ]]; then
 	echo "INFO: Running on RHEL 7";	
 elif [[ $osPrettyName == "rhel" && $osVersion == "8" ]]; then
@@ -88,44 +93,32 @@ fi;
 echo "INFO: Enabling repositories and Updating the package lists...";
 if [[ $osPrettyName == "ubuntu" ]]; then
 	sudo apt update;
+	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio1 libaio-dev;
+
 elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 7 ]]; then
 	sudo yum -y install epel-release;
 	sudo yum -y makecache;
+	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel libaio libaio-devel;
+	echo "INFO: Installing bitarray using pip3 commands";
+	pip3 install bitarray;
+
 elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 8 ]]; then
 	sudo dnf -y install epel-release;
 	sudo dnf -y config-manager --set-enabled powertools;
 	sudo dnf -y makecache;
-elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 9 ]]; then
+	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel redhat-lsb;
+	echo "INFO: Installing bitarray using pip3 commands";
+	pip3 install bitarray;
+
+
+elif [[ ($osPrettyName == "centos" || $osPrettyName == "almalinux" || $osPrettyName == "rhel") && $osVersion == 9 ]]; then
 	sudo dnf -y install epel-release;
 	sudo dnf -y config-manager --set-enabled crb
 	sudo dnf -y makecache;
-fi;
-
-
-# Install the requried packages
-if [[ $osPrettyName == "ubuntu" ]]; then
-	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio1 libaio-dev;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
-	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel libaio libaio-devel;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 8 ]]; then
-	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel redhat-lsb;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 9 ]]; then
 	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel lsb_release;
-fi
-
-
-# Install some python libraries using pip3 commands
-if [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
-	echo "INFO: Installing pandas bitarray matplotlib pycairo using pip3 commands";
-	pip3 install pandas bitarray matplotlib pycairo;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 8) ]]; then
-	echo "INFO: Installing bitarray using pip3 commands";
-	pip3 install bitarray;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 9) ]]; then
         echo "INFO: Installing pandas bitarray using pip3 commands";
         pip3 install pandas bitarray;
 fi;
-
 
 # Install ROOT from source -- for UBUNTU only
 installROOT=1;
