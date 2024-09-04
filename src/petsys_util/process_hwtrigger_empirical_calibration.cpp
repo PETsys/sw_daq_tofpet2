@@ -78,8 +78,6 @@ struct CalibrationEntry {
 	float p0;
 	float p1;
 	float p2;
-	//float gC;
-	//float gA;
 	float k0;
 	float chi2_E;
 	float chi2_T;
@@ -450,9 +448,12 @@ void calibrateAsic(
 
 		char hName[128];
 
-		TProfile *profileTAC  = hEnergy_vs_efine[gid-gTacStart]->ProfileX();
+		TProfile *profileTAC  = hEnergy_vs_efine[gid-gTacStart]->ProfileX("_pfx", 1, -1, "s");
 	
 		assert(profileTAC!= NULL);
+
+		double fixedError = 0;  
+
 		CalibrationEntry &entry = calibrationTable[gid];
 		entry.p0 = 0;
 		entry.p1 = 0;
@@ -475,13 +476,14 @@ void calibrateAsic(
 		}
 		
 		Int_t binHigh = profileTAC->FindLastBinAbove(1);
-		if (slaveID == 1 && portID ==0 && asicID == 28 && channelID == 41 && tacID ==3) continue; ///For Cornell data only!!!!
+
 		profileTAC->Fit("pol2","Q","",float(binLow+2),float(binHigh));
 		TF1 *fitFunc = profileTAC->GetFunction("pol2");
 
 		entry.p0 = fitFunc->GetParameter(0);
 		entry.p1 = fitFunc->GetParameter(1);
 		entry.p2 = fitFunc->GetParameter(2);
+		
 		entry.chi2_E = fitFunc->GetChisquare()/fitFunc->GetNDF();
 		entry.valid = true;
 	}
@@ -520,6 +522,8 @@ void calibrateAsic(
 
 		char hName[128];
 
+		TProfile *profileEnergy  = hTime_vs_energy[gid-gTacStart]->ProfileX("_pfx", 1, -1, "");
+	
 		if(hTime_vs_energy[gid-gTacStart]->GetEntries() < 1500){
 			fprintf(stderr, "WARNING: Not enough data to calibrate for time walk. Skipping Calibration of TAC (%02u %02u %02u %02u %02u)\n",
 					portID, slaveID, asicID, channelID, tacID);
@@ -528,13 +532,15 @@ void calibrateAsic(
 		
 		TF1 *fitFunc1 = new TF1("TimeWalkFitFunction", TimeWalkFitFunction, 0, 50, 1);
 		
-		fitFunc1->SetParameter(0,20);
+		fitFunc1->SetParameter(0,1);
 	 
 		hTime_vs_energy[gid-gTacStart]->Fit(fitFunc1,"Q","",0.2, 20);
+		profileEnergy->Fit(fitFunc1,"Q","",0.2, 20);
 		
 		entry.k0 = fitFunc1->GetParameter(0);
 		entry.chi2_T = fitFunc1->GetChisquare()/fitFunc1->GetNDF();
 		
+
 		entry.valid = true;
 	}
 
@@ -685,7 +691,7 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	TH1F *h_chi2_E = new TH1F("h_chi2_E", "h_chi2_E", 500, 1, 1000);
 
 
-	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tgC\tgA\tk0\n");
+	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tgA\tk0\n");
 
 	int count = 0;
 
@@ -702,16 +708,16 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 			portID, slaveID, asicID, channelID, tacID,
 			entry.p0, entry.p1, entry.p2, entry.k0);
 
-
 		h_p0->Fill(entry.p0);
 		h_p1->Fill(entry.p1);
 		h_p2->Fill(entry.p2);
 		h_k0->Fill(entry.k0);
 
-		if(entry.chi2_E > 0 && entry.chi2_E < 1000 && entry.chi2_T > 0 &&  entry.chi2_T < 5E6){
+		if(entry.chi2_E > 0 && entry.chi2_E < 10 && entry.chi2_T > 0 &&  entry.chi2_T < 1E7){
 			h_chi2_T->Fill(entry.chi2_T);
 			h_chi2_E->Fill(entry.chi2_E);
-			if( entry.chi2_E < 1000 &&  entry.chi2_T < 5E6){
+			if( entry.chi2_E < 1000 &&  entry.chi2_T < 5E6)
+			{
 				count++;
 			}
 		}
