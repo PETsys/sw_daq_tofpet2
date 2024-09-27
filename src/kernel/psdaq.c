@@ -121,15 +121,21 @@ static int __init psdaq_init(void)
 {
 	int err;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
-	// Kernel 6.4 changed this API
-	psdaq_dev_class = class_create("psdaq");
-#elif defined(PETSYS_RHEL_PATCH) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
-	// RHEL 9 backported the above API change
-	psdaq_dev_class = class_create("psdaq");
+	
+#if defined(PSOS_RHEL)
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 14, 0)
+		psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#else
+		psdaq_dev_class = class_create("psdaq");
+	#endif
 #else
-	psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#if LINUX_VERSION_CODE <= KERNEL_VERSION(6, 4, 0)
+		psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#else 
+		psdaq_dev_class = class_create("psdaq");
+	#endif
 #endif
+
 
 	if (IS_ERR(psdaq_dev_class)) {
 		err = PTR_ERR(psdaq_dev_class);
