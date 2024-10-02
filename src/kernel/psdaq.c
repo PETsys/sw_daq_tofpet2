@@ -106,11 +106,22 @@ struct psdaq_dev_t {
 static struct class *psdaq_dev_class;
 static unsigned device_counter = 0;
 
+#if defined(PSOS_UBUNTU)
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
+static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+# else
+static int psdaq_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#endif
+
+#else
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,0,0)
 static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
 # else
 static int psdaq_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#endif
+
 #endif
 {
 	add_uevent_var(env, "DEV_NAME=psdaq%d", device_counter);
@@ -121,15 +132,21 @@ static int __init psdaq_init(void)
 {
 	int err;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 4, 0)
-	// Kernel 6.4 changed this API
-	psdaq_dev_class = class_create("psdaq");
-#elif defined(PETSYS_RHEL_PATCH) && (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0))
-	// RHEL 9 backported the above API change
-	psdaq_dev_class = class_create("psdaq");
+	
+#if defined(PSOS_RHEL)
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 14, 0)
+		psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#else
+		psdaq_dev_class = class_create("psdaq");
+	#endif
 #else
-	psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#if LINUX_VERSION_CODE <= KERNEL_VERSION(6, 4, 0)
+		psdaq_dev_class = class_create(THIS_MODULE, "psdaq");
+	#else 
+		psdaq_dev_class = class_create("psdaq");
+	#endif
 #endif
+
 
 	if (IS_ERR(psdaq_dev_class)) {
 		err = PTR_ERR(psdaq_dev_class);

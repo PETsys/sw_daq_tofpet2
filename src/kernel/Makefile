@@ -1,5 +1,8 @@
-ifneq ("$(wildcard /etc/redhat-release)","")
-	EXTRA_CFLAGS += -DPETSYS_RHEL_PATCH
+
+ifeq ($(shell grep -Fq "ubuntu" "/etc/os-release" && echo 1 || echo 0), 1)
+	EXTRA_CFLAGS += -DPSOS_UBUNTU
+else ifeq ($(shell grep -Fq "rhel" "/etc/os-release" && echo 1 || echo 0), 1)
+	EXTRA_CFLAGS += -DPSOS_RHEL
 endif
 
 obj-m := psdaq.o
