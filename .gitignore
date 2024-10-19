@@ -6,3 +6,5 @@
 *.so
 *_C.d
 
+.idea/
+cmake-build-*
