@@ -1,4 +1,4 @@
-PyGObject # Requires sudo apt-get install python3-gi
+PyGObject # Requires `sudo apt-get install python3-gi` for Ubuntu/Debian
 bitarray
 matplotlib
 pandas
