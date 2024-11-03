@@ -1,0 +1,5 @@
+PyGObject # Requires sudo apt-get install python3-gi
+bitarray
+matplotlib
+pandas
+numpy
