@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from petsys import daqd, config
+from petsys import daqd, config, fe_power
 from copy import deepcopy
 import pandas
 import os
@@ -19,8 +19,8 @@ def main():
 	parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true", help="Enable the hardware coincidence filter")
 	parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
 	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait on named pipe before acquiring data")
-
-
+	parser.add_argument("--portID",  type=int, required=False, help="Set target FEBD port ID")
+	parser.add_argument("--slaveID", type=int, required=False, help="Set target FEBD slave ID")
 	args = parser.parse_args()
 
 	validParams = ["OV","vth_t1","vth_t2","vth_e","disc_lsb_t1"]
@@ -53,7 +53,14 @@ def main():
 	systemConfig = config.ConfigFromFile(args.config, loadMask=mask)
 
 	conn = daqd.Connection()
-	conn.initializeSystem()
+
+	if (args.portID != None and args.slaveID != None):
+		for p, s in conn.getActiveFEBDs():
+			fe_power.set_fem_power(conn,p,s,"off")  
+		conn.initializeSystem(power_lst = [(args.portID,args.slaveID)])
+	else:
+		conn.initializeSystem()
+	
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
 
 	if args.waitOn:
