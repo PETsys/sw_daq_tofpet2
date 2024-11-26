@@ -34,67 +34,67 @@ class Connection:
 	## Constructor
 	def __init__(self):
 		socketPath = "/tmp/d.sock"
-		self.__systemFrequency = 200E6
+		self._systemFrequency = 200E6
 
 		# Open socket to daqd
-		self.__socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-		self.__socket.connect(socketPath)
+		self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+		self._socket.connect(socketPath)
 
 		# Generate a random number for first command serial number
-		self.__lastSN = randrange(0, 2**15-1)
+		self._lastSN = randrange(0, 2 ** 15 - 1)
 
 		# Open raw data frame shared memory
 		shmName, s0, p1, s1 = self.__getSharedMemoryInfo()
-		self.__shmName = shmName
-		self.__shm = shm_raw.SHM_RAW(self.__shmName)
+		self._shmName = shmName
+		self._shm = shm_raw.SHM_RAW(self._shmName)
 
-		self.__activePorts = []
-		self.__activeUnits = {}
-		self.__activeBiasSlots = {}
-		self.__activeAsics = {}
+		self._activePorts = []
+		self._activeUnits = {}
+		self._activeBiasSlots = {}
+		self._activeAsics = {}
 
-		self.__asicConfigCache = None
-		self.__asicConfigCache_TAC_Refresh = None
-		self.__hvdac_config_cache = {}
-		self.__hvdac_max_values = {}
+		self._asicConfigCache = None
+		self._asicConfigCache_TAC_Refresh = None
+		self._hvdac_config_cache = {}
+		self._hvdac_max_values = {}
 
-		self.__writerPipe = None
-		self.__monitorPipe = None
+		self._writerPipe = None
+		self._monitorPipe = None
 		
-		self.__temperatureSensorList = {}
+		self._temperatureSensorList = {}
 
 	def __getSharedMemoryInfo(self):
 		template = "@HH"
 		n = struct.calcsize(template)
 		data = struct.pack(template, 0x02, n)
-		self.__socket.send(data);
+		self._socket.send(data);
 
 		template = "@HQQQ"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		length, s0, p1, s1 = struct.unpack(template, data)
-		name = self.__socket.recv(length - n);
+		name = self._socket.recv(length - n);
 		return (name, s0, p1, s1)
 
 	## Returns the system reference clock frequency
 	def getSystemFrequency(self):
-		return self.__systemFrequency
+		return self._systemFrequency
 
 	## Returns an array with the active ports
 	def getActivePorts(self):
-		if self.__activePorts == []:
-			self.__activePorts = self.__getActivePorts()
-		return self.__activePorts
+		if self._activePorts == []:
+			self._activePorts = self.__getActivePorts()
+		return self._activePorts
 
 	def __getActivePorts(self):
 		template = "@HH"
 		n = struct.calcsize(template)
 		data = struct.pack(template, 0x06, n)
-		self.__socket.send(data);
+		self._socket.send(data);
 
 		template = "@HQ"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		length, mask = struct.unpack(template, data)
 		reply = [ n for n in range(12*16) if (mask & (1<<n)) != 0 ]
 		return reply
@@ -103,22 +103,22 @@ class Connection:
 		template = "@HH"
 		n = struct.calcsize(template)
 		data = struct.pack(template, 0x14, n)
-		self.__socket.send(data);
+		self._socket.send(data);
 
 		template = "@HQ"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		length, temps = struct.unpack(template, data)
 		reply = [ ((temps >> n*16) & 0xFFFF)/100 for n in range(4)]
 		return reply
 
 	def getActiveUnits(self):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
-		return sorted(self.__activeUnits.keys())
+		if self._activeUnits == {}: self.__scanUnits_ll()
+		return sorted(self._activeUnits.keys())
 
 	def getTriggerUnit(self):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
-		triggerUnits = [ a for a, d in self.__activeUnits.items() if info.is_trigger(d) ]
+		if self._activeUnits == {}: self.__scanUnits_ll()
+		triggerUnits = [a for a, d in self._activeUnits.items() if info.is_trigger(d)]
 
 		if len(triggerUnits) == 0:
 			return None
@@ -129,14 +129,14 @@ class Connection:
 
 	## Returns an array of (portID, slaveID) for the active FEB/Ds (PAB) 
 	def getActiveFEBDs(self):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
-		febds = [ a for a, d in self.__activeUnits.items() if info.is_febd(d) ]
+		if self._activeUnits == {}: self.__scanUnits_ll()
+		febds = [a for a, d in self._activeUnits.items() if info.is_febd(d)]
 		return sorted(febds)
 
 	def getUnitInfo(self, portID, slaveID):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
+		if self._activeUnits == {}: self.__scanUnits_ll()
 		try:
-			return self.__activeUnits[(portID, slaveID)]
+			return self._activeUnits[(portID, slaveID)]
 		except KeyError as e:
 			raise ErrorUnitNotPresent(portID, slaveID)
 	
@@ -168,27 +168,27 @@ class Connection:
 				else:
 					break
 
-		self.__activeUnits = activeUnits
-		self.__activeBiasSlots = activeBiasSlots
+		self._activeUnits = activeUnits
+		self._activeBiasSlots = activeBiasSlots
 
 	def getActiveAsics(self):
-		return sorted(self.__activeAsics.keys())
+		return sorted(self._activeAsics.keys())
 
 	def getAsicSubtype(self, portID, slaveID, chipID):
-		return self.__activeAsics[(portID, slaveID, chipID)]
+		return self._activeAsics[(portID, slaveID, chipID)]
 	
 	def getActiveAsicsChannels(self):
 		return [ (p, s, a, c) for c in range(64) for (p, s, a) in self.getActiveAsics() ]
 	
 	def getActiveBiasSlots(self):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
-		return sorted(self.__activeBiasSlots.keys())
+		if self._activeUnits == {}: self.__scanUnits_ll()
+		return sorted(self._activeBiasSlots.keys())
 
 	def getBiasSlotInfo(self, portID, slaveID, slotID):
-		return self.__activeBiasSlots[(portID, slaveID, slotID)]
+		return self._activeBiasSlots[(portID, slaveID, slotID)]
 
 	def getActiveBiasChannels(self):
-		if self.__activeUnits == {}: self.__scanUnits_ll()
+		if self._activeUnits == {}: self.__scanUnits_ll()
 		lst = []
 		for portID, slaveID, slotID in self.getActiveBiasSlots():
 			bias_slot_info = self.getBiasSlotInfo(portID, slaveID, slotID)
@@ -220,10 +220,10 @@ class Connection:
 	def __set_test_pulse(self, targets, length, interval, finePhase, invert=False):
 		# Check that the pulse interval does not cause problem with the ASIC TAC refresh period
 		# First, make sure we have a cache of settings
-		if self.__asicConfigCache_TAC_Refresh is None:
+		if self._asicConfigCache_TAC_Refresh is None:
 			self.getAsicsConfig()
 			
-		for tacRefreshPeriod_1, tacRefreshPeriod_2 in self.__asicConfigCache_TAC_Refresh:
+		for tacRefreshPeriod_1, tacRefreshPeriod_2 in self._asicConfigCache_TAC_Refresh:
 			tacRefreshPeriod = 64 * (tacRefreshPeriod_1 + 1) * (tacRefreshPeriod_2 + 1)
 			if interval % tacRefreshPeriod == 0:
 				print("WARNING: Test pulse period %d is a multiple of TAC refresh period %d (%d %d) in some ASICs." % (interval, tacRefreshPeriod, tacRefreshPeriod_1, tacRefreshPeriod_2))
@@ -265,11 +265,11 @@ class Connection:
 		template1 = "@HHI"
 		n = struct.calcsize(template1)
 		data = struct.pack(template1, 0x12, n, mode);
-		self.__socket.send(data)
+		self._socket.send(data)
 
 		template = "@I"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		return None			
 			
 	def disableCoincidenceTrigger(self):
@@ -414,8 +414,8 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b1)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x300, 0b0)
-		self.__asicConfigCache = None
-		self.__asicConfigCache_TAC_Refresh = None
+		self._asicConfigCache = None
+		self._asicConfigCache_TAC_Refresh = None
 
 		# Check which ASICs react to the configuration
 		asicConfigOK = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
@@ -492,7 +492,7 @@ class Connection:
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b0)
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b1)
 		# Allow some time for the IDELAY adjustment
-		sleep(10 * 2**14 / self.__systemFrequency + 0.010)
+		sleep(10 * 2 ** 14 / self._systemFrequency + 0.010)
 		# Set ASIC receiver logic to normal mode
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 1, 0x0301, 0b0)
 
@@ -516,7 +516,7 @@ class Connection:
 
 		# FEB\D-8K -> Ramp up VDD1 rail again after ASIC configuration
 		for portID, slaveID in self.getActiveFEBDs():
-			if self.__activeUnits[(portID, slaveID)][0] in [ 0x0005 ]:
+			if self._activeUnits[(portID, slaveID)][0] in [0x0005]:
 				print(f'INFO: Found FEB\D 8K @ ({portID},{slaveID}). Ramping up VDD1 rail after ASIC configuration.')
 				busID_lst = fe_power_8k.detect_active_bus(self, portID, slaveID)
 				for busID, moduleVersion in busID_lst:
@@ -547,7 +547,7 @@ class Connection:
 				deserializerStatus[k+n] = lDeserializerStatus[n]
 				decoderStatus[k+n] = lDecoderStatus[n]
 
-		self.__activeAsics = {}
+		self._activeAsics = {}
 		inconsistentStateAsics = []
 		for gID in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS):
 			statusTripplet = (asicConfigOK[gID], deserializerStatus[gID], decoderStatus[gID])
@@ -557,7 +557,7 @@ class Connection:
 
 			if statusTripplet == (True, True, True):
 				# All OK, ASIC is present and OK
-				self.__activeAsics[(portID, slaveID, chipID)] = asicType[(portID, slaveID, chipID)]
+				self._activeAsics[(portID, slaveID, chipID)] = asicType[(portID, slaveID, chipID)]
 			elif statusTripplet == (False, False, False):
 				# All failed, ASIC is not present
 				pass
@@ -619,8 +619,8 @@ class Connection:
 		template2 = "@H"
 		n = struct.calcsize(template1) + struct.calcsize(template2);
 		data = struct.pack(template1, 0x01, n) + struct.pack(template2, mode)
-		self.__socket.send(data)
-		data = self.__socket.recv(2)
+		self._socket.send(data)
+		data = self._socket.recv(2)
 		assert len(data) == 2
 
 	def stopAcquisition(self):
@@ -794,8 +794,8 @@ class Connection:
 			nTries = nTries + 1
 			if nTries > 5: print("Timeout sending command. Retry %d of %d" % (nTries, maxTries))
 
-			sn = self.__lastSN
-			self.__lastSN = (sn + 1) & 0x7FFF
+			sn = self._lastSN
+			self._lastSN = (sn + 1) & 0x7FFF
 
 			rawFrame = bytes([ portID & 0xFF, slaveID & 0xFF] + [ (sn >> (8*n)) & 0xFF for n in range(16) ] + [ cfgFunctionID]) + payload
 			#rawFrame = str(rawFrame)
@@ -805,17 +805,17 @@ class Connection:
 			template1 = "@HH"
 			n = struct.calcsize(template1) + len(rawFrame)
 			data = struct.pack(template1, 0x05, n)
-			self.__socket.send(data)
-			self.__socket.send(rawFrame);
+			self._socket.send(data)
+			self._socket.send(rawFrame);
 
 			template2 = "@H"
 			n = struct.calcsize(template2)
-			data = self.__socket.recv(n)
+			data = self._socket.recv(n)
 			nn, = struct.unpack(template2, data)
 
 			if nn < 18:
 				continue
-			data = self.__socket.recv(nn)
+			data = self._socket.recv(nn)
 			data = data[17:]
 			reply = bytes(data)
 			
@@ -922,10 +922,10 @@ class Connection:
 	## - value: a tofpet2.AsicConfig object
 	## @param forceAccess Ignores the software cache and forces hardware access.
 	def getAsicsConfig(self, forceAccess=False):
-		if (forceAccess is True) or (self.__asicConfigCache is None):
+		if (forceAccess is True) or (self._asicConfigCache is None):
 			# Build the ASIC configuration cache
-			self.__asicConfigCache = {}
-			self.__asicConfigCache_TAC_Refresh = set()
+			self._asicConfigCache = {}
+			self._asicConfigCache_TAC_Refresh = set()
 			
 			for portID, slaveID, chipID in self.getActiveAsics():
 				if self.getAsicSubtype(portID, slaveID, chipID) == "2B":
@@ -941,25 +941,25 @@ class Connection:
 					ac.channelConfig[n] = tofpet2.AsicChannelConfig(value)
 					
 				# Store the ASIC configuration
-				self.__asicConfigCache[(portID, slaveID, chipID)] = ac
+				self._asicConfigCache[(portID, slaveID, chipID)] = ac
 				tacRefreshPeriod_1 = ac.globalConfig.getValue("tac_refresh_period")
 				# Store a set of ASIC refresh settings
 				tacRefreshPeriod_2 = ac.channelConfig[n].getValue("tac_max_age")
-				self.__asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
+				self._asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
 				
-		return deepcopy(self.__asicConfigCache)
+		return deepcopy(self._asicConfigCache)
 
 	## Sets the configuration into the ASICs registers
 	# @param config is a dictionary, with the same form as returned by getAsicsConfig
 	# @param forceAccess Ignores the software cache and forces hardware access.
 	def setAsicsConfig(self, config, forceAccess=False):
 		# If the ASIC config cache does not exist, make sure it exists
-		if self.__asicConfigCache is None:
+		if self._asicConfigCache is None:
 			self.getAsicsConfig()
 		
 		tacRefreshHardwareUpdated = False
 		for portID, slaveID, chipID in self.getActiveAsics():
-			cachedAC = self.__asicConfigCache[(portID, slaveID, chipID)]
+			cachedAC = self._asicConfigCache[(portID, slaveID, chipID)]
 			newAC = config[(portID, slaveID, chipID)]
 		   
 			cachedGC = cachedAC.globalConfig
@@ -983,15 +983,15 @@ class Connection:
 				
 		if tacRefreshHardwareUpdated:
 			# Rebuild the TAC refresh settings summary cache
-			self.__asicConfigCache_TAC_Refresh = set()
+			self._asicConfigCache_TAC_Refresh = set()
 			for portID, slaveID, chipID in self.getActiveAsics():
-				cachedAC = self.__asicConfigCache[(portID, slaveID, chipID)]
+				cachedAC = self._asicConfigCache[(portID, slaveID, chipID)]
 				cachedGC = cachedAC.globalConfig
 				for channelID in range(64):
 					cachedCC = cachedAC.channelConfig[channelID]
 					tacRefreshPeriod_1 = cachedGC.getValue("tac_refresh_period")
 					tacRefreshPeriod_2 = cachedCC.getValue("tac_max_age")
-					self.__asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
+					self._asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
 					
 			
 				
@@ -1001,14 +1001,14 @@ class Connection:
 	def __write_hv_channel(self, portID, slaveID, slotID, channelID, value, forceAccess=False):
 		if not forceAccess:
 			try:
-				lastValue = self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)]
+				lastValue = self._hvdac_config_cache[(portID, slaveID, slotID, channelID)]
 				if value == lastValue:
 					return 0
 			except KeyError:
 				pass
 
 		r = bias.set_channel(self, portID, slaveID, slotID, channelID, value)
-		self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)] = value
+		self._hvdac_config_cache[(portID, slaveID, slotID, channelID)] = value
 		return r
 
 
@@ -1017,10 +1017,10 @@ class Connection:
 	## - value: an integer
 	## WARNING: As the hardware does not support readback, this always returns the software cache
 	def get_hvdac_config(self):
-		if self.__hvdac_config_cache == {}:
+		if self._hvdac_config_cache == {}:
 			for portID, slaveID, slotID, channelID in self.getActiveBiasChannels(): 
-				self.__hvdac_config_cache[(portID, slaveID, slotID, channelID)] = 0
-		return deepcopy(self.__hvdac_config_cache)
+				self._hvdac_config_cache[(portID, slaveID, slotID, channelID)] = 0
+		return deepcopy(self._hvdac_config_cache)
 
 	## Sets the bias voltage channels
 	# @param is a dictionary, as returned by get_hvdac_config
@@ -1038,7 +1038,7 @@ class Connection:
 		BIAS_32P_DAC_ONEVOLT = int(2**16/60.01)
 		vdc_delta = 2.0 # Set op-amp rails 2V above max HV output
 		for portID, slaveID, slotID in self.getActiveBiasSlots(): 
-			if self.__activeBiasSlots[(portID, slaveID, slotID)] == "BIAS_32P_AG":
+			if self._activeBiasSlots[(portID, slaveID, slotID)] == "BIAS_32P_AG":
 				vdc_dcdc = (max_value[slotID]/BIAS_32P_DAC_ONEVOLT) + vdc_delta
 				for dacID in range(2):
 					bias.set_ag7200_dcdc(self, portID, slaveID, slotID, dacID, vdc_dcdc)
@@ -1049,7 +1049,7 @@ class Connection:
 			self.__write_hv_channel(portID, slaveID, slotID, channelID, value, forceAccess=forceAccess)
 		
 		# Cache max values after applying
-		self.__hvdac_max_values = max_value.copy()
+		self._hvdac_max_values = max_value.copy()
 
 
 	def waitOnNamedPipe(self, fn):
@@ -1063,12 +1063,12 @@ class Connection:
 		return None
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
-		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
+		return self._openRawAcquisition(fileNamePrefix, calMode, None, None, None)
 		
 	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec="./online_monitor"):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
+		return self._openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
 		
-	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
+	def _openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
 		
 		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
@@ -1109,37 +1109,37 @@ class Connection:
 		# Determine current time and and estimate acquisition wallclock start time
 		fileCreationDAQTime = self.getCurrentTimeTag()
 		currentTime = time()
-		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
+		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self._systemFrequency
 		
 		cmd = [ "./write_raw", \
-			self.__shmName, \
+			self._shmName, \
 			fileNamePrefix, \
-			str(int(self.__systemFrequency)), \
+			str(int(self._systemFrequency)), \
 			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
 			str(fileCreationDAQTime),
 			calMode and 'T' or 'N', 
 			str(triggerID) ]
-		self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+		self._writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 		
 		if monitor_exec is not None:
 			cmd = [
 				monitor_exec,
-				str(int(self.__systemFrequency)),
+				str(int(self._systemFrequency)),
 				(qdcMode == "tot") and "tot" or "qdc",
 				monitor_config,
-				self.__shmName,
+				self._shmName,
 				monitor_toc,
 				str(triggerID), 
 				"%1.12f" % daqSynchronizationEpoch
 				]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			self._monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
-		workers = [self.__writerPipe ]
-		if self.__monitorPipe is not None:
-			workers += [ self.__monitorPipe ]
+		workers = [self._writerPipe]
+		if self._monitorPipe is not None:
+			workers += [self._monitorPipe]
 
 		for worker in workers:
 			worker.stdin.close()
@@ -1149,8 +1149,8 @@ class Connection:
 		for worker in workers:
 			worker.kill()
 			
-		self.__writerPipe = None
-		self.__monitorPipe = None
+		self._writerPipe = None
+		self._monitorPipe = None
 
 
 	## Acquires data and decodes it, while writting through the acquisition pipeline 
@@ -1161,11 +1161,11 @@ class Connection:
 		# WARNING Only the writerPipe returns valid frame/event counters
 		# So it sould always be the last one to be read
 		workers = []
-		if self.__monitorPipe is not None:
-			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
-		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
-			
-		frameLength = 1024.0 / self.__systemFrequency
+		if self._monitorPipe is not None:
+			workers += [(self._monitorPipe.stdin, self._monitorPipe.stdout)]
+		workers += [(self._writerPipe.stdin, self._writerPipe.stdout)]
+
+		frameLength = 1024.0 / self._systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 		nRequiredFrames = max(nRequiredFrames, 1) # Attempt to acquire at least 1 frame
 
@@ -1181,9 +1181,9 @@ class Connection:
 		while wrPointer == rdPointer:
 			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
 
-		bs = self.__shm.getSizeInFrames()
+		bs = self._shm.getSizeInFrames()
 		index = rdPointer % bs
-		startFrame = self.__shm.getFrameID(index)
+		startFrame = self._shm.getFrameID(index)
 		stopFrame = startFrame + nRequiredFrames
 
 		t0 = time()
@@ -1237,7 +1237,7 @@ class Connection:
 				data = pout.read(n3)
 
 			index = (rdPointer + bs - 1) % bs
-			currentFrame = self.__shm.getFrameID(index)
+			currentFrame = self._shm.getFrameID(index)
 
 			self.__setDataFrameReadPointer(rdPointer)
 
@@ -1274,7 +1274,7 @@ class Connection:
         # @param acquisitionTime Acquisition time in seconds
 	# @return A bytes buffer containing events as per shw_raw_py.cpp/unpacked_event_t
 	def acquireAsBytes(self, acquisitionTime):
-		frameLength = 1024.0 / self.__systemFrequency
+		frameLength = 1024.0 / self._systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 
 		self.__synchronizeDataToConfig()
@@ -1282,9 +1282,9 @@ class Connection:
 		while wrPointer == rdPointer:
 			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
 
-		bs = self.__shm.getSizeInFrames()
+		bs = self._shm.getSizeInFrames()
 		index = rdPointer % bs
-		startFrame = self.__shm.getFrameID(index)
+		startFrame = self._shm.getFrameID(index)
 		stopFrame = startFrame + nRequiredFrames
 
 		t0 = time()
@@ -1324,12 +1324,12 @@ class Connection:
 			#data = pout.read(n2)
 			#rdPointer,  = struct.unpack(template2, data)
 
-			data += self.__shm.events_as_bytes(rdPointer, wrPointer)
+			data += self._shm.events_as_bytes(rdPointer, wrPointer)
 			rdPointer = wrPointer
 
 
 			index = (rdPointer + bs - 1) % bs
-			currentFrame = self.__shm.getFrameID(index)
+			currentFrame = self._shm.getFrameID(index)
 
 			self.__setDataFrameReadPointer(rdPointer)
 
@@ -1372,11 +1372,11 @@ class Connection:
 		template = "@HH"
 		n = struct.calcsize(template)
 		data = struct.pack(template, 0x03, n);
-		self.__socket.send(data)
+		self._socket.send(data)
 
 		template = "@HIII"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		n, wrPointer, rdPointer, amAcquiring = struct.unpack(template, data)
 
 		if amAcquiring == 0:
@@ -1388,11 +1388,11 @@ class Connection:
 		template1 = "@HHI"
 		n = struct.calcsize(template1) 
 		data = struct.pack(template1, 0x04, n, rdPointer);
-		self.__socket.send(data)
+		self._socket.send(data)
 
 		template = "@I"
 		n = struct.calcsize(template)
-		data2 = self.__socket.recv(n);
+		data2 = self._socket.recv(n);
 		r2, = struct.unpack(template, data2)
 		assert r2 == rdPointer
 
@@ -1405,26 +1405,26 @@ class Connection:
 		r = None
 		while (r == None) and ((time() - t0) < timeout):
 			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
-			bs = self.__shm.getSizeInFrames()
+			bs = self._shm.getSizeInFrames()
 			while (wrPointer != rdPointer) and (r == None):
 				index = rdPointer % bs
 				rdPointer = (rdPointer + 1) % (2 * bs)
 
-				nEvents = self.__shm.getNEvents(index)
+				nEvents = self._shm.getNEvents(index)
 				if nEvents == 0 and nonEmpty == True:
 					continue;
 
-				frameID = self.__shm.getFrameID(index)
-				frameLost = self.__shm.getFrameLost(index)
+				frameID = self._shm.getFrameID(index)
+				frameLost = self._shm.getFrameLost(index)
 
 				events = []
 				for i in range(nEvents):
-					events.append((	self.__shm.getChannelID(index, i), \
-							self.__shm.getTacID(index, i), \
-							self.__shm.getTCoarse(index, i), \
-							self.__shm.getECoarse(index, i), \
-							self.__shm.getTFine(index, i), \
-							self.__shm.getEFine(index, i), \
+					events.append((	self._shm.getChannelID(index, i), \
+							self._shm.getTacID(index, i), \
+							self._shm.getTCoarse(index, i), \
+							self._shm.getECoarse(index, i), \
+							self._shm.getTFine(index, i), \
+							self._shm.getEFine(index, i), \
 						))
 
 				r = { "id" : frameID, "lost" : frameLost, "events" : events }
@@ -1442,8 +1442,8 @@ class Connection:
 		template2 = "@Q"
 		n = struct.calcsize(template1) + struct.calcsize(template2)
 		data = struct.pack(template1, 0x13, n) + struct.pack(template2, targetFrameID)
-		self.__socket.send(data)
-		data = self.__socket.recv(4)
+		self._socket.send(data)
+		data = self._socket.recv(4)
 		assert len(data) == 4
 
 		# Set the read pointer to write pointer, in order to consume all available frames in buffer
@@ -1454,7 +1454,7 @@ class Connection:
 		# WARNING
 		#: Don't actually remove code below until the new synchronization scheme has been better tested
 
-		frameLength = 1024 / self.__systemFrequency
+		frameLength = 1024 / self._systemFrequency
 
 		# Check ASIC link status at start of acquisition
 		# but wait for  firmware has finshed sync'ing after config and locking
@@ -1514,11 +1514,11 @@ class Connection:
 		template = "@HHH"
 		n = struct.calcsize(template)
 		data = struct.pack(template, 0x07, n, port)
-		self.__socket.send(data);
+		self._socket.send(data);
 
 		template = "@HQQQ"
 		n = struct.calcsize(template)
-		data = self.__socket.recv(n);
+		data = self._socket.recv(n);
 		length, tx, rx, rxBad = struct.unpack(template, data)		
 		return (tx, rx, rxBad)
 
