@@ -185,6 +185,7 @@ class Connection:
 		return sorted(self.__activeBiasSlots.keys())
 
 	def getBiasSlotInfo(self, portID, slaveID, slotID):
+		if self.__activeUnits == {}: self.__scanUnits_ll()
 		return self.__activeBiasSlots[(portID, slaveID, slotID)]
 
 	def getActiveBiasChannels(self):
