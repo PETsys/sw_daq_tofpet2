@@ -13,6 +13,14 @@ static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 namespace PETSYS {
 
 	class RawReader : public EventStream {
+	public:
+		enum timeref_t {
+			SYNC,
+			WALL,
+			STEP,
+			USER
+		};
+
 	private:
 		struct UndecodedHit {
 			u_int64_t frameID;
@@ -32,7 +40,7 @@ namespace PETSYS {
 
 	public:
 		~RawReader();
-		static RawReader *openFile(const char *fnPrefix);
+		static RawReader *openFile(const char *fnPrefix, timeref_t tb);
 		bool isQDC(unsigned int gChannelID);
 		bool isTOT();
 		double getFrequency();
@@ -44,7 +52,6 @@ namespace PETSYS {
 
 	private:
 		RawReader();
-		void processRange(unsigned long begin, unsigned long end, bool verbose, EventSink<RawHit> *pipeline);
 
 		FILE *indexFile;
 		bool indexIsTemp;
@@ -52,6 +59,7 @@ namespace PETSYS {
 		float stepValue1, stepValue2;
 		unsigned long long stepBegin;
 		unsigned long long stepEnd;
+		unsigned long long stepFirstFrameID;
 		unsigned long long getStepBegin();
 		unsigned long long getStepEnd();
 
@@ -65,8 +73,11 @@ namespace PETSYS {
 		unsigned frequency;
 		bool qdcMode[MAX_NUMBER_CHANNELS];		
 		int triggerID;
-		
-		
+
+		timeref_t tb;
+		double daqSynchronizationEpoch;
+		unsigned long long fileCreationDAQTime;
+
 	};
 }
 

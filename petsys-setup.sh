@@ -22,6 +22,16 @@ osPrettyName=$( source /etc/os-release ; echo $ID);
 osVersion=$( source /etc/os-release ; echo ${VERSION_ID});
 osKernelVer=`uname -r`;
 
+# Treat RHEL clones as RHEL
+if [[ $osPrettyName == "centos" || $osPrettyName == "almalinux" ]]; then
+	osPrettyName="rhel"
+fi
+
+if [[ $osPrettyName == "rhel" ]]; then
+	# Cut minor OS version of present
+	osVersion=${osVersion%.*}
+fi
+
 echo "***************************************************************";
 echo "PETSys Software Setup Tool";
 echo "Running on $osPrettyName ($osKernelVer)";
@@ -40,21 +50,15 @@ if [ $currentUser != "root" ]; then echo "ERROR: Running as "$actualUser". Pleas
 
 #determine the host OS from the pretty_name
 if [[ $osPrettyName == "ubuntu" && $osVersion == "20.04" ]]; then
- 	echo "INFO: Running on Ubuntu 20.04";	
+ 	true
 elif [[ $osPrettyName == "ubuntu" && $osVersion == "22.04" ]]; then
-	echo "INFO: Running on Ubuntu 22.04";	
-elif [[ $osPrettyName == "centos" && $osVersion == "7" ]]; then
-	echo "INFO: Running on CentOS 7";	
-elif [[ $osPrettyName == "centos" && $osVersion == "8" ]]; then
-	echo "INFO: Running on CentOS 8";	
-elif [[ $osPrettyName == "centos" && $osVersion == "9" ]]; then
-	echo "INFO: Running on CentOS 9";	
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "7" ]]; then
-	echo "INFO: Running on RHEL 7";	
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "8" ]]; then
-	echo "INFO: Running on RHEL 8";	
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "9" ]]; then
-	echo "INFO: Running on RHEL 9";
+ 	true
 else
 	echo "ERROR: Cannot determine host operating system!"
 	echo "WARNING: This script is only supported on Ubuntu 20.04 and 22.04 and RHEL/CentOS 7-9 Linux distribution!"
@@ -88,44 +92,32 @@ fi;
 echo "INFO: Enabling repositories and Updating the package lists...";
 if [[ $osPrettyName == "ubuntu" ]]; then
 	sudo apt update;
-elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 7 ]]; then
+	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio1 libaio-dev;
+
+elif [[ $osPrettyName == "rhel" && $osVersion == 7 ]]; then
 	sudo yum -y install epel-release;
 	sudo yum -y makecache;
-elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 8 ]]; then
+	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel libaio libaio-devel;
+	echo "INFO: Installing bitarray using pip3 commands";
+	pip3 install bitarray;
+
+elif [[ $osPrettyName == "rhel" && $osVersion == 8 ]]; then
 	sudo dnf -y install epel-release;
 	sudo dnf -y config-manager --set-enabled powertools;
 	sudo dnf -y makecache;
-elif [[ ($osPrettyName == "centos" || $osPrettyName == "rhel") && $osVersion == 9 ]]; then
+	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel redhat-lsb;
+	echo "INFO: Installing bitarray using pip3 commands";
+	pip3 install bitarray;
+
+
+elif [[ $osPrettyName == "rhel" && $osVersion == 9 ]]; then
 	sudo dnf -y install epel-release;
 	sudo dnf -y config-manager --set-enabled crb
 	sudo dnf -y makecache;
-fi;
-
-
-# Install the requried packages
-if [[ $osPrettyName == "ubuntu" ]]; then
-	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio1 libaio-dev;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
-	yum -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python36-cairo python36-gobject boost-devel boost-python36-devel kernel kernel-devel cmake3 iniparser-devel xterm dkms cairo-devel redhat-lsb libjpeg-turbo-devel libaio libaio-devel;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 8 ]]; then
-	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-pandas python3-matplotlib-gtk3 python3-devel boost-devel boost-python3-devel kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel redhat-lsb;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 9 ]]; then
 	dnf -y install gcc gcc-c++ root root-gui-fitpanel root-spectrum root-spectrum-painter root-minuit2 root-physics root-multiproc python3 python3-devel python3-pip python3-root python3-matplotlib-gtk3 python3-devel boost-devel boost-python3 kernel kernel-devel cmake iniparser-devel xterm dkms libaio libaio-devel lsb_release;
-fi
-
-
-# Install some python libraries using pip3 commands
-if [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && $osVersion == 7 ]]; then
-	echo "INFO: Installing pandas bitarray matplotlib pycairo using pip3 commands";
-	pip3 install pandas bitarray matplotlib pycairo;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 8) ]]; then
-	echo "INFO: Installing bitarray using pip3 commands";
-	pip3 install bitarray;
-elif [[ ($osPrettyName == "rhel" || $osPrettyName == "centos") && ($osVersion == 9) ]]; then
         echo "INFO: Installing pandas bitarray using pip3 commands";
         pip3 install pandas bitarray;
 fi;
-
 
 # Install ROOT from source -- for UBUNTU only
 installROOT=1;
@@ -149,7 +141,9 @@ if [ $osPrettyName == "ubuntu" ] && [ $debug -eq 0 ] && [ $installROOT -eq 1 ]; 
 	mkdir build;
 	cd build;
 	cmake -DCMAKE_INSTALL_PREFIX=/usr/local/stow/root-v6.28.02 -DCMAKE_INSTALL_MANDIR=share/man ..;
-	make -j9;
+	# Two step building as parallel building sometimes failes due to lack of RAM
+	make -k -j$(nproc)
+	make
 	sudo make install;
 	cd /usr/local/stow;
 	sudo stow root-v6.28.02;
@@ -159,7 +153,7 @@ elif [ $debug -eq 1 ]; then
 fi;
 
 
-install DAQ card drivers
+# Install DAQ card drivers
 if [ $debug -eq 1 ]; then 
 	echo "DEBUG: Would now install DAQ card drivers.";
 else

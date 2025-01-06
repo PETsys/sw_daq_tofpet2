@@ -249,9 +249,8 @@ class Config:
 				daqd.write_config_register(portID, slaveID, 32, 0x0620, referenceVectors)
 				daqd.write_config_register(portID, slaveID, 2, 0x061C, self.__hw_trigger["febd_pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x061E, self.__hw_trigger["febd_post_window"])
-
-				daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.float_to_u5_5(self.__hw_trigger["group_min_energy"]))
-				daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.float_to_u5_5(self.__hw_trigger["group_max_energy"]))
+				daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.float_to_u7_5(self.__hw_trigger["group_min_energy"]))
+				daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.float_to_u7_5(self.__hw_trigger["group_max_energy"]))
 				daqd.write_config_register(portID, slaveID, 16, 0x0618,  self.__hw_trigger["group_max_multiplicity"])
 				daqd.write_config_register(portID, slaveID, 16, 0x061A,  self.__hw_trigger["group_min_multiplicity"])
 
@@ -298,12 +297,12 @@ class Config:
 		
 		return result
 
-	def float_to_u5_5(self, f):
-		f = max(0, min(f, 31.96875))
+	def float_to_u7_5(self, f):
+		f = max(0, min(f, 127.96875))
 		integer_part = int(f)
 		fractional_part = int((f - integer_part) * 32)
-		u5_5 = (integer_part << 5) | fractional_part
-		return u5_5
+		u7_5 = (integer_part << 5) | fractional_part
+		return u7_5
         
 	def twos_complement(self, value):
 		return (value ^ ((1 << 10) - 1)) + 1

@@ -38,6 +38,8 @@ class GUI:
         
         self.readTempWindow = self.builder.get_object("readTempWindow")
         self.readTempPlotWindow = self.builder.get_object("readTempPlotWindow")
+
+
         self.builder.connect_signals(self)
         
         self.__daqd_switch_handle_set = False
@@ -102,7 +104,6 @@ class GUI:
         
         self.builder.get_object("executeScrollButton").set_sensitive(True)
         self.builder.get_object("executeStopButton").set_sensitive(True)
-
         self.processWindow.set_title("%s (running)" % processName)
         self.processWindow.show()
         self.builder.get_object("executeSpinner").start()
@@ -155,7 +156,7 @@ class GUI:
         if self.__process is None:
             return True
         if self.__process.poll() is not None:
-            self.builder.get_object("readTempSpinner").stop()
+            self.builder.get_object("executeSpinner").stop()
             GLib.source_remove(self.timeout_id)
             # Make all widgets sensitive again...
             for widget in self.builder.get_objects():
@@ -164,6 +165,7 @@ class GUI:
 
             self.builder.get_object("executeScrollButton").set_sensitive(False)
             self.builder.get_object("executeStopButton").set_sensitive(False)
+            self.builder.get_object("execStartButton").set_sensitive(False)
             if not self.__usedStopButton:
                 self.processWindow.set_title("%s (finished)" % data[0])
             else:
@@ -1250,10 +1252,33 @@ class GUI:
        
         command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
         
-        self.setPowerSwitchesStatus(True)
-        #subprocess.call()
-        self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
+        doDelayStart = self.builder.get_object("acqManualStartYes").get_active()
+
+        if(doDelayStart):
+            os.remove("/tmp/aquisition_starting_fifo")
+            fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
+            command += "--wait-on /tmp/aquisition_starting_fifo"
+            self.startAcquisition(command, outFile)
+            self.builder.get_object("execStartButton").set_sensitive(True)
+        else:
+            self.startAcquisition(command, outFile)
         
+        return True
+        
+        
+    
+    def startAcquisition(self, command, outFile, isDelayed = False):
+        self.setPowerSwitchesStatus(True)
+        self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
+    
+
+    def on_execStartButton_clicked(self, button):
+        self.builder.get_object("execStartButton").set_sensitive(False)
+        with open("/tmp/aquisition_starting_fifo", "w") as fifo:
+            fifo.write("start")
+
+        return True
+    
     def on_processingConvertBoxOptions_changed(self, comboBox):
 
         dataType =  self.builder.get_object("processingConvertBoxOptions").get_active_text()
@@ -1261,7 +1286,7 @@ class GUI:
         if dataType in ("Groups","Coincidences"):
             self.builder.get_object("processingLabel5").set_sensitive(True)
             self.builder.get_object("processingHitsSpinButton").set_sensitive(True)
-            extType = (dataType == "Groups") and "_group" or "_coinc" 
+            extType = (dataType == "Groups") and "_group" or "_coinc"
         else:
             self.builder.get_object("processingLabel5").set_sensitive(False)
             self.builder.get_object("processingHitsSpinButton").set_sensitive(False)
@@ -1269,8 +1294,11 @@ class GUI:
         if dataType == "Raw":
             extType = "_raw"
             self.builder.get_object("processingDataFormatBoxOptions").remove_all()
-            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"ROOT")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"Text")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"ROOT")
             self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
+            self.builder.get_object("processingLabel6").set_sensitive(False)
+            self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(False)
         
         if dataType != "Raw":
             self.builder.get_object("processingDataFormatBoxOptions").remove_all()
@@ -1278,8 +1306,11 @@ class GUI:
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"Text")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(2,"ROOT")
             self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
+            self.builder.get_object("processingLabel6").set_sensitive(True)
+            self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(True)
+           
 
-        if dataType == "Singles":
+        if dataType == "Singles":       
             extType = "_single"
 
         dataFormat =  self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
@@ -1308,12 +1339,26 @@ class GUI:
         elif dataType == "Raw":
             extType = "_raw"
 
+        active = self.builder.get_object("processingTimeReferenceBoxOptions").get_active()
+        self.builder.get_object("processingTimeReferenceBoxOptions").remove_all()
+        self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(0,"Sync")
+        self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(1,"User")
+        self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(2,"Wall")
+        self.builder.get_object("processingTimeReferenceBoxOptions").set_active(active)
+
         if dataFormat == "Binary":
             extData = ".ldat"
         elif dataFormat == "ROOT":
             extData = ".root"
         else:
             extData = ".dat"
+            self.builder.get_object("processingTimeReferenceBoxOptions").remove_all()
+            self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(0,"Sync")
+            self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(1,"User")
+            if active == 2:
+                self.builder.get_object("processingTimeReferenceBoxOptions").set_active(0)
+            else:
+                self.builder.get_object("processingTimeReferenceBoxOptions").set_active(active)
 
         if self.builder.get_object("processingFileChooseEntry").get_text() != "":
             fileName = self.builder.get_object("processingFileChooseEntry").get_text() 
@@ -1338,7 +1383,7 @@ class GUI:
             fileEntry.set_text(fileName)
             dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
             dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
-
+            
             if dataType == "Singles":
                 extType = "_single"
             elif dataType == "Coincidences":
@@ -1437,7 +1482,8 @@ class GUI:
         dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
         dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
         fraction = self.builder.get_object("processingFractionSpinButton").get_value()
-
+        timeRef = self.builder.get_object("processingTimeReferenceBoxOptions").get_active_text()
+        
         if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
             self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
             return True
@@ -1459,16 +1505,24 @@ class GUI:
             flag3 = "--writeMultipleHits %d" % (nHits)
         else:
             flag3 = ""
-    
        
+        if timeRef == "Sync":
+            timeRefFlag = "sync"
+        elif timeRef == "Wall":
+            timeRefFlag = "wall"
+        elif timeRef == "User":
+            timeRefFlag = "user"
+        flag4 = "--timeref %s" % (timeRefFlag)
+
+
         if dataType == "Singles":
-            command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3) 
+            command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4) 
         if dataType == "Coincidences":
-            command = "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+            command = "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
         if dataType == "Groups":
-            command = "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+            command = "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
         if dataType == "Raw":
-            command = "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s" % (self.__workingFolder, inFile, outFile)
+            command = "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s" % (self.__workingFolder, inFile, outFile, flag1)
         
         self.execute(command, "Raw data Processing", "Finished Data Processing", "Processed data written to  %s" % self.__workingFolder+outFileName )
     
@@ -1511,13 +1565,33 @@ class GUI:
             return True
 
         useTrigger = self.builder.get_object("acqTriggerOn").get_active()
+        doDelayStart = self.builder.get_object("acqManualStartYes").get_active()
         
+        flag = ""
         if useTrigger:
             flag = "--enable-hw-trigger"
-        else:
-            flag = ""
-         
-        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+
+        flag2 = ""
+        if(doDelayStart):
+            os.remove("/tmp/aquisition_starting_fifo")
+            fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
+            flag2= "--wait-on /tmp/aquisition_starting_fifo"
+    
+        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag, flag2)
+
+      
+
+        # if(doDelayStart):
+        #     os.remove("/tmp/aquisition_starting_fifo")
+        #     fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
+        #     command += "--wait-on /tmp/aquisition_starting_fifo"
+        #     self.startAcquisition(command, outFile)
+        #     self.builder.get_object("execStartButton").set_sensitive(True)
+        # else:
+        #     self.startAcquisition(command, outFile)
+        
+        #return True
+
 
         fileName = self.builder.get_object("processingFileChooseEntry").get_text()
         fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")
@@ -1533,7 +1607,8 @@ class GUI:
 
         dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
         fraction = self.builder.get_object("processingFractionSpinButton").get_value()
-      
+        timeRef = self.builder.get_object("processingTimeReferenceBoxOptions").get_active_text()
+
         if dataFormat == "Binary":
             flag1 = "--writeBinary"
             if outFile.endswith('.ldat'):
@@ -1552,19 +1627,32 @@ class GUI:
         else:
             flag3 = ""
        
+        if timeRef == "Sync":
+            timeRefFlag = "sync"
+        elif timeRef == "Wall":
+            timeRefFlag = "wall"
+        elif timeRef == "User":
+            timeRefFlag = "user"
+        flag4 = "--timeref %s" % (timeRefFlag)
+
         if dataType == "Singles":
-            command += "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3) 
+            command += "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4) 
         if dataType == "Coincidences":
-            command += "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+            command += "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
         if dataType == "Groups":
-            command += "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3)
+            command += "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
         if dataType == "Raw":
-            command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s;" % (self.__workingFolder, inFile, outFile)
+            command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s;" % (self.__workingFolder, inFile, outFile, flag1)
         
         self.setPowerSwitchesStatus(True)
 
         self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
-              
+
+        if(doDelayStart):
+            self.builder.get_object("execStartButton").set_sensitive(True)
+
+        return True
+
     def show_error_dialog(self, string):
         dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = string)
         dialog.format_secondary_text(string)

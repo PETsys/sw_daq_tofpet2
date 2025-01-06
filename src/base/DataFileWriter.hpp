@@ -129,10 +129,10 @@ public:
 	void checkFilePartForSplit(long long filePartIndex);
 	void closeStep();
 	void renameFile(); 
-	void writeRawEvents(EventBuffer<RawHit> *buffer);	
-    void writeSingleEvents(EventBuffer<Hit> *buffer);
-    void writeGroupEvents(EventBuffer<GammaPhoton> *buffer);
-	void writeCoincidenceEvents(EventBuffer<Coincidence> *buffer);
+	void writeRawEvents(EventBuffer<RawHit> *buffer, double t0);
+	void writeSingleEvents(EventBuffer<Hit> *buffer, double t0);
+	void writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0);
+	void writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0);
 };
 
 
@@ -147,7 +147,7 @@ public:
 	};
 	
 	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
-		dataFileWriter->writeRawEvents(buffer);
+		dataFileWriter->writeRawEvents(buffer, getT0());
 		return buffer;
 	};
 };
@@ -164,7 +164,7 @@ public:
 	};
 
 	EventBuffer<Hit> * handleEvents(EventBuffer<Hit> *buffer) {
-		dataFileWriter->writeSingleEvents(buffer);
+		dataFileWriter->writeSingleEvents(buffer, getT0());
 		return buffer;
 	};
 };
@@ -181,7 +181,7 @@ public:
 	};
 	
 	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
-		dataFileWriter->writeGroupEvents(buffer);
+		dataFileWriter->writeGroupEvents(buffer, getT0());
 		return buffer;
 	};
 };
@@ -199,7 +199,7 @@ public:
 	};
 
 	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
-		dataFileWriter->writeCoincidenceEvents(buffer);
+		dataFileWriter->writeCoincidenceEvents(buffer, getT0());
 		return buffer;
 	};
 };        

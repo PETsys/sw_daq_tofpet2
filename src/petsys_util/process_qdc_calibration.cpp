@@ -531,6 +531,8 @@ void calibrateAsic(
 		maxCounts = (maxCounts > counts) ? maxCounts : counts;
 	}
 
+
+
 	TCanvas *c = new TCanvas();
 	c->Divide(2, 2);
 	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
@@ -542,35 +544,50 @@ void calibrateAsic(
 	TH1F *hMinIntegrationTime = new TH1F("hMinIntegrationTime", "Integration time", 128, 0, 430);
 	TH1F *hMax100Time = new TH1F("hMax100Time", "Integration time", 128, 0, 430);
 
+	sprintf(fName, "%s.tsv", summaryFilePrefix);
+	auto summaryFile = fopen(fName, "w");
+
 	TCanvas *tmp1 = new TCanvas();
 	for(unsigned long channelID = 0; channelID < 64; channelID++) {
 		for(unsigned long tacID = 0; tacID < 4; tacID++) {
 			unsigned long gid = gidStart | (channelID << 2) | tacID;
 			CalibrationEntry &entry = calibrationTable[gid];
-			if(!entry.valid) continue;
-
 			TH1S *hControlE = hControlE_list[gid-gidStart];
-			double counts = hControlE->GetEntries();
-			hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
 			
-			if(hControlE->GetEntries() < 1000) continue;
-			hControlE->Fit("gaus", "Q");
-			TF1 *fit = hControlE->GetFunction("gaus");
-			if(fit == NULL) continue;
-				
-			float sigma = fit->GetParameter(2);
-			float sigmaError = fit->GetParError(2);
-			gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
-			gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
-			hResolution->Fill(sigma);
+			unsigned counts = 0;
+			float sigma = 5000;
 			
-			gResolutionNPoints += 1;
-
-			hMinIntegrationTime->Fill(entry.xMin);
-			hMax100Time->Fill(entry.xMax100);
+			if(hControlE != NULL) {
+				counts = hControlE->GetEntries();
+				hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
+			
+				if(entry.valid) {
+					hMinIntegrationTime->Fill(entry.xMin);
+					hMax100Time->Fill(entry.xMax100);
+					
+					if(hControlE->GetEntries() >= 1000) {
+						hControlE->Fit("gaus", "Q");
+						TF1 *fit = hControlE->GetFunction("gaus");
+						if(fit != NULL) {
+							sigma = fit->GetParameter(2);
+							float sigmaError = fit->GetParError(2);
+							gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
+							gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
+							hResolution->Fill(sigma);
+							
+							gResolutionNPoints += 1;					
+						}
+					}
+					
+				}
+			}
+			
+			fprintf(summaryFile, "%u\t%u\t%u\t%f\n", channelID, tacID, counts, sigma);
 		}
 	}
 	delete tmp1;
+	
+	fclose(summaryFile);
 
 	c->cd(1);
 	hCounts->GetXaxis()->SetTitle("Channel");

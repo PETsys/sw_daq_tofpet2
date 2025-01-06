@@ -54,7 +54,7 @@ public:
     void writeCurrentDataBuffer(bool resetSize = false);
 	void swapBuffers();
 	size_t getBufferSize(){return BUFFER_SIZE;}
-	void writeHeader(double acquisitionStartTime, long systemFrequency, char *mode, int triggerID);
+	void writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID);
 	void writeCalibrationData(CalibrationData c);
 	void setAcqModeToCalibration(){acqStdMode = false;}
 	long long getCurrentPosition(){
@@ -176,16 +176,17 @@ void DataWriter::swapBuffers() {
 }
 
 
-void DataWriter::writeHeader(double acquisitionStartTime, long systemFrequency, char *mode, int triggerID) {
+void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID) {
 	bool qdcMode = (strcmp(mode, "qdc") == 0);
 	uint64_t header[8];
 	for(int i = 0; i < 8; i++)
 		header[i] = 0;
 	header[0] |= uint32_t(systemFrequency);
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
-	memcpy(header+1, &acquisitionStartTime, sizeof(double));
+	memcpy(header+1, &daqSynchronizationEpoch, sizeof(double));
 	if (triggerID != -1) { header[2] = 0x8000 + triggerID; }
 	if (strcmp(mode, "mixed") == 0) { header[3] = 0x1UL; }
+	header[4] = fileCreationDAQTime;
 
 	Buffer& currentBuffer = buffers[currentBufferIndex];
 
@@ -213,7 +214,7 @@ public:
 	void writeOut(DataWriter *writer);
 
 private:
-	int n_cpu;
+	unsigned n_cpu;
 	PETSYS::SHM_RAW *shm;
 	vector<map<uint64_t, unsigned>> calEventSet;
 
@@ -239,14 +240,15 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 8);
+	assert(argc == 9);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
 	bool qdcMode = (strcmp(argv[4], "qdc") == 0);
-	double acquisitionStartTime = boost::lexical_cast<double>(argv[5]);
-	bool acqStdMode = (argv[6][0] == 'N');
-	int triggerID = boost::lexical_cast<int>(argv[7]);
+	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[5]);
+	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[6]);
+	bool acqStdMode = (argv[7][0] == 'N');
+	int triggerID = boost::lexical_cast<int>(argv[8]);
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 
@@ -285,7 +287,7 @@ int main(int argc, char *argv[])
 
 	fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
 
-	writer.writeHeader(acquisitionStartTime, systemFrequency, argv[4], triggerID);
+	writer.writeHeader(fileCreationDAQTime, daqSynchronizationEpoch, systemFrequency, argv[4], triggerID);
 
 	CalibrationPool calibrationPool(shm);
 
@@ -312,34 +314,38 @@ int main(int argc, char *argv[])
 
 	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1) {
 
+		unsigned bs = shm->getSizeInFrames();
+		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
+		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
+
 		step1 = blockHeader.step1;
 		step2 = blockHeader.step2;
 
 		if(blockHeader.blockType == 0) {
 			// First block in a step
+			unsigned index = rdPointer % bs;
+
 			stepAllFrames = 0;
 			stepEvents = 0;
 			stepMaxFrame = 0;
 			stepLostFramesN = 0;
 			stepLostFrames0 = 0;
-			lastFrameID = -1;
-			stepFirstFrameID = -1;
+
+			stepFirstFrameID = shm->getFrameID(index);
+			lastFrameID = stepFirstFrameID - 1;
 			lastFrameType = FRAME_TYPE_UNKNOWN;
 
 			if(!acqStdMode) calibrationPool.clear();
 
 			stepStartOffset = writer.getCurrentPosition();
 
-			r = fprintf(tempFile, "%f\t%f\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset);
+			r = fprintf(tempFile, "%f\t%f\t%ld\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(tempFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 
 		}
 		
-		unsigned bs = shm->getSizeInFrames();
-		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
-		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
 
 		if(!acqStdMode) calibrationPool.processBatch(rdPointer, wrPointer);
 
@@ -347,7 +353,6 @@ int main(int argc, char *argv[])
 			unsigned index = rdPointer % bs;
 			
 			long long frameID = shm->getFrameID(index);
-			if(stepFirstFrameID == -1) stepFirstFrameID = frameID;
 			if(frameID <= lastFrameID) {
 				fprintf(stderr, "WARNING!! Frame ID reversal: %12lld -> %12lld | %04u %04u %04u\n", 
 					lastFrameID, frameID, 
@@ -355,7 +360,7 @@ int main(int argc, char *argv[])
 					);
 				
 			}
-			else if ((lastFrameID >= 0) && (frameID != (lastFrameID + 1))) {
+			else if (frameID != (lastFrameID + 1)) {
 				// We have skipped one or more frame ID, so 
 				// we account them as lost...
 				long long skippedFrames = (frameID - lastFrameID) - 1;
@@ -410,12 +415,12 @@ int main(int argc, char *argv[])
 			}
 
 			// Do not write sequences of normal empty frames, unless we're closing a step
-			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
+			if(blockHeader.blockType != 2 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
 				continue;
 			}
 
 			// Do not write sequences of all lost frames, unless we're closing a step
-			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
+			if(blockHeader.blockType != 2 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
 				continue;
 			}
 			lastFrameType = frameType;
@@ -529,7 +534,7 @@ void * CalibrationPool::thread_routine(void *arg)
 		int frameSize = shm->getNEvents(index);
 		for(int i = 0; i < frameSize; i++) {
 			unsigned g = shm->getChannelID(index, i);
-			unsigned channelID = channelID % 64;
+			unsigned channelID = g % 64;
 			unsigned asicID = (g >> 6) % 64;
 			unsigned slaveID = (g >> 12) % 32;
 			unsigned portID = (g >> 17) % 32;

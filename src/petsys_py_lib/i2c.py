@@ -4,98 +4,210 @@
 import time
 
 class BusError(Exception):
-	def __init__(self, portID, slaveID, busID):
-		self.__portID = portID
-		self.__slaveID = slaveID
-		self.__busID = busID
+    def __init__(self, portID, slaveID, busID):
+        self.__portID = portID
+        self.__slaveID = slaveID
+        self.__busID = busID
 
-	def __str__(self):
-		return "I2C bus (%2d %2d %2d) error" % (
-			self.__portID,
-			self.__slaveID,
-			self.__busID
-			)
+    def __str__(self):
+        return "I2C bus (%2d %2d %2d) error" % (
+            self.__portID,
+            self.__slaveID,
+            self.__busID
+            )
 
 class NoAck(Exception):
-	def __init__(self, portID, slaveID, busID):
-		self.__portID = portID
-		self.__slaveID = slaveID
-		self.__busID = busID
+    def __init__(self, portID, slaveID, busID):
+        self.__portID = portID
+        self.__slaveID = slaveID
+        self.__busID = busID
 
-	def __str__(self):
-		return "I2C bus (%2d %2d %2d) ACK failed" % (
-			self.__portID,
-			self.__slaveID,
-			self.__busID
-			)
+    def __str__(self):
+        return "I2C bus (%2d %2d %2d) ACK failed" % (
+            self.__portID,
+            self.__slaveID,
+            self.__busID
+            )
+
+def tmp1075_read_temperature(conn, portID, slaveID, busID, chipID):
+    return tmp1075_read_register(conn, portID, slaveID, busID, chipID, 0x0)
+
+def tmp1075_read_register(conn, portID, slaveID, busID, chipID, regID, debug_error=False):
+    reading = 0
+    sequence = []
+    ack_position = []
+
+    # Start condition
+    sequence += [ 0b1111, 0b1101, 0b1100 ] 
+
+    chipID = 0b1001000 | chipID
+    chipID = (chipID << 1) | 0b0
+    # Write chip address byte
+    for n in range(7, -1, -1):
+        sda = (chipID >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
+
+    ## Write register address
+    for n in range(7, -1, -1):
+        sda = (regID >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
+
+    # Repeat Start condition
+    sequence += [ 0b1111, 0b1101, 0b1100 ] 
+
+    # Write chip address byte and R/W = 1
+    chipID_w = chipID | 0b1
+    for n in range(7, -1, -1):
+        sda = (chipID_w >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
+
+    # Read byte
+    read_start_bit = len(sequence) - 1
+    for n in range(7, -1, -1):
+        sequence += [ 0b0110 , 0b0111 , 0b0110 ]
+    #read_end_bit = len(sequence) - 1
+    # Master NACK
+    #sequence += [ 0b1110, 0b1111, 0b1100 ] # OLD
+    sequence += [ 0b1100, 0b1101, 0b1100 ] # RIC
+
+    # Read byte 2
+    #read_start_bit = len(sequence) - 1
+    for n in range(7, -1, -1):
+        sequence += [ 0b0110 , 0b0111 , 0b0110 ]
+    read_end_bit = len(sequence) - 1
+    # Master NACK
+    #sequence += [ 0b1110, 0b1111, 0b1100 ] # OLD
+    sequence += [ 0b1100, 0b1101, 0b1100 ] # RIC
+
+
+    # Stop condition
+    sequence+= [ 0b0100, 0b0001, 0b0011 ] 
+
+    t0 = time.time()
+    reply = conn.i2c_master(portID, slaveID, busID, sequence)
+    dt = time.time() - t0
+
+    error =  [ (x & 0xE0) != 0 for x in reply ]
+    #print(ack_position)
+    #for i,x in enumerate(reply):
+    #    print(i,bin(x), x & 0b10)
+    ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
+
+    ## This code is useful for debugging the bus
+    if debug_error and ((True in error) or (False in ack)):
+        print((True in error), (False in ack))
+        print("MY VERSION")
+        print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
+        print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
+
+        print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
+        print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
+        print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
+        print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else "." for x in reply ]) )
+        print([ "%02X" % x for x in reply ])
+        print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
+        print("%4.0f us" % (1e6 * 3*9 * 10e-6))
+        print("%4.0f us" % (1e6 * dt))
+
+    if True in error:
+        # Generate a no-check stop condition to relase the bus
+        conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
+        raise BusError(portID, slaveID, busID)
+
+    if False in ack:
+        raise NoAck(portID, slaveID, busID)
+
+
+    sda_in = [ (x & 0b10) >> 1 for x in reply[read_start_bit:read_end_bit:3]]
+    for bit in sda_in[1:]:
+        reading = (reading << 1) | bit
+
+    reading = reading >> 4
+    if reading > 0x7FF:
+        # Negative number in 2's complement
+        reading = -(~(0xFFF - 1) & 0xFFF)
+
+    return reading * 0.0625
 
 
 def ds44xx_set_register(conn, portID, slaveID, busID, chipID, regID, value, debug_error=False):
 
 
-	sequence = []
-	ack_position = []
+    sequence = []
+    ack_position = []
 
-	sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
+    sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
 
-	# Write chip address byte
-	for n in range(7, -1, -1):
-		sda = (chipID >> n) & 0x1
-		sda = sda << 1
-		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+    # Write chip address byte
+    for n in range(7, -1, -1):
+        sda = (chipID >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack_position += [ len(sequence) - 2 ]
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
 
-	## Write register address
-	for n in range(7, -1, -1):
-		sda = (regID >> n) & 0x1
-		sda = sda << 1
-		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+    ## Write register address
+    for n in range(7, -1, -1):
+        sda = (regID >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack_position += [ len(sequence) - 2 ]
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
 
-	# Write register value
-	for n in range(7, -1, -1):
-		sda = (value >> n) & 0x1
-		sda = sda << 1
-		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+    # Write register value
+    for n in range(7, -1, -1):
+        sda = (value >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack_position += [ len(sequence) - 2 ]
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
 
-	sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
+    sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
 
 
-	t0 = time.time()
-	reply = conn.i2c_master(portID, slaveID, busID, sequence)
-	dt = time.time() - t0
+    t0 = time.time()
+    reply = conn.i2c_master(portID, slaveID, busID, sequence)
+    dt = time.time() - t0
 
-	error =  [ (x & 0xE0) != 0 for x in reply ]
-	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
+    error =  [ (x & 0xE0) != 0 for x in reply ]
+    ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
 
-	## This code is useful for debugging the bus
-	if debug_error and ((True in error) or (False in ack)):
-		print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
-		print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
+    ## This code is useful for debugging the bus
+    if debug_error and ((True in error) or (False in ack)):
+        print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
+        print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
 
-		print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
-		print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
-		print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
-		print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else "." for x in reply ]) )
-		print([ "%02X" % x for x in reply ])
-		print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
-		print("%4.0f us" % (1e6 * 3*9 * 10e-6))
-		print("%4.0f us" % (1e6 * dt))
+        print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
+        print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
+        print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
+        print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else "." for x in reply ]) )
+        print([ "%02X" % x for x in reply ])
+        print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
+        print("%4.0f us" % (1e6 * 3*9 * 10e-6))
+        print("%4.0f us" % (1e6 * dt))
 
-	if True in error:
-		# Generate a no-check stop condition to relase the bus
-		conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
-		raise BusError(portID, slaveID, busID)
+    if True in error:
+        # Generate a no-check stop condition to relase the bus
+        conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
+        raise BusError(portID, slaveID, busID)
 
-	if False in ack:
-		raise NoAck(portID, slaveID, busID)
+    if False in ack:
+        raise NoAck(portID, slaveID, busID)
 
 def ds44xx_read_register(conn, portID, slaveID, busID, chipID, regID, debug_error=False):
 
@@ -190,57 +302,57 @@ def ds44xx_read_register(conn, portID, slaveID, busID, chipID, regID, debug_erro
 def PI4MSD5V9540B_set_register(conn, portID, slaveID, busID, chipID, value, debug_error=False):
 
 
-	sequence = []
-	ack_position = []
+    sequence = []
+    ack_position = []
 
-	sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
+    sequence += [ 0b1111, 0b1101, 0b1100 ] # Start condition
 
-	# Write chip address byte
-	for n in range(7, -1, -1):
-		sda = (chipID >> n) & 0x1
-		sda = sda << 1
-		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 | sda ]
+    # Write chip address byte
+    for n in range(7, -1, -1):
+        sda = (chipID >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 | sda ]
 
-	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack_position += [ len(sequence) - 2 ]
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
 
-	# Write register value
-	for n in range(7, -1, -1):
-		sda = (value >> n) & 0x1
-		sda = sda << 1
-		sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
+    # Write register value
+    for n in range(7, -1, -1):
+        sda = (value >> n) & 0x1
+        sda = sda << 1
+        sequence += [ 0b1100 | sda, 0b1101 | sda, 0b1100 ]
 
-	sequence += [ 0b0110, 0b0111, 0b0110 ]
-	ack_position += [ len(sequence) - 2 ]
+    sequence += [ 0b0110, 0b0111, 0b0110 ]
+    ack_position += [ len(sequence) - 2 ]
 
-	sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
+    sequence+= [ 0b0100, 0b0001, 0b0011 ] # Stop condition
 
 
-	t0 = time.time()
-	reply = conn.i2c_master(portID, slaveID, busID, sequence)
-	dt = time.time() - t0
+    t0 = time.time()
+    reply = conn.i2c_master(portID, slaveID, busID, sequence)
+    dt = time.time() - t0
 
-	error =  [ (x & 0xE0) != 0 for x in reply ]
-	ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
+    error =  [ (x & 0xE0) != 0 for x in reply ]
+    ack = [ x & 0b10 == 0 for i,x in enumerate(reply) if i in ack_position ]
 
-	## This code is useful for debugging the bus
-	if debug_error and ((True in error) or (False in ack)):
-		print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
-		print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
+    ## This code is useful for debugging the bus
+    if debug_error and ((True in error) or (False in ack)):
+        print("SCL OUT", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in sequence ]) )
+        print("\nSDA OUT", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in sequence ]) )
 
-		print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
-		print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
-		print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
-		print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else "." for x in reply ]) )
-		print([ "%02X" % x for x in reply ])
-		print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
-		print("%4.0f us" % (1e6 * 3*9 * 10e-6))
-		print("%4.0f us" % (1e6 * dt))
+        print("\nSCL IN ", ("").join([ "‾" if (x & 0b01) != 0 else "_" for x in reply ]) )
+        print("\nSDA IN ", ("").join([ "‾" if (x & 0b10) != 0 else "_" for x in reply ]) )
+        print("\nACK    ", ("").join([ "|" if k in ack_position else " " for k in range(len(reply)) ]) )
+        print("ERROR  ", ("").join([ "E" if (x & 0xE0) != 0 else "." for x in reply ]) )
+        print([ "%02X" % x for x in reply ])
+        print("%4.0f us" % (1e6 * len(sequence) * 100e-9 * 2**5))
+        print("%4.0f us" % (1e6 * 3*9 * 10e-6))
+        print("%4.0f us" % (1e6 * dt))
 
-	if True in error:
-		# Generate a no-check stop condition to relase the bus
-		conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
-		raise BusError(portID, slaveID, busID)
+    if True in error:
+        # Generate a no-check stop condition to relase the bus
+        conn.i2c_master(portID, slaveID, busID, [ 0b0000, 0b0001, 0b0011 ])
+        raise BusError(portID, slaveID, busID)
 
-	if False in ack:
-		raise NoAck(portID, slaveID, busID)
+    if False in ack:
+        raise NoAck(portID, slaveID, busID)

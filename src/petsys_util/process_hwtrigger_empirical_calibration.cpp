@@ -320,8 +320,8 @@ public:
 
 void sortData(SystemConfig *config, char *inputFilePrefix, char *outputFilePrefix)
 {
-	
-	RawReader *reader = RawReader::openFile(inputFilePrefix);
+	RawReader::timeref_t tb = RawReader::SYNC;
+	RawReader *reader = RawReader::openFile(inputFilePrefix, tb);
 	assert(!reader->isTOT());
 	EventWriter *eventWriter;
 	
@@ -713,13 +713,13 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 		h_p2->Fill(entry.p2);
 		h_k0->Fill(entry.k0);
 
-		if(entry.chi2_E > 0 && entry.chi2_E < 10 && entry.chi2_T > 0 &&  entry.chi2_T < 1E7){
+		if(entry.chi2_E > 0 && entry.chi2_E < 20 && entry.chi2_T > 0 &&  entry.chi2_T < 1E7){
 			h_chi2_T->Fill(entry.chi2_T);
 			h_chi2_E->Fill(entry.chi2_E);
-			if( entry.chi2_E < 1000 &&  entry.chi2_T < 5E6)
-			{
-				count++;
-			}
+			//if( entry.chi2_E < 1000 &&  entry.chi2_T < 5E6)
+			//{
+			count++;
+				//}
 		}
 	}
 
