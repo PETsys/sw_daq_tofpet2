@@ -125,7 +125,7 @@ int main(int argc, char *argv[])
 	}
 	
 	if(!simulateHwTrigger) {
-		mask ^= (SystemConfig::LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS | SystemConfig::LOAD_LISTMODE_CONTROL_DATA);
+		mask ^= (SystemConfig::LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS);
 	}
 
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);

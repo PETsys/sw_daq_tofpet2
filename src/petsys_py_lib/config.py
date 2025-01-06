@@ -238,35 +238,29 @@ class Config:
 			nHits_threshold_enable = 0b1
 			febd_tgr_enable = 0b1
 			setupWord = enable | (calibration_enable << 1) | (accumulator_on << 4) | (energy_threshold_enable << 8) | (nHits_threshold_enable << 9) | (febd_tgr_enable << 10)
-
-			energy_sum_vector = 0b11111
-			hits_sum_vector =  0b11111
-			referenceVectors = energy_sum_vector | ( hits_sum_vector << 8 )
+        
+			energy_sum_vector = 0b000001111100000 #Sum energies within -2 to 2 clocks
+			hits_sum_vector =  0b000001111100000  #Find multiple events within -2 to 2 clocks
+			referenceVectors = energy_sum_vector | ( hits_sum_vector << 16 )
 
 			# FEB/D setup
 			for portID, slaveID in daqd.getActiveFEBDs():
 				daqd.write_config_register(portID, slaveID, 9, 0x0602, setupWord)
-				daqd.write_config_register(portID, slaveID, 16, 0x0612, referenceVectors)
-				#daqd.write_config_register(portID, slaveID, 32, 0x0620, referenceVectors2)
+				daqd.write_config_register(portID, slaveID, 32, 0x0620, referenceVectors)
 				daqd.write_config_register(portID, slaveID, 2, 0x061C, self.__hw_trigger["febd_pre_window"])
 				daqd.write_config_register(portID, slaveID, 4, 0x061E, self.__hw_trigger["febd_post_window"])
-				
+
 				daqd.write_config_register(portID, slaveID, 16, 0x0604,  self.float_to_u5_5(self.__hw_trigger["group_min_energy"]))
 				daqd.write_config_register(portID, slaveID, 16, 0x0614,  self.float_to_u5_5(self.__hw_trigger["group_max_energy"]))
 				daqd.write_config_register(portID, slaveID, 16, 0x0618,  self.__hw_trigger["group_max_multiplicity"])
 				daqd.write_config_register(portID, slaveID, 16, 0x061A,  self.__hw_trigger["group_min_multiplicity"])
-				
+
 			for portID, slaveID, chipID in list(asicsConfig.keys()):
 				for channelID in range(64):
 					for tacID in range(4):
 						address = tacID & 0b11
 						address |= (channelID & 0x3F) << 2
-						
-						address |= (chipID & 0b111) << 8  # FEM128 in FEB/D-1K
-						address |= (chipID & 0b11000) << 10 # FEM128 in FEB/D-1K
-
-						#address |= (chipID & 0b1111) << 8 # FEM256 in FEB/D-8K 
-						#address |= (chipID >> 4) << 13 # FEM256 in FEB/D-8K
+						address |= chipID  << 8
 
 						try:
 								c0, c1, c2, k0 = self.getAsicTacQDCEmpiricalCalibrationTable((portID, slaveID, chipID, channelID, tacID))

@@ -22,17 +22,14 @@ namespace PETSYS
 		static const u_int64_t LOAD_MAPPING = 0x0000000000000010ULL;
 		static const u_int64_t LOAD_TIMEALIGN_CALIBRATION = 0x000000000000020ULL;
 		static const u_int64_t LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS = 0x000000000000040ULL;
-		static const u_int64_t LOAD_LISTMODE_CONTROL_DATA = 0x000000000000080ULL;
 
-		struct TacConfig
-		{
+		struct TacConfig {
 			float t0;
 			float a0;
 			float a1;
 			float a2;
 		};
-		struct QacConfig
-		{
+		struct QacConfig {
 			float p0;
 			float p1;
 			float p2;
@@ -44,23 +41,20 @@ namespace PETSYS
 			float p8;
 			float p9;
 		};
-		struct FirmwareConfig
-		{
+		struct FirmwareConfig {
 			float p0;
 			float p1;
 			float p2;
 			float k0;
 			bool isValid;
 		};
-		struct EnergyConfig
-		{
+		struct EnergyConfig {
 			float p0;
 			float p1;
 			float p2;
 			float p3;
 		};
-		struct ChannelConfig
-		{
+		struct ChannelConfig {
 			float x, y, z;
 			int xi, yi;
 			int triggerRegion;
@@ -71,16 +65,13 @@ namespace PETSYS
 			FirmwareConfig empConfig[4];
 			EnergyConfig eCal[4];
 		};
-		
-		std::vector<long long> MultiHitPhotopeakTimes[600000];
-		std::vector<std::pair<long long, long long>> CoincPhotopeakTimes[600000];
 
 		// Software trigger configuration
 		int sw_trigger_group_max_hits;
 		int sw_trigger_group_min_hits;
 		float sw_trigger_group_min_energy;
 		float sw_trigger_group_max_energy;
-	
+
 		float sw_fw_trigger_group_min_energy;
 		float sw_fw_trigger_group_max_energy;
 		int sw_fw_trigger_group_min_nhits;
@@ -88,8 +79,7 @@ namespace PETSYS
 		float sw_fw_trigger_coinc_window;
 		float sw_fw_trigger_pre_window;
 		float sw_fw_trigger_post_window;
-		
-		
+
 		float sw_trigger_group_max_distance;
 		double sw_trigger_group_time_window;
 		double sw_trigger_coincidence_time_window;
@@ -101,12 +91,10 @@ namespace PETSYS
 		inline bool useQDCCalibration() { return hasQDCCalibration; };
 		inline bool useEnergyCalibration() { return hasEnergyCalibration; };
 		inline bool useFirmwareEmpiricalCalibrations() { return hasFirmwareEmpiricalCalibrations; };
-		inline bool useListModeControlData() { return hasListModeControlData; };
 		inline bool useTimeOffsetCalibration() { return hasTimeOffsetCalibration; };
 		inline bool useXYZ() { return hasXYZ; };
 
-		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID)
-		{
+		inline SystemConfig::ChannelConfig &getChannelConfig(unsigned channelID){
 			unsigned indexH = channelID / 4096;
 			unsigned indexL = channelID % 4096;
 
@@ -117,17 +105,13 @@ namespace PETSYS
 				return ptr[indexL];
 		};
 
-		inline bool isCoincidenceAllowed(int r1, int r2)
-		{
-			if ((r1 < 0) || (r2 < 0))
-				return false;
+		inline bool isCoincidenceAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return coincidenceTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
-		inline bool isMultiHitAllowed(int r1, int r2)
-		{
-			if ((r1 < 0) || (r2 < 0))
-				return false;
+		inline bool isMultiHitAllowed(int r1, int r2) {
+			if ((r1 < 0) || (r2 < 0)) return false;
 			return multihitTriggerMap[r1 * MAX_TRIGGER_REGIONS + r2];
 		};
 
@@ -146,7 +130,6 @@ namespace PETSYS
 		static void loadTimeOffsetCalibration(SystemConfig *config, const char *fn);
 		static void loadChannelMap(SystemConfig *config, const char *fn);
 		static void loadTriggerMap(SystemConfig *config, const char *fn);
-		static void loadMultiHitPhotopeakData(SystemConfig *config, const char *fn);
 
 		bool hasTDCCalibration;
 		bool hasQDCCalibration;
@@ -154,7 +137,6 @@ namespace PETSYS
 		bool hasFirmwareEmpiricalCalibrations;
 		bool hasTimeOffsetCalibration;
 		bool hasXYZ;
-		bool hasListModeControlData;
 
 		ChannelConfig **channelConfig;
 		ChannelConfig nullChannelConfig;
