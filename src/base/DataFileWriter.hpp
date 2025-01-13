@@ -56,6 +56,7 @@ private:
 	std::string fName;
 	FILE_TYPE fileType;
 	EVENT_TYPE eventType;
+	double fileEpoch;
 	int eventFractionToWrite;
 	long long eventCounter;
 	double fileSplitTime;
@@ -120,7 +121,7 @@ private:
 	unsigned short	brEFine;
 
 public:
-	DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, float splitTime);
+	DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime);
 	~DataFileWriter(); 
 	
 	void openFile(); 

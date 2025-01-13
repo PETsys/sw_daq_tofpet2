@@ -4,9 +4,10 @@
 
 using namespace PETSYS;
 
-DataFileWriter::DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, int hitLimitToWrite, int eventFractionToWrite, float splitTime){
+DataFileWriter::DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime){
     this->fName = std::string(fName);
     this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
+    this->fileEpoch = fileEpoch;
     this->eventType = eventType;
     this->eventFractionToWrite = eventFractionToWrite;
     this->eventCounter = 0;
@@ -255,7 +256,7 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
-    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
+    long long tMin = (buffer->getTMin() + t0 - fileEpoch) * (long long)Tps;
 
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
