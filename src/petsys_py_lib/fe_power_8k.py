@@ -30,9 +30,11 @@ VDD3_PRESET = { 'TI'    : {"min": -127, "max":  127, "baseline":   69},
 
 
 class PowerGoodError(Exception): 
-    def __init__(self, portID, slaveID):
+    def __init__(self, portID, slaveID, busID, rails):
         self.portID, self.slaveID = portID, slaveID
-        self.message = f"ERROR: Failed FEM power good check! @ (portID, slaveID) = ({portID}, {slaveID})."
+        self.busID = busID
+        self.rail = rails
+        self.message = f"ERROR: Failed FEM power good check! @ ({portID}, {slaveID}, {busID}) power goods = {rails})."
         super().__init__(self.message)
 
 class RSenseReadError(Exception):
@@ -62,7 +64,7 @@ def chk_power_good(conn, portID, slaveID, busID):
 
     if pg_lst != [1, 1, 1]:
         set_fem_power(conn, portID, slaveID, "off")
-        raise PowerGoodError(portID, slaveID)
+        raise PowerGoodError(portID, slaveID, busID, pg_lst)
     return pg_lst
 
 def get_module_version(conn, portID, slaveID, busID):

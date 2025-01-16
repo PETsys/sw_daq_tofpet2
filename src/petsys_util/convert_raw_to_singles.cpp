@@ -28,6 +28,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeFraction N \t Fraction of events to write, in percentage\n");
 	fprintf(stderr,  "  --splitTime t \t Split output into different files every t seconds\n");
 	fprintf(stderr,  "  --timeref [sync|wall|step|user] \t\t Select timeref for written data\n");
+	fprintf(stderr,  "  --epoch \t\tEpoch for --timeref wall. 0 is UNIX epoch.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
 	
 };
@@ -46,6 +47,7 @@ int main(int argc, char *argv[])
 	long long eventFractionToWrite = 1024;
 	double fileSplitTime = 0.0;
 	RawReader::timeref_t tb = RawReader::SYNC;
+	double fileEpoch = 0;
 
 
 	static struct option longOptions[] = {
@@ -55,7 +57,8 @@ int main(int argc, char *argv[])
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeFraction", required_argument, 0, 0},
 		{ "splitTime", required_argument, 0, 0},
-		{ "timeref", required_argument, 0, 0}
+		{ "timeref", required_argument, 0, 0},
+		{ "epoch", required_argument, 0, 0}
 	};
 
 	while(true) {
@@ -86,6 +89,7 @@ int main(int argc, char *argv[])
 					else if(strcmp(optarg, "user") == 0) tb = RawReader::USER;
 					else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 					break;
+			case 7: 	fileEpoch = boost::lexical_cast<double>(optarg); break;
 
 			default:	displayUsage(argv[0]); exit(1);
 			}
@@ -119,7 +123,7 @@ int main(int argc, char *argv[])
 	}
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  SINGLE, fileType, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  SINGLE, fileType, fileEpoch, 0, eventFractionToWrite, fileSplitTime);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {
