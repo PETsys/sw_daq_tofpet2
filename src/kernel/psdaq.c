@@ -106,11 +106,22 @@ struct psdaq_dev_t {
 static struct class *psdaq_dev_class;
 static unsigned device_counter = 0;
 
+#if defined(PSOS_UBUNTU)
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(6,0,0)
+static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+# else
+static int psdaq_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#endif
+
+#else
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(4,0,0)
 static int psdaq_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
 # else
 static int psdaq_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+#endif
+
 #endif
 {
 	add_uevent_var(env, "DEV_NAME=psdaq%d", device_counter);

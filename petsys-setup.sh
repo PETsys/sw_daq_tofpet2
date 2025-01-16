@@ -50,23 +50,15 @@ if [ $currentUser != "root" ]; then echo "ERROR: Running as "$actualUser". Pleas
 
 #determine the host OS from the pretty_name
 if [[ $osPrettyName == "ubuntu" && $osVersion == "20.04" ]]; then
- 	pass
+ 	true
 elif [[ $osPrettyName == "ubuntu" && $osVersion == "22.04" ]]; then
- 	pass
-elif [[ $osPrettyName == "centos" && $osVersion == "7" ]]; then
- 	pass
-elif [[ $osPrettyName == "centos" && $osVersion == "8" ]]; then
- 	pass
-elif [[ $osPrettyName == "centos" && $osVersion == "9" ]]; then
- 	pass
-elif [[ $osPrettyName == "almalinux" && $osVersion == "9" ]]; then
- 	pass
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "7" ]]; then
- 	pass
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "8" ]]; then
- 	pass
+ 	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "9" ]]; then
- 	pass
+ 	true
 else
 	echo "ERROR: Cannot determine host operating system!"
 	echo "WARNING: This script is only supported on Ubuntu 20.04 and 22.04 and RHEL/CentOS 7-9 Linux distribution!"
@@ -149,7 +141,9 @@ if [ $osPrettyName == "ubuntu" ] && [ $debug -eq 0 ] && [ $installROOT -eq 1 ]; 
 	mkdir build;
 	cd build;
 	cmake -DCMAKE_INSTALL_PREFIX=/usr/local/stow/root-v6.28.02 -DCMAKE_INSTALL_MANDIR=share/man ..;
-	make -j9;
+	# Two step building as parallel building sometimes failes due to lack of RAM
+	make -k -j$(nproc)
+	make
 	sudo make install;
 	cd /usr/local/stow;
 	sudo stow root-v6.28.02;
