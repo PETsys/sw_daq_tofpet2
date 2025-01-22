@@ -9,6 +9,7 @@ from . import tofpet2b, tofpet2c, fe_power
 import bitarray
 import math
 from time import sleep, time
+import os
 
 LOAD_BIAS_CALIBRATION	= 0x00000001
 LOAD_BIAS_SETTINGS 	= 0x00000002
@@ -40,6 +41,9 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	if (loadMask & LOAD_BIAS_CALIBRATION) != 0:
 		fn = configParser.get("main", "bias_calibration_table")
 		fn = replace_variables(fn, cdir)
+		if not os.path.isfile(fn):
+			print(f"Error: File '{fn}' not present in working data folder. It is required in order to set correct bias voltage for SIPMs.")
+			exit(1)
 		t = readBiasCalibrationTable_tripplet_list(fn)
 		config._Config__biasChannelCalibrationTable = t
 		config._Config__loadMask |= LOAD_BIAS_CALIBRATION
@@ -47,6 +51,9 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	if (loadMask & LOAD_BIAS_SETTINGS) != 0:
 		fn = configParser.get("main", "bias_settings_table")
 		fn = replace_variables(fn, cdir)
+		if not os.path.isfile(fn):
+			print(f"Error: File '{fn}' not present in working data folder. It is required in order to set bias voltage of SIPMs.")
+			exit(1)
 		t = readSiPMBiasTable(fn)
 		config._Config__biasChannelSettingsTable = t
 		config._Config__loadMask |= LOAD_BIAS_SETTINGS
@@ -54,6 +61,9 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	if (loadMask & LOAD_DISC_CALIBRATION) != 0:
 		fn = configParser.get("main", "disc_calibration_table")
 		fn = replace_variables(fn, cdir)
+		if not os.path.isfile(fn):
+			print(f"Error: File '{fn}' not present in working data folder. It is required in order to set the discriminator thresholds for data acquisition.")
+			exit(1)
 		b, t = readDiscCalibrationsTable(fn)
 		config._Config__asicChannelBaselineSettingsTable = b
 		config._Config__asicChannelThresholdCalibrationTable = t
@@ -62,6 +72,9 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	if (loadMask & LOAD_DISC_SETTINGS) != 0:
 		fn = configParser.get("main", "disc_settings_table")
 		fn = replace_variables(fn, cdir)
+		if not os.path.isfile(fn):
+			print(f"Error: File '{fn}' not present in working data folder. It is required in order to set the discriminator thresholds for data acquisition.")
+			exit(1)
 		t = readDiscSettingsTable(fn)
 		config._Config__asicChannelThresholdSettingsTable = t
 		config._Config__loadMask |= LOAD_DISC_SETTINGS
@@ -69,16 +82,12 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 	if (loadMask & LOAD_QDCMODE_MAP) != 0:
 		fn = configParser.get("main", "acquisition_mode_table")
 		fn = replace_variables(fn, cdir)
+		if not os.path.isfile(fn):
+			print(f"Error: File '{fn}' not present in working data folder. It is required in order to acquire data in mixed mode.")
+			exit(1)
 		t = readQDCModeTable(fn)
 		config._Config__asicChannelQDCModeTable = t
 		config._Config__loadMask |= LOAD_QDCMODE_MAP
-
-	if (loadMask & LOAD_FIRMWARE_QDC_CALIBRATION) != 0:
-		fn = configParser.get("hw_trigger", "hwtrigger_empirical_calibration_table")
-		fn = replace_variables(fn, cdir)
-		t = readQDCEmpiricalCalibrationTable(fn)
-		config._Config__asicTacQDCEmpiricalCalibrationTable = t
-		config._Config__loadMask |= LOAD_FIRMWARE_QDC_CALIBRATION
 
 
 	# Load hw_trigger configuration IF hw_trigger section exists
@@ -103,6 +112,24 @@ def ConfigFromFile(configFileName, loadMask=LOAD_ALL):
 		fn = configParser.get("main", "trigger_map")
 		fn = replace_variables(fn, cdir)
 		hw_trigger_config["regions"] = readTriggerMap(fn)
+
+	# Load hw_trigger calibration table IF thrshold settings so require
+	if (loadMask & LOAD_FIRMWARE_QDC_CALIBRATION) != 0:
+		fn = configParser.get("hw_trigger", "hwtrigger_empirical_calibration_table")
+		fn = replace_variables(fn, cdir)
+		t = []
+		if not os.path.isfile(fn) and hwTriggerParamsAreDefault(hw_trigger_config):
+			fn2 = configParser.get("main", "disc_settings_table")
+			fn2 = replace_variables(fn2, cdir)
+			t = makeSimpleEmpiricalCalibrationTable(fn2)			
+		elif not os.path.isfile(fn):
+			print(f"Error: Calibration file '{fn}' not present in working data folder. It is required in order to enable hw_trigger using non-default energy and multiplicity thresholds.")
+			exit(1)
+		else:
+			t = readQDCEmpiricalCalibrationTable(fn)
+		config._Config__asicTacQDCEmpiricalCalibrationTable = t
+		config._Config__loadMask |= LOAD_FIRMWARE_QDC_CALIBRATION
+	
 
 	config._Config__hw_trigger = hw_trigger_config
 
@@ -528,3 +555,24 @@ def readQDCEmpiricalCalibrationTable(fn):
 		c[(portID, slaveID, chipID, channelID, tacID)] = [ float(v) for v in l[5:9] ]
 	f.close()
 	return c
+
+def makeSimpleEmpiricalCalibrationTable(fn):
+	f = open(fn)
+	c = {}
+	for l in f:
+		l = normalizeAndSplit(l)
+		if l == ['']: continue
+		portID, slaveID, chipID, channelID= [ int(v) for v in l[0:4] ]
+		for tacID in range(4):
+			c[(portID, slaveID, chipID, channelID, tacID)] = [1,0,0,0.5]
+	f.close()
+	return c
+
+
+def hwTriggerParamsAreDefault(hw_trigger_config):
+	isDefault = True
+	if hw_trigger_config["group_min_energy"] > 0 or hw_trigger_config["group_max_energy"] < 128:
+		isDefault = False 
+	if hw_trigger_config["group_min_multiplicity"] > 1 or hw_trigger_config["group_max_multiplicity"] < 1024: 
+		isDefault = False
+	return isDefault

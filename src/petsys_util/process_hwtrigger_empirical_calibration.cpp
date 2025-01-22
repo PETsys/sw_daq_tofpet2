@@ -691,7 +691,7 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	TH1F *h_chi2_E = new TH1F("h_chi2_E", "h_chi2_E", 500, 1, 1000);
 
 
-	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tgA\tk0\n");
+	fprintf(f, "# portID\tslaveID\tasicID\tchannelID\ttacID\tp0\tp1\tp2\tk0\n");
 
 	int count = 0;
 

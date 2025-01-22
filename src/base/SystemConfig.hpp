@@ -123,9 +123,11 @@ namespace PETSYS
 
 	private:
 		void touchChannelConfig(unsigned channelID);
+		static bool areHwTriggerThresholdsDefault(SystemConfig *config);
 		static void loadTDCCalibration(SystemConfig *config, const char *fn);
 		static void loadQDCCalibration(SystemConfig *config, const char *fn);
-		static void loadFirmwareEmpiricalCalibrations(SystemConfig *config, const char *fn);
+		static void loadFirmwareEmpiricalCalibration(SystemConfig *config, const char *fn);
+		static void makeSimpleFirmwareEmpiricalCalibration(SystemConfig *config, const char *fn);
 		static void loadEnergyCalibration(SystemConfig *config, const char *fn);
 		static void loadTimeOffsetCalibration(SystemConfig *config, const char *fn);
 		static void loadChannelMap(SystemConfig *config, const char *fn);
