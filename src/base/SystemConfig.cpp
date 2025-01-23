@@ -8,6 +8,8 @@
 #include <limits.h>
 #include <string>
 #include <boost/algorithm/string/replace.hpp>
+#include <iostream>
+
 
 extern "C" {
 #include <iniparser.h>
@@ -40,6 +42,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 	char *cdir = dirname(path);
 	
 	char *fn = new char[PATH_MAX];
+	char *fn2 = new char[PATH_MAX];
 	
 	dictionary * configFile = iniparser_load(configFileName);
 	SystemConfig *config = new SystemConfig();
@@ -77,8 +80,6 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 		}	
 	}
 	
-
-
 	config->hasXYZ = false;
 	if((mask & LOAD_MAPPING) != 0) {
 		const char *entry = iniparser_getstring(configFile, "main:channel_map", NULL);
@@ -89,7 +90,8 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 		replace_variables(fn, entry, cdir);
 		loadChannelMap(config, fn);
 		config->hasXYZ = true;
-		
+
+
 		entry = iniparser_getstring(configFile, "main:trigger_map", NULL);
 		if(entry == NULL) {
 			fprintf(stderr, "ERROR: trigger_map not specified in section 'main' of '%s'\n", configFileName);
@@ -98,7 +100,7 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 		replace_variables(fn, entry, cdir);
 		loadTriggerMap(config, fn);
 	}
-	
+
 	config->hasTimeOffsetCalibration = false;
 	if ((mask & LOAD_TIMEALIGN_CALIBRATION) != 0) {
 		const char *entry = iniparser_getstring(configFile, "main:time_offset_calibration_table", NULL);
@@ -112,15 +114,45 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 	}
 
 	// Load trigger configuration
-	 config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
-	 config->sw_trigger_group_min_hits = iniparser_getint(configFile, "sw_trigger:group_min_hits", 1);
-	 config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
-	 config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
-	 config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
-	 config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 20.0);
-	 config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 2.0);
+	config->sw_trigger_group_max_hits = iniparser_getint(configFile, "sw_trigger:group_max_hits", 64);
+	config->sw_trigger_group_min_hits = iniparser_getint(configFile, "sw_trigger:group_min_hits", 1);
+	config->sw_trigger_group_min_energy = iniparser_getdouble(configFile, "sw_trigger:group_min_energy", -1E6);
+	config->sw_trigger_group_max_energy = iniparser_getdouble(configFile, "sw_trigger:group_max_energy", +1E6);
+	config->sw_trigger_group_max_distance = iniparser_getdouble(configFile, "sw_trigger:group_max_distance", 100.0);
+	config->sw_trigger_group_time_window = iniparser_getdouble(configFile, "sw_trigger:group_time_window", 20.0);
+	config->sw_trigger_coincidence_time_window =  iniparser_getdouble(configFile, "sw_trigger:coincidence_time_window", 2.0);
+
+	config->sw_fw_trigger_group_min_energy = iniparser_getdouble(configFile, "hw_trigger:group_min_energy", 0);
+	config->sw_fw_trigger_group_max_energy = iniparser_getdouble(configFile, "hw_trigger:group_max_energy", 128);
+	config->sw_fw_trigger_group_min_nhits = iniparser_getint(configFile, "hw_trigger:group_min_multiplicity", 1);
+	config->sw_fw_trigger_group_max_nhits = iniparser_getint(configFile, "hw_trigger:group_max_multiplicity", 1024);
+	config->sw_fw_trigger_pre_window = iniparser_getdouble(configFile, "hw_trigger:pre_window", 2);
+	config->sw_fw_trigger_post_window = iniparser_getdouble(configFile, "hw_trigger:post_window", 3);
+	config->sw_fw_trigger_coinc_window = iniparser_getdouble(configFile, "hw_trigger:coincidence_window", 2);
+
+
+	config->hasFirmwareEmpiricalCalibrations = false;
+	if ((mask & LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS) != 0){
+		const char *entry = iniparser_getstring(configFile, "hw_trigger:hwtrigger_empirical_calibration_table", NULL);
+		if(entry == NULL){
+			fprintf(stderr, "ERROR: hwtrigger_empirical_calibration_table not specified in section 'hw_trigger' of '%s'\n", configFileName);
+			exit(1);
+		}
+
+		if(areHwTriggerThresholdsDefault(config)) {
+				const char *entry2 = iniparser_getstring(configFile, "main:tdc_calibration_table", NULL);
+				replace_variables(fn2, entry2, cdir);
+				makeSimpleFirmwareEmpiricalCalibration(config, fn2);
+		}
+		else{
+			replace_variables(fn, entry, cdir);
+			loadFirmwareEmpiricalCalibration(config, fn);
+		}
+		config-> hasFirmwareEmpiricalCalibrations = true;
+	}
 	
 	iniparser_freedict(configFile);
+
 	delete [] fn;
 	delete [] path;
 	return config;
@@ -221,7 +253,6 @@ static unsigned MAKE_GID(unsigned long portID, unsigned long slaveID, unsigned l
 }
 
 
-
 void SystemConfig::loadTDCCalibration(SystemConfig *config, const char *fn)
 {
 	FILE *f = fopen(fn, "r");
@@ -298,6 +329,85 @@ void SystemConfig::loadQDCCalibration(SystemConfig *config, const char *fn)
 	fclose(f);
 }
 
+bool SystemConfig::areHwTriggerThresholdsDefault(SystemConfig *config){
+	bool isDefault = true;
+	if (config->sw_fw_trigger_group_min_energy > 0 || config->sw_fw_trigger_group_max_energy < 128) isDefault = false;
+	if (config->sw_fw_trigger_group_min_nhits  > 1 || config->sw_fw_trigger_group_max_nhits  < 1024) isDefault = false;
+	return isDefault;
+}
+
+
+void SystemConfig::loadFirmwareEmpiricalCalibration(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[PATH_MAX];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+
+		unsigned portID, slaveID, chipID, channelID, tacID;
+		float p0, p1, p2, k0;
+
+		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t\t%f\t%f\t%f\t%f\n",
+			&portID, &slaveID, &chipID, &channelID, &tacID,
+			  &p0, &p1, &p2, &k0) != 9) continue;
+
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+
+		FirmwareConfig &empConfig = channelConfig.empConfig[tacID];
+
+		empConfig.p0 = p0;
+		empConfig.p1 = p1;
+		empConfig.p2 = p2;
+		empConfig.k0 = k0;
+
+	}
+	fclose(f);
+}
+
+
+void SystemConfig::makeSimpleFirmwareEmpiricalCalibration(SystemConfig *config, const char *fn)
+{
+	FILE *f = fopen(fn, "r");
+	if(f == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
+		exit(1);
+	}
+	char line[PATH_MAX];
+	while(fscanf(f, "%[^\n]\n", line) == 1) {
+		normalizeLine(line);
+		if(strlen(line) == 0) continue;
+		
+		unsigned portID, slaveID, chipID, channelID, tacID;
+		char bStr;
+		float t0, a0, a1, a2;
+		
+		if(sscanf(line, "%d\t%u\t%u\t%u\t%u\t%c\t%f\t%f\t%f\t%f\n", 
+			&portID, &slaveID, &chipID, &channelID, &tacID, &bStr,
+			&t0, &a0, &a1, &a2) != 10) continue;
+		
+		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
+		
+		config->touchChannelConfig(gChannelID);
+		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
+		
+		FirmwareConfig &empConfig = channelConfig.empConfig[tacID];
+		
+		empConfig.p0 = 1;
+		empConfig.p1 = 0;
+		empConfig.p2 = 0;
+		empConfig.k0 = 0.5;
+	}
+	fclose(f);
+}
+
 void SystemConfig::loadEnergyCalibration(SystemConfig *config, const char *fn)
 {
 	FILE *f = fopen(fn, "r");
@@ -356,10 +466,10 @@ void SystemConfig::loadTimeOffsetCalibration(SystemConfig *config, const char *f
 		
 		config->touchChannelConfig(gChannelID);
 		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
-				
+
 		channelConfig.t0 = t0;
-               
         }
+
 	fclose(f);
 }
 
@@ -371,6 +481,9 @@ void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 		fprintf(stderr, "Could not open '%s' for reading: %s\n", fn, strerror(errno));
 		exit(1);
 	}
+
+	std::set<unsigned> triggerRegionsSet;
+
 	char line[PATH_MAX];
 	while(fscanf(f, "%[^\n]\n", line) == 1) {
 		normalizeLine(line);
@@ -384,10 +497,17 @@ void SystemConfig::loadChannelMap(SystemConfig *config, const char *fn)
 			&portID, &slaveID, &chipID, &channelID,
 			&region, &xi, &yi,
 			&x, &y, &z) != 10) continue;
-		
+
+		if (triggerRegionsSet.find(region) != triggerRegionsSet.end()){
+			config->mapTriggerRegions[region] = triggerRegionsSet.size()-1;
+			config->mapTriggerRegionsInverted[triggerRegionsSet.size()-1] = region;
+		}
+		triggerRegionsSet.insert(region);
+
 		unsigned long gChannelID = MAKE_GID(portID, slaveID, chipID, channelID);
 		
 		config->touchChannelConfig(gChannelID);
+
 		ChannelConfig &channelConfig = config->getChannelConfig(gChannelID);
 		channelConfig.triggerRegion = region;
 		channelConfig.xi = xi;

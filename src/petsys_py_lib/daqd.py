@@ -274,9 +274,12 @@ class Connection:
 		return None			
 			
 	def disableCoincidenceTrigger(self):
+		disableWord = 0b0000000000000000
+		for portID, slaveID in self.getActiveFEBDs():
+			self.write_config_register(portID, slaveID, 16, 0x0602, disableWord)
 		if self.getTriggerUnit() is not None:
 			portID, slaveID = self.getTriggerUnit()
-			self.write_config_register(portID, slaveID, 1, 0x0602, 0b0)
+			self.write_config_register(portID, slaveID, 16, 0x0602, disableWord)
 
 	def disableAuxIO(self):
 		for portID, slaveID in self.getActiveFEBDs():
@@ -693,8 +696,22 @@ class Connection:
 		assert reply[0] == 0x00
 		
 		return None
-	
-	
+
+
+	def write_mem_ctrl2(self, portID, slaveID, ctrl_id, word_width, base_address, data):
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))
+		n_words = int(math.ceil(len(data)/n_bytes_per_word))
+		data_bytes = [ (data[i] >> (8*j)) & 0xFF for j in range(n_words)  for i in range(n_bytes_per_word)]
+
+		command = bytes([ 0x01 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ] + data_bytes)
+		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
+		
+		assert len(reply) == 1
+		assert reply[0] == 0x00
+
+		return None
+
+
 	def read_config_register(self, portID, slaveID, word_width, base_address):
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))
 		reply = self.read_mem_ctrl(portID, slaveID, 0x00, 8, base_address, n_bytes_per_word)
