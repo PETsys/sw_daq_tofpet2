@@ -216,3 +216,4 @@ void SimpleGrouper::report()
 			
 	UnorderedEventHandler<Hit, GammaPhoton>::report();
 }
+

@@ -24,6 +24,18 @@
 #include <libaio.h>
 
 
+#include <sys/resource.h>
+
+#include <pthread.h>
+#include <cstring>
+#include <unistd.h>
+#include <vector>
+
+#include <libaio.h>
+#include <fcntl.h>
+#include <iostream>
+#include <atomic>
+
 using namespace std;
 
 struct CalibrationData{
@@ -95,8 +107,8 @@ DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
 	for (int i = 0; i < N_BUFFERS; i++) {
         int ret = posix_memalign(&buffers[i].data, BUFFER_SIZE, BUFFER_SIZE);
         if (ret != 0) {
-            fprintf(stderr,"ERROR: Failed posix_memalign alocation");
-			return;
+		fprintf(stderr,"ERROR: Failed posix_memalign alocation");
+		return;
         }
         memset(buffers[i].data, 0, BUFFER_SIZE);
     }
@@ -137,11 +149,9 @@ void DataWriter::splitFrameToBuffers(PETSYS::RawDataFrame *dataFrame , int frame
 		nSubmissions = 0;
 	}
 
-
-
 	//Copy the reminder of the data frame to the nex buffer and swap buffers for further writing
 	void *startDataPtr = (char *)(dataFrame->data) + bytesForCurrentBuffer;
-    memcpy(nextBuffer.data, startDataPtr, bytesForNextBuffer);
+	memcpy(nextBuffer.data, startDataPtr, bytesForNextBuffer);
 	nextBuffer.size = bytesForNextBuffer;
 
 	swapBuffers();
@@ -151,28 +161,27 @@ void DataWriter::splitFrameToBuffers(PETSYS::RawDataFrame *dataFrame , int frame
 void DataWriter::writeCurrentDataBuffer(bool resetBuffer){
 
     Buffer& currentBuffer = buffers[currentBufferIndex];
-
-	struct iocb cb;
+    struct iocb cb;
     struct iocb* cbs[1] = {&cb};
 
-	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
+    io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
     io_submit(ctx, 1, cbs);
 
-	nSubmissions++;
+    nSubmissions++;
 	
-	//struct io_event events[1];
-	//int completed = io_getevents(ctx, 1, 1, events, NULL);
-	
-	if(resetBuffer) return;
-
-	global_offset += BUFFER_SIZE;
+    //struct io_event events[1];
+    //int completed = io_getevents(ctx, 1, 1, events, NULL);
+    
+    if(resetBuffer) return;
+    
+    global_offset += BUFFER_SIZE;
 }
 
 
 void DataWriter::swapBuffers() {
 	Buffer& buf = buffers[currentBufferIndex];
 	buf.size = 0;
-    currentBufferIndex = (currentBufferIndex + 1) % N_BUFFERS;
+	currentBufferIndex = (currentBufferIndex + 1) % N_BUFFERS;
 }
 
 
@@ -183,11 +192,11 @@ void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqS
 		header[i] = 0;
 	header[0] |= uint32_t(systemFrequency);
 	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
+
 	memcpy(header+1, &daqSynchronizationEpoch, sizeof(double));
 	if (triggerID != -1) { header[2] = 0x8000 + triggerID; }
 	if (strcmp(mode, "mixed") == 0) { header[3] = 0x1UL; }
 	header[4] = fileCreationDAQTime;
-
 	Buffer& currentBuffer = buffers[currentBufferIndex];
 
 	if(acqStdMode){
@@ -196,6 +205,7 @@ void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqS
 	}
 	else {
 		write(this->fd, (void *)&header, sizeof(uint64_t)*8);
+
 	}
 }
 
@@ -254,6 +264,7 @@ int main(int argc, char *argv[])
 
 
 	char fNameRaw[1024];
+	char fNameRaw2[1024];
 	char fNameIdx[1024];
 	char fNameTmp[1024];
 
@@ -265,6 +276,7 @@ int main(int argc, char *argv[])
 	}
 	else {
 		sprintf(fNameRaw, "%s.rawf", outputFilePrefix);
+		sprintf(fNameRaw2, "%s_2.rawf", outputFilePrefix);
 		sprintf(fNameIdx, "%s.idxf", outputFilePrefix);
 		sprintf(fNameTmp, "%s.tmpf", outputFilePrefix);
 	}
@@ -347,8 +359,8 @@ int main(int argc, char *argv[])
 		}
 		
 
-		if(!acqStdMode) calibrationPool.processBatch(rdPointer, wrPointer);
-
+		if(!acqStdMode) calibrationPool.processBatch(rdPointer, wrPointer);	
+	
 		while(rdPointer != wrPointer) {
 			unsigned index = rdPointer % bs;
 			
@@ -366,6 +378,8 @@ int main(int argc, char *argv[])
 				long long skippedFrames = (frameID - lastFrameID) - 1;
 				stepAllFrames += skippedFrames;
 				stepLostFrames0 += skippedFrames;
+
+				
 
 				// ...and we write the first frameID of the lost batch to the datafile...
 				if(acqStdMode) {
@@ -429,6 +443,7 @@ int main(int argc, char *argv[])
 			if(acqStdMode){
 				writer.fillDataBuffer(dataFrame, frameSize);
 			}
+
 		}
 
 		if(blockHeader.blockType == 2) {
@@ -450,7 +465,7 @@ int main(int argc, char *argv[])
 			fflush(stderr);
 			
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
-
+			
 			r = fprintf(indexFile, "%ld\t%lld\t%lld\t%lld\t%f\t%f\n", stepStartOffset, writer.getCurrentPosition(), stepFirstFrameID, lastFrameID, blockHeader.step1, blockHeader.step2);
 
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
@@ -462,7 +477,6 @@ int main(int argc, char *argv[])
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 
 		}
-
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
 		fwrite(&stepAllFrames, sizeof(long long), 1, stdout);
 		fwrite(&stepLostFrames0, sizeof(long long), 1, stdout);

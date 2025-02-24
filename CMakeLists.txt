@@ -34,8 +34,10 @@ include_directories("src/online_monitor")
 # Need to define LINUX for WINDRIVER
 # even if just to check it's presence.
 if(UNIX AND NOT APPLE)
-set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
+
+set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native " )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native" )
+
 set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
 endif()
 
@@ -108,6 +110,7 @@ configure_file("src/gui/logo_PETsys.png" "gui/logo_PETsys.png" COPYONLY)
 configure_file("src/gui/logo_PETsys2.png" "gui/logo_PETsys2.png" COPYONLY)
 configure_file("src/online_monitor/launch_monitor" "launch_monitor" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data_with_monitoring" "acquire_sipm_data_with_monitoring" COPYONLY)
+configure_file("src/petsys_util/acquire_sipm_data_with_processing" "acquire_sipm_data_with_processing" COPYONLY)
 configure_file("config.ini" "config.ini" COPYONLY)
 
 include_directories( ${ROOT_INCDIR} )
@@ -159,3 +162,6 @@ target_link_libraries("merge_raw" common)
 
 add_executable("online_monitor" "src/online_monitor/online_monitor.cpp")
 target_link_libraries("online_monitor" common)
+
+add_executable("online_process" "src/online_monitor/online_process.cpp")
+target_link_libraries("online_process" common)

@@ -1081,18 +1081,21 @@ class Connection:
 		return None
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
-		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
+		return self.__openRawAcquisition(fileNamePrefix, calMode,None,None, None, None, None, None, None, None)
 		
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec="./online_monitor"):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, monitor_config, event_type, output_format, fractionToWrite, hitLimit, splitTime):
+		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, None, "./online_process", event_type, output_format, fractionToWrite, hitLimit, splitTime)
+
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc):
+		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, "./online_monitor", None, None, None, None, None)
 		
-	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
-		
+	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec, eventType, output_format, fractionToWrite, hitLimit, splitTime):
 		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
-			modeFile = open(fileNamePrefix + ".modf", "w")
+			modeFileName = fileNamePrefix + ".modf"
+			modeFile = open(modeFileName, "w")
 		else:
-			modeFile = open("/dev/null", "w")
+			modeFile = open("/dev/null","w")
 
 		modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
 		modeList = [] 
@@ -1107,12 +1110,11 @@ class Connection:
 		if(len(set(modeList))!=1):
 			qdcMode = "mixed"
 		elif(modeList[0] == "tot"):
-			qdcMode = "tot" 
+			qdcMode = "tot"
 		else:
-			qdcMode = "qdc" 
-
-		modeFile.close() 
-	
+			qdcMode = "qdc"
+                        
+		modeFile.close() 	
 		triggerID = -1
 		trigger = self.getTriggerUnit()
 		if trigger is None:
@@ -1129,17 +1131,39 @@ class Connection:
 		currentTime = time()
 		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
 		
-		cmd = [ "./write_raw", \
+		if monitor_exec != "./online_process":
+			cmd = [ "./write_raw", \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
 			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
 			str(fileCreationDAQTime),
 			calMode and 'T' or 'N', 
-			str(triggerID) ]
-		self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-		
-		if monitor_exec is not None:
+			str(triggerID)]
+			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+		else:
+			cmd = [
+			monitor_exec,
+			str(int(self.__systemFrequency)),
+			fileNamePrefix,
+			eventType,
+			output_format,
+			qdcMode,
+			monitor_config,
+			self.__shmName,
+			str(triggerID), 
+			"%1.12f" % self.getAcquisitionStartTime(),
+			str(fractionToWrite),
+			str(hitLimit),
+			str(splitTime),
+			]
+			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+
+			template = "@?"
+			n = struct.calcsize(template)
+			data = self.__writerPipe.stdout.read(n)
+	
+		if monitor_exec == "./online_monitor":
 			cmd = [
 				monitor_exec,
 				str(int(self.__systemFrequency)),
@@ -1151,7 +1175,8 @@ class Connection:
 				"%1.12f" % daqSynchronizationEpoch
 				]
 			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-
+			data = self.__monitorPipe.stdout.read(n)
+			
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
@@ -1176,13 +1201,12 @@ class Connection:
 	# @param step2 Tag to a given variable specific to this acquisition
 	# @param acquisitionTime Acquisition time in seconds 
 	def acquire(self, acquisitionTime, step1, step2):
-		# WARNING Only the writerPipe returns valid frame/event counters
-		# So it sould always be the last one to be read
 		workers = []
 		if self.__monitorPipe is not None:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
-		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout) ]
+		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout)]
 			
+		#sleep(0.25)
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 		nRequiredFrames = max(nRequiredFrames, 1) # Attempt to acquire at least 1 frame
@@ -1203,13 +1227,13 @@ class Connection:
 		index = rdPointer % bs
 		startFrame = self.__shm.getFrameID(index)
 		stopFrame = startFrame + nRequiredFrames
-
 		t0 = time()
 
 		nBlocks = 0
 		currentFrame = startFrame
 		nFrames = 0
 		lastUpdateFrame = currentFrame
+                
 		while currentFrame < stopFrame:
 			try:
 				wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()

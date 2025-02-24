@@ -152,6 +152,7 @@ int main(int argc, char *argv[])
 		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
 		dataFileWriter->setStepValues(step1, step2);
+
 		if(!simulateHwTrigger){
 			reader->processStep(true,
 					new CoarseSorter(

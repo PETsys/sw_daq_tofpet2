@@ -8,6 +8,7 @@ DataFileWriter::DataFileWriter(char *fName, double frequency, EVENT_TYPE eventTy
     this->fName = std::string(fName);
     this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
     this->fileEpoch = fileEpoch;
+
     this->eventType = eventType;
     this->eventFractionToWrite = eventFractionToWrite;
     this->eventCounter = 0;
@@ -252,7 +253,6 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
 
 
 void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
-    
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
@@ -305,6 +305,7 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
         }
     }	
 }
+
 
 void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
@@ -400,7 +401,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
     checkFilePartForSplit(filePartIndex);
 
     long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
-    
+
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
@@ -514,4 +515,5 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
             }
         }
     }	
-};
+}
+

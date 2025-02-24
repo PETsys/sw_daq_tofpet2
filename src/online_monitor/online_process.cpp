@@ -1,0 +1,511 @@
+#include <stdio.h>
+#include <assert.h>
+#include <string.h>
+#include <math.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <vector>
+#include <algorithm>
+#include <functional>
+#include <set>
+#include <map>
+#include <shm_raw.hpp>
+#include <boost/python.hpp>
+#include <boost/lexical_cast.hpp>
+#include "Monitor.hpp"
+#include "SingleValue.hpp"
+#include "Histogram1D.hpp"
+#include <Event.hpp>
+#include <SystemConfig.hpp>
+#include <OrderedEventHandler.hpp>
+#include <CoarseSorter.hpp>
+#include <ProcessHit.hpp>
+#include <SimpleGrouper.hpp>
+#include <CoincidenceGrouper.hpp>
+#include <DataFileWriter.hpp>
+#include <ThreadPool.hpp>
+#include <boost/regex.hpp>
+#include <string>
+#include <iostream>
+#include <TFile.h>
+#include <TTree.h>
+
+using namespace std;
+using namespace PETSYS;
+using namespace PETSYS::OnlineMonitor;
+
+static const unsigned MAX_NUMBER_CHANNELS = 4194304;
+
+enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
+
+static void normalizeLine(char *line) {
+	std::string s = std::string(line);
+	// Remove carriage return, from Windows written files
+	s = boost::regex_replace(s, boost::regex("\r"), "");
+	// Remove comments
+	s = boost::regex_replace(s, boost::regex("\\s*#.*"), "");
+	// Remove leading white space
+	s = boost::regex_replace(s, boost::regex("^\\s+"), "");
+	// Remove trailing whitespace
+	s = boost::regex_replace(s, boost::regex("\\s+$"), "");
+	// Normalize white space to tab
+	s = boost::regex_replace(s, boost::regex("\\s+"), "\t");
+	strcpy(line, s.c_str());	
+}
+
+class OnlineEventStream : public EventStream {
+public:
+	OnlineEventStream(double f, int tID) : frequency(f), triggerID(tID) { } ;
+	double getFrequency() { return frequency; };
+	int getTriggerID() { return triggerID; };
+	bool isQDC(unsigned int gChannelID){ return qdcMode[gChannelID]; };
+	void setMode(unsigned int gChannelID, bool mode){ qdcMode[gChannelID] = mode; };
+private:
+	double frequency;
+	int triggerID;
+	bool qdcMode[MAX_NUMBER_CHANNELS];
+};
+
+/* 
+ * Duplicate code from RawReader
+ * Needs reforming, probably once we add support for QDC/ToT mixed mode acquisitions
+ */
+
+struct UndecodedHit {
+		u_int64_t frameID;
+		u_int64_t eventWord;
+	};
+
+class Decoder : public UnorderedEventHandler<UndecodedHit, RawHit> {
+public:
+	Decoder(OnlineEventStream *stream, EventSink<RawHit> *sink) : UnorderedEventHandler<UndecodedHit, RawHit>(sink), stream(stream)
+	{
+	};
+	~Decoder()  
+	{
+	};
+	void report()
+	{
+		UnorderedEventHandler<UndecodedHit,RawHit>::report();
+	};
+	void resetCounters()
+	{
+		UnorderedEventHandler<UndecodedHit,RawHit>::resetCounters();
+	};
+protected:
+	virtual EventBuffer<RawHit> * handleEvents (EventBuffer<UndecodedHit> *inBuffer)
+	{
+		unsigned N =  inBuffer->getSize();
+		EventBuffer<RawHit> *outBuffer = new EventBuffer<RawHit>(N, inBuffer);
+
+		UndecodedHit *pi = inBuffer->getPtr();
+		UndecodedHit *pe = pi + N;
+		RawHit *po = outBuffer->getPtr();
+		for(; pi < pe; pi++, po++) {
+			RawEventWord e = RawEventWord(pi->eventWord);
+			po->channelID = e.getChannelID();
+			po->qdcMode = stream->isQDC(po->channelID);
+			po->tacID = e.getTacID();
+			po->frameID = pi->frameID;
+			po->tcoarse = e.getTCoarse();
+			po->tfine = e.getTFine();
+			po->ecoarse = e.getECoarse();
+			po->efine = e.getEFine();			
+			po->time = pi->frameID * 1024 + po->tcoarse;
+			po->timeEnd = pi->frameID * 1024 + po->ecoarse;
+			if((po->timeEnd - po->time) < -256) po->timeEnd += 1024;
+			po->valid = true;
+		}
+		outBuffer->setUsed(N);
+		return outBuffer;			
+	}
+	OnlineEventStream *stream;
+};
+
+
+// class WriteRawHelper : public OrderedEventHandler<RawHit, RawHit> {
+// private: 
+// 	DataFileWriter *dataFileWriter;
+// public:
+// 	WriteRawHelper(DataFileWriter *dataFileWriter, EventSink<RawHit> *sink) :
+// 		OrderedEventHandler<RawHit, RawHit>(sink),
+// 		dataFileWriter(dataFileWriter)
+// 	{
+// 	};
+	
+// 	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
+// 		dataFileWriter->writeRawEvents(buffer);
+// 		return buffer;
+// 	};
+// };
+
+
+
+// class WriteSinglesHelper : public OrderedEventHandler<Hit, Hit> {
+// private: 
+// 	DataFileWriter *dataFileWriter;
+// public:
+// 	WriteSinglesHelper(DataFileWriter *dataFileWriter, EventSink<Hit> *sink) :
+// 		OrderedEventHandler<Hit, Hit>(sink),
+// 		dataFileWriter(dataFileWriter)
+// 	{
+// 	};
+
+// 	EventBuffer<Hit> * handleEvents(EventBuffer<Hit> *buffer) {
+// 		dataFileWriter->writeSingleEvents(buffer);
+// 		return buffer;
+// 	};
+// };
+
+// class WriteGroupsHelper : public OrderedEventHandler<GammaPhoton, GammaPhoton> {
+// private: 
+// 	DataFileWriter *dataFileWriter;
+// public:
+// 	WriteGroupsHelper(DataFileWriter *dataFileWriter, EventSink<GammaPhoton> *sink) :
+// 		OrderedEventHandler<GammaPhoton, GammaPhoton>(sink),
+// 		dataFileWriter(dataFileWriter)
+// 	{
+// 	};
+	
+// 	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
+// 		dataFileWriter->writeGroupEvents(buffer);
+// 		return buffer;
+// 	};
+// };
+
+// class WriteCoincidencesHelper : public OrderedEventHandler<Coincidence, Coincidence> {
+// private: 
+// 	DataFileWriter *dataFileWriter;
+
+// public:
+// 	WriteCoincidencesHelper(DataFileWriter *dataFileWriter,  EventSink<Coincidence> *sink) :
+// 		OrderedEventHandler<Coincidence, Coincidence>(sink),
+// 		dataFileWriter(dataFileWriter)
+// 	{
+// 	};
+
+// 	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
+// 		dataFileWriter->writeCoincidenceEvents(buffer);
+// 		return buffer;
+// 	};
+// };
+
+Decoder *createProcessingPipeline(EVENT_TYPE eventType, OnlineEventStream *eventStream, SystemConfig *config, DataFileWriter *dataFileWriter){
+	Decoder *pipeline;
+	if(eventType == RAW){
+		pipeline = new Decoder(eventStream, 
+			new WriteRawHelper(dataFileWriter,
+			new NullSink<RawHit>()
+			));
+	}
+	else if(eventType == SINGLE){
+		pipeline = new Decoder(eventStream, 
+			new CoarseSorter(
+			new ProcessHit(config, eventStream,
+			new WriteSinglesHelper(dataFileWriter, 
+			new NullSink<Hit>()
+			))));
+	}
+	else if(eventType == GROUP){
+		pipeline = new Decoder(eventStream, 
+			new CoarseSorter(
+			new ProcessHit(config, eventStream,
+			new SimpleGrouper(config,		
+			new WriteGroupsHelper(dataFileWriter, 
+			new NullSink<GammaPhoton>()
+			)))));
+	}
+	else if(eventType == COINCIDENCE){
+		pipeline = new Decoder(eventStream, 
+			new CoarseSorter(
+			new ProcessHit(config, eventStream,
+			new SimpleGrouper(config,
+			new CoincidenceGrouper(config,
+			new WriteCoincidencesHelper(dataFileWriter, 
+			new NullSink<Coincidence>()
+			))))));
+	}
+	return pipeline;
+}
+
+struct BlockHeader  {
+	float step1;
+	float step2;	
+	uint32_t wrPointer;
+	uint32_t rdPointer;
+	int32_t blockType;
+};
+
+
+int main(int argc, char *argv[])
+{
+	assert(argc == 13);
+	long systemFrequency = boost::lexical_cast<long>(argv[1]);
+	char *fileNamePrefix = argv[2];
+	char *eType = argv[3];
+	char *fType = argv[4];
+	char *mode = argv[5];
+	char *configFileName = argv[6];
+	char *shmObjectPath = argv[7];
+	int triggerID = boost::lexical_cast<int>(argv[8]);
+	double acquisitionStartTime = boost::lexical_cast<double>(argv[9]);
+	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[10])/ 100.0);
+	int hitLimitToWrite = boost::lexical_cast<int>(argv[11]);
+	double fileSplitTime = boost::lexical_cast<double>(argv[12]);
+
+	EVENT_TYPE eventType; 
+	if(strcmp(eType, "raw") == 0){
+		eventType = RAW;
+	}
+	else if(strcmp(eType, "singles") == 0){
+		eventType = SINGLE;
+	}	
+	else if(strcmp(eType, "groups") == 0){
+		eventType = GROUP;
+	}
+	else eventType = COINCIDENCE;
+	       
+	
+	FILE_TYPE fileType; 
+	if(strcmp(fType, "binary") == 0){
+		fileType = FILE_BINARY;
+	}
+	if(strcmp(fType, "binaryCompact") == 0){
+		fileType = FILE_BINARY_COMPACT;
+	}	
+	else if(strcmp(fType, "text") == 0){
+		fileType = FILE_TEXT;
+	}
+	else if(strcmp(fType, "textCompact") == 0){
+		fileType = FILE_TEXT_COMPACT;
+	}
+	else if(strcmp(fType, "root") == 0){
+		fileType = FILE_ROOT;
+	}
+
+	bool totMode = (strcmp(mode, "tot") == 0);
+       	
+	// If data was taken in full ToT mode, do not attempt to load these files
+	unsigned long long mask = SystemConfig::LOAD_ALL;	
+	if(totMode){ 
+		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
+	}
+	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);	
+	
+	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
+	bool firstBlock = true;
+	
+	BlockHeader blockHeader;
+	
+    long long stepEvents = 0;
+	long long stepMaxFrame = 0;
+	long long stepAllFrames = 0;
+	long long stepLostFramesN = 0;
+	long long stepLostFrames0 = 0;
+
+	long long minFrameID = 0x7FFFFFFFFFFFFFFFLL, maxFrameID = 0, lastMaxFrameID = 0;
+	
+	long long lastFrameID = -1;
+	long long stepFirstFrameID = -1;
+
+	FrameType lastFrameType = FRAME_TYPE_UNKNOWN;
+
+	ThreadPool<UndecodedHit> *pool = new ThreadPool<UndecodedHit>();
+	OnlineEventStream *eventStream = new OnlineEventStream(systemFrequency, triggerID);
+	
+	// If acquisition mode is mixed, read ".modf" file to assign channel energy mode 
+	if(strcmp(mode, "mixed") == 0){
+		char fName[1024];
+		sprintf(fName, "%s.modf", fileNamePrefix);
+		FILE *modeFile = fopen(fName, "r");
+		if(modeFile == NULL) {
+			fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+			exit(1);
+		}
+		char line[PATH_MAX];
+		while(fscanf(modeFile, "%[^\n]\n", line) == 1) {
+			normalizeLine(line);
+			if(strlen(line) == 0) continue;
+			unsigned portID, slaveID, chipID,channelID;
+			char m[128];		
+			if(sscanf(line, "%d\t%u\t%u\t%u\t%s", &portID, &slaveID, &chipID, &channelID, m)!= 5) continue;
+			unsigned long gChannelID = 0;
+			gChannelID |= channelID;
+			gChannelID |= (chipID << 6);
+			gChannelID |= (slaveID << 12);
+			gChannelID |= (portID << 17);
+			eventStream->setMode(gChannelID, strcmp(m, "qdc") == 0);
+		}
+	}
+	else{
+		for(unsigned long gChannelID = 0; gChannelID < MAX_NUMBER_CHANNELS; gChannelID++)
+			eventStream->setMode(gChannelID, strcmp(mode, "qdc") == 0);
+	}
+
+	char outputFileName[1024];
+	
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, eventStream->getFrequency(), eventType, fileType, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
+
+	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
+
+	pipeline->pushT0(acquisitionStartTime);
+
+	bool isReadyToAcquire = true; 
+	fwrite(&isReadyToAcquire, sizeof(bool), 1, stdout);
+	fflush(stdout);
+	sleep(0.05);
+
+	EventBuffer<UndecodedHit> *outBuffer = NULL; 
+	size_t seqN = 0;
+	long long currentBufferFirstFrame = 0;	
+
+	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1){
+		dataFileWriter->setStepValues(blockHeader.step1, blockHeader.step2);
+
+		unsigned bs = shm->getSizeInFrames();
+		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
+		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
+	
+		while(rdPointer != wrPointer) {
+			unsigned index = rdPointer % bs;
+			
+			long long frameID = shm->getFrameID(index);
+			if(stepFirstFrameID == -1) stepFirstFrameID = frameID;
+			if(frameID <= lastFrameID) {
+				fprintf(stderr, "WARNING!! Frame ID reversal: %12lld -> %12lld | %04u %04u %04u\n", 
+					lastFrameID, frameID, 
+					blockHeader.wrPointer, blockHeader.rdPointer, rdPointer
+					);
+				
+			}
+			else if((lastFrameID >= 0) && (frameID != (lastFrameID + 1))) {
+				// We have skipped one or more frame ID, so 
+				// we account them as lost...
+				long long skippedFrames = (frameID - lastFrameID) - 1;
+				stepAllFrames += skippedFrames;
+				stepLostFrames0 += skippedFrames;				
+				// .. and we set the lastFrameType
+				lastFrameType = FRAME_TYPE_ALL_LOST;
+			}
+
+			lastFrameID = frameID;
+			minFrameID = minFrameID < frameID ? minFrameID : frameID;
+			maxFrameID = maxFrameID > frameID ? maxFrameID : frameID;
+
+			// Get the pointer to the raw data frame
+			PETSYS::RawDataFrame *dataFrame = shm->getRawDataFrame(index);
+			// Increase the circular buffer pointer
+			rdPointer = (rdPointer+1) % (2*bs);
+			
+			int frameSize = shm->getFrameSize(index);
+			int nEvents = shm->getNEvents(index);
+			bool frameLost = shm->getFrameLost(index);
+			
+			stepEvents += nEvents;
+			stepMaxFrame = stepMaxFrame > nEvents ? stepMaxFrame : nEvents;
+			if(frameLost){
+				if(nEvents == 0)
+					stepLostFrames0 += 1;
+				else
+					stepLostFramesN += 1;
+			}			
+			stepAllFrames += 1;
+			FrameType frameType = FRAME_TYPE_UNKNOWN;
+			if(frameLost) {
+				frameType = (nEvents == 0) ? FRAME_TYPE_ZERO_DATA : FRAME_TYPE_SOME_DATA;
+			}
+			else {
+				frameType = (nEvents == 0) ? FRAME_TYPE_ALL_LOST : FRAME_TYPE_SOME_LOST;
+			}
+
+			// Do not write sequences of normal empty frames, unless we're closing a step
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ZERO_DATA && frameType == lastFrameType) {
+				continue;
+			}
+
+			// Do not write sequences of all lost frames, unless we're closing a step
+			if(blockHeader.blockType == 1 && lastFrameType == FRAME_TYPE_ALL_LOST && frameType == lastFrameType) {
+				continue;
+			}
+			lastFrameType = frameType;
+
+			// Blocksize
+			// Best block size from profiling: 2048
+			// but handle larger frames correctly
+			size_t allocSize = max(nEvents, 2048);
+		
+			if(outBuffer == NULL) {
+				//fprintf(stderr,"Allocating first: %d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);
+				currentBufferFirstFrame = dataFrame->getFrameID();
+				outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
+				seqN += 1;
+			}
+			else if((outBuffer->getFree() < nEvents) || ((frameID - currentBufferFirstFrame) > (1LL << 32))) {
+				// Buffer is full or buffer is covering too much time
+				//fprintf(stderr,"Allocating new: %d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);
+				pool->queueTask(outBuffer, pipeline);
+				currentBufferFirstFrame = dataFrame->getFrameID();
+				outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
+				seqN += 1;
+			}
+			//else{fprintf(stderr,"%d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);}
+			
+			UndecodedHit *p = outBuffer->getPtr() + outBuffer->getUsed();
+			for(int i = 0; i < nEvents; i++) {
+				p[i].frameID = frameID - currentBufferFirstFrame;
+				p[i].eventWord = dataFrame->data[2+i];
+			}
+			outBuffer->setUsed(outBuffer->getUsed() + nEvents);
+			outBuffer->setTMax((frameID + 1) * 1024);        
+		}		
+		if(outBuffer != NULL) {
+			pool->queueTask(outBuffer, pipeline);
+			outBuffer = NULL;
+		}
+		pool->completeQueue();
+		
+		if(blockHeader.blockType == 2){
+			
+			fprintf(stderr, "onlineDecoder:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
+				stepAllFrames, stepEvents, 
+				float(stepEvents)/stepAllFrames,
+				stepMaxFrame); fflush(stderr);
+			fprintf(stderr, "onlineDecoder:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
+				stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
+				stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
+				); 
+		
+			pipeline->report();
+			pipeline->resetCounters();
+			fflush(stderr);
+			
+			dataFileWriter->closeStep();
+			
+			stepAllFrames = 0;
+			stepEvents = 0;
+			stepMaxFrame = 0;
+			stepLostFramesN = 0;
+			stepLostFrames0 = 0;
+			lastFrameID = -1;
+			stepFirstFrameID = -1;
+			lastFrameType = FRAME_TYPE_UNKNOWN;
+		}
+		
+		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
+		long long dummy = 0;
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fwrite(&dummy, sizeof(long long), 1, stdout);
+		fflush(stdout);	
+	}
+
+	delete pool;		
+	
+	return 0;
+}
+
