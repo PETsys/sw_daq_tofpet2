@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, 0, RAW, FILE_ROOT, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, 0, RAW, fileType , 0, eventFractionToWrite, fileSplitTime);
 
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

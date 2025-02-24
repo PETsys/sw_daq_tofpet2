@@ -25,7 +25,7 @@ include(CheckIncludeFiles)
 include_directories(${Boost_INCLUDE_DIRS} ${PYTHON_INCLUDE_DIRS})
 include_directories("/usr/include/iniparser")
 
-link_libraries("rt" "pthread")
+link_libraries("rt" "pthread" "aio")
 
 include_directories("src/raw_data")
 include_directories("src/base")
@@ -34,8 +34,8 @@ include_directories("src/online_monitor")
 # Need to define LINUX for WINDRIVER
 # even if just to check it's presence.
 if(UNIX AND NOT APPLE)
-set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX " )
+set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native " )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native" )
 set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
 endif()
 
@@ -51,11 +51,11 @@ string(STRIP ${ROOT_LIBS} ROOT_LIBS)
 execute_process(COMMAND root-config --cflags OUTPUT_VARIABLE ROOT_CXX_FLAGS)
 string(STRIP ${ROOT_CXX_FLAGS} ROOT_CXX_FLAGS)
 
-link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser")
+link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser" "-laio")
 add_library(shm_raw_py MODULE "src/raw_data/shm_raw.cpp" "src/raw_data/shm_raw_py.cpp")
 set_target_properties(shm_raw_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/petsys OUTPUT_NAME shm_raw PREFIX "")
 
-link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser")
+link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser" "-laio")
 add_library(monitor_py MODULE "src/online_monitor/Monitor.cpp" "src/online_monitor/SingleValue.cpp" "src/online_monitor/Histogram1D.cpp" "src/online_monitor/monitor_py.cpp")
 set_target_properties(monitor_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/petsys OUTPUT_NAME monitor PREFIX "")
 

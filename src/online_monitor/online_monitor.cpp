@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
 	long long stepFirstFrameID = -1;
 
 
-	auto pool = new ThreadPool<UndecodedHit>();
+	auto pool = new ThreadPool<UndecodedHit>(32);
 	auto eventStream = new MyEventStream(systemFrequency, triggerID);
 	auto monitor = new Monitor(false);
 	
