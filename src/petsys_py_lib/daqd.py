@@ -21,7 +21,7 @@ import math
 import subprocess
 from sys import stdout
 from copy import deepcopy
-import os, stat
+import os, stat, os.path
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
@@ -1083,7 +1083,7 @@ class Connection:
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
 		
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec="./online_monitor"):
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor')):
 		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
 		
 	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
@@ -1129,7 +1129,7 @@ class Connection:
 		currentTime = time()
 		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
 		
-		cmd = [ "./write_raw", \
+		cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"), \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
