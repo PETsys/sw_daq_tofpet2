@@ -91,22 +91,22 @@ DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
 }
 
 DataWriter::~DataWriter() {
-        // Use a normal write to write any data in the last buffer
-        // but we still need to pad it to IO_BLOCK_SIZE
-        auto &currentBuffer = buffers[currentBufferIndex];
-        auto write_size = (currentBuffer.used / IO_BLOCK_SIZE) * IO_BLOCK_SIZE;
-        auto tail_size = currentBuffer.used - write_size;
-        if(tail_size != 0) write_size += IO_BLOCK_SIZE;
+	// Use a normal write to write any data in the last buffer
+	// but we still need to pad it to IO_BLOCK_SIZE
+	auto &currentBuffer = buffers[currentBufferIndex];
+	auto write_size = (currentBuffer.used / IO_BLOCK_SIZE) * IO_BLOCK_SIZE;
+	auto tail_size = currentBuffer.used - write_size;
+	if(tail_size != 0) write_size += IO_BLOCK_SIZE;
 
-        auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
-        assert(r == write_size);
+	auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
+	assert(r == write_size);
 
-        // Finally truncate the file to the correct size
-        r = ftruncate(fd, global_offset + currentBuffer.used);
-        assert(r == 0);
+	// Finally truncate the file to the correct size
+	r = ftruncate(fd, global_offset + currentBuffer.used);
+	assert(r == 0);
 
-        io_destroy(ctx);
-        close(fd);
+	io_destroy(ctx);
+	close(fd);
 }
 
 void DataWriter::appendData(void *buf, size_t count)
@@ -120,7 +120,7 @@ void DataWriter::appendData(void *buf, size_t count)
 		currentBuffer.used += copySize;
 		written += copySize;
 
-                if(currentBuffer.used == BUFFER_SIZE) {
+		if(currentBuffer.used == BUFFER_SIZE) {
 			// This will also move currentBufferIndex to the next buffer
 			submittCurrentBuffer();
 		}
