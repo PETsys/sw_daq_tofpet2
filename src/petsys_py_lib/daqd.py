@@ -21,7 +21,7 @@ import math
 import subprocess
 from sys import stdout
 from copy import deepcopy
-import os, stat
+import os, stat, os.path
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
@@ -185,6 +185,7 @@ class Connection:
 		return sorted(self.__activeBiasSlots.keys())
 
 	def getBiasSlotInfo(self, portID, slaveID, slotID):
+		if self.__activeUnits == {}: self.__scanUnits_ll()
 		return self.__activeBiasSlots[(portID, slaveID, slotID)]
 
 	def getActiveBiasChannels(self):
@@ -273,9 +274,12 @@ class Connection:
 		return None			
 			
 	def disableCoincidenceTrigger(self):
+		disableWord = 0b0000000000000000
+		for portID, slaveID in self.getActiveFEBDs():
+			self.write_config_register(portID, slaveID, 16, 0x0602, disableWord)
 		if self.getTriggerUnit() is not None:
 			portID, slaveID = self.getTriggerUnit()
-			self.write_config_register(portID, slaveID, 1, 0x0602, 0b0)
+			self.write_config_register(portID, slaveID, 16, 0x0602, disableWord)
 
 	def disableAuxIO(self):
 		for portID, slaveID in self.getActiveFEBDs():
@@ -692,8 +696,22 @@ class Connection:
 		assert reply[0] == 0x00
 		
 		return None
-	
-	
+
+
+	def write_mem_ctrl2(self, portID, slaveID, ctrl_id, word_width, base_address, data):
+		n_bytes_per_word = int(math.ceil(word_width / 8.0))
+		n_words = int(math.ceil(len(data)/n_bytes_per_word))
+		data_bytes = [ (data[i] >> (8*j)) & 0xFF for j in range(n_words)  for i in range(n_bytes_per_word)]
+
+		command = bytes([ 0x01 , (n_words - 1) & 0xFF, ((n_words - 1) >> 8) & 0xFF, base_address & 0xFF, (base_address >> 8) & 0xFF ] + data_bytes)
+		reply = self.sendCommand(portID, slaveID, ctrl_id, command)
+		
+		assert len(reply) == 1
+		assert reply[0] == 0x00
+
+		return None
+
+
 	def read_config_register(self, portID, slaveID, word_width, base_address):
 		n_bytes_per_word = int(math.ceil(word_width / 8.0))
 		reply = self.read_mem_ctrl(portID, slaveID, 0x00, 8, base_address, n_bytes_per_word)
@@ -1065,7 +1083,7 @@ class Connection:
 	def openRawAcquisition(self, fileNamePrefix, calMode = False):
 		return self.__openRawAcquisition(fileNamePrefix, calMode, None, None, None)
 		
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec="./online_monitor"):
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor')):
 		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, monitor_exec=monitor_exec)
 		
 	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec):
@@ -1111,7 +1129,7 @@ class Connection:
 		currentTime = time()
 		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
 		
-		cmd = [ "./write_raw", \
+		cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"), \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \

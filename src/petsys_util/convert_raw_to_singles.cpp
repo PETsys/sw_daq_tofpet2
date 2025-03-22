@@ -6,6 +6,7 @@
 #include <string>
 #include <SystemConfig.hpp>
 #include <CoarseSorter.hpp>
+#include <HwTriggerSimulator.hpp>
 #include <ProcessHit.hpp>
 #include <DataFileWriter.hpp>
 #include <boost/lexical_cast.hpp>
@@ -27,6 +28,7 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeRoot \t\t Set the output data format to ROOT (TTree)\n");
 	fprintf(stderr,  "  --writeFraction N \t Fraction of events to write, in percentage\n");
 	fprintf(stderr,  "  --splitTime t \t Split output into different files every t seconds\n");
+	fprintf(stderr,  "  --simulateHwTrigger \t\t Set the program to filter raw events as in hw trigger, before processing them\n");
 	fprintf(stderr,  "  --timeref [sync|wall|step|user] \t\t Select timeref for written data\n");
 	fprintf(stderr,  "  --epoch \t\tEpoch for --timeref wall. 0 is UNIX epoch.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");	
@@ -45,10 +47,10 @@ int main(int argc, char *argv[])
 	char *outputFileName = NULL;
 	FILE_TYPE fileType = FILE_TEXT;
 	long long eventFractionToWrite = 1024;
+	bool simulateHwTrigger = false;
 	double fileSplitTime = 0.0;
 	RawReader::timeref_t tb = RawReader::SYNC;
 	double fileEpoch = 0;
-
 
 	static struct option longOptions[] = {
 		{ "help", no_argument, 0, 0 },
@@ -56,6 +58,7 @@ int main(int argc, char *argv[])
 		{ "writeBinary", no_argument, 0, 0 },
 		{ "writeRoot", no_argument, 0, 0 },
 		{ "writeFraction", required_argument, 0, 0},
+		{ "simulateHwTrigger", no_argument, 0, 0},
 		{ "splitTime", required_argument, 0, 0},
 		{ "timeref", required_argument, 0, 0},
 		{ "epoch", required_argument, 0, 0}
@@ -81,15 +84,15 @@ int main(int argc, char *argv[])
 			case 2:		fileType = FILE_BINARY; break;
 			case 3:		fileType = FILE_ROOT; break;
 			case 4:		eventFractionToWrite = round(1024 *boost::lexical_cast<float>(optarg) / 100.0); break;
-			case 5:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
-
-			case 6:		if(strcmp(optarg, "sync") == 0) tb = RawReader::SYNC;
+			case 5:		simulateHwTrigger = true; break;
+			case 6:		fileSplitTime = boost::lexical_cast<double>(optarg); break;
+			case 7:		if(strcmp(optarg, "sync") == 0) tb = RawReader::SYNC;
 					else if(strcmp(optarg, "wall") == 0) tb = RawReader::WALL;
 					else if(strcmp(optarg, "step") == 0) tb = RawReader::STEP;
 					else if(strcmp(optarg, "user") == 0) tb = RawReader::USER;
 					else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 					break;
-			case 7: 	fileEpoch = boost::lexical_cast<double>(optarg); break;
+			case 8: 	fileEpoch = boost::lexical_cast<double>(optarg); break;
 
 			default:	displayUsage(argv[0]); exit(1);
 			}
@@ -121,6 +124,11 @@ int main(int argc, char *argv[])
 	if(reader->isTOT()) {
 		mask ^= (SystemConfig::LOAD_QDC_CALIBRATION | SystemConfig::LOAD_ENERGY_CALIBRATION);
 	}
+	
+	if(!simulateHwTrigger) {
+		mask ^= (SystemConfig::LOAD_FIRMWARE_EMPIRICAL_CALIBRATIONS);
+	}
+
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
 	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  SINGLE, fileType, fileEpoch, 0, eventFractionToWrite, fileSplitTime);
@@ -132,12 +140,22 @@ int main(int argc, char *argv[])
 		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
 		dataFileWriter->setStepValues(step1, step2);
-		reader->processStep(true,
-				new CoarseSorter(
-				new ProcessHit(config, reader,
-				new WriteSinglesHelper(dataFileWriter, 
-				new NullSink<Hit>()
-				))));
+		if(!simulateHwTrigger){
+			reader->processStep(true,
+					new CoarseSorter(
+					new ProcessHit(config, reader,
+					new WriteSinglesHelper(dataFileWriter,
+					new NullSink<Hit>()
+					))));
+		}
+		else{
+			reader->processStep(true,
+					new HwTriggerSimulator(config,
+					new ProcessHit(config, reader,
+					new WriteSinglesHelper(dataFileWriter,
+					new NullSink<Hit>()
+					))));
+		}
 		
 		dataFileWriter->closeStep();
 		stepIndex += 1;
