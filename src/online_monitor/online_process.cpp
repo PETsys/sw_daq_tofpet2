@@ -128,73 +128,6 @@ protected:
 };
 
 
-// class WriteRawHelper : public OrderedEventHandler<RawHit, RawHit> {
-// private: 
-// 	DataFileWriter *dataFileWriter;
-// public:
-// 	WriteRawHelper(DataFileWriter *dataFileWriter, EventSink<RawHit> *sink) :
-// 		OrderedEventHandler<RawHit, RawHit>(sink),
-// 		dataFileWriter(dataFileWriter)
-// 	{
-// 	};
-	
-// 	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
-// 		dataFileWriter->writeRawEvents(buffer);
-// 		return buffer;
-// 	};
-// };
-
-
-
-// class WriteSinglesHelper : public OrderedEventHandler<Hit, Hit> {
-// private: 
-// 	DataFileWriter *dataFileWriter;
-// public:
-// 	WriteSinglesHelper(DataFileWriter *dataFileWriter, EventSink<Hit> *sink) :
-// 		OrderedEventHandler<Hit, Hit>(sink),
-// 		dataFileWriter(dataFileWriter)
-// 	{
-// 	};
-
-// 	EventBuffer<Hit> * handleEvents(EventBuffer<Hit> *buffer) {
-// 		dataFileWriter->writeSingleEvents(buffer);
-// 		return buffer;
-// 	};
-// };
-
-// class WriteGroupsHelper : public OrderedEventHandler<GammaPhoton, GammaPhoton> {
-// private: 
-// 	DataFileWriter *dataFileWriter;
-// public:
-// 	WriteGroupsHelper(DataFileWriter *dataFileWriter, EventSink<GammaPhoton> *sink) :
-// 		OrderedEventHandler<GammaPhoton, GammaPhoton>(sink),
-// 		dataFileWriter(dataFileWriter)
-// 	{
-// 	};
-	
-// 	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
-// 		dataFileWriter->writeGroupEvents(buffer);
-// 		return buffer;
-// 	};
-// };
-
-// class WriteCoincidencesHelper : public OrderedEventHandler<Coincidence, Coincidence> {
-// private: 
-// 	DataFileWriter *dataFileWriter;
-
-// public:
-// 	WriteCoincidencesHelper(DataFileWriter *dataFileWriter,  EventSink<Coincidence> *sink) :
-// 		OrderedEventHandler<Coincidence, Coincidence>(sink),
-// 		dataFileWriter(dataFileWriter)
-// 	{
-// 	};
-
-// 	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
-// 		dataFileWriter->writeCoincidenceEvents(buffer);
-// 		return buffer;
-// 	};
-// };
-
 Decoder *createProcessingPipeline(EVENT_TYPE eventType, OnlineEventStream *eventStream, SystemConfig *config, DataFileWriter *dataFileWriter){
 	Decoder *pipeline;
 	if(eventType == RAW){
@@ -244,7 +177,7 @@ struct BlockHeader  {
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 13);
+	assert(argc == 15);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -253,11 +186,13 @@ int main(int argc, char *argv[])
 	char *configFileName = argv[6];
 	char *shmObjectPath = argv[7];
 	int triggerID = boost::lexical_cast<int>(argv[8]);
-	double acquisitionStartTime = boost::lexical_cast<double>(argv[9]);
-	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[10])/ 100.0);
-	int hitLimitToWrite = boost::lexical_cast<int>(argv[11]);
-	double fileSplitTime = boost::lexical_cast<double>(argv[12]);
-
+	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[9]);
+	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[10]);
+	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
+	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
+	double fileSplitTime = boost::lexical_cast<double>(argv[13]);
+	int nCPU = boost::lexical_cast<int>(argv[14]);
+	
 	EVENT_TYPE eventType; 
 	if(strcmp(eType, "raw") == 0){
 		eventType = RAW;
@@ -288,6 +223,15 @@ int main(int argc, char *argv[])
 		fileType = FILE_ROOT;
 	}
 
+	if(eventType == RAW && fileType != FILE_TEXT && fileType != FILE_ROOT){
+		fprintf(stderr, "ERROR: Raw output type can only be written to text or ROOT output format\n");
+		exit(1);
+	}
+
+	if(eventType == SINGLE && (fileType == FILE_BINARY_COMPACT || fileType == FILE_TEXT_COMPACT)){
+		fprintf(stderr, "ERROR: Singles output type can only be written to text, binary or ROOT output formats.\n");
+		exit(1);
+	}
 	bool totMode = (strcmp(mode, "tot") == 0);
        	
 	// If data was taken in full ToT mode, do not attempt to load these files
@@ -315,7 +259,7 @@ int main(int argc, char *argv[])
 
 	FrameType lastFrameType = FRAME_TYPE_UNKNOWN;
 
-	ThreadPool<UndecodedHit> *pool = new ThreadPool<UndecodedHit>();
+	ThreadPool<UndecodedHit> *pool = new ThreadPool<UndecodedHit>(nCPU);
 	OnlineEventStream *eventStream = new OnlineEventStream(systemFrequency, triggerID);
 	
 	// If acquisition mode is mixed, read ".modf" file to assign channel energy mode 
@@ -349,17 +293,18 @@ int main(int argc, char *argv[])
 
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, eventStream->getFrequency(), eventType, fileType, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, true, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
 
 	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
 
-	pipeline->pushT0(acquisitionStartTime);
+	pipeline->pushT0(0.0);
 
 	bool isReadyToAcquire = true; 
 	fwrite(&isReadyToAcquire, sizeof(bool), 1, stdout);
+	//fprintf(stderr, "pos1\n"); 
 	fflush(stdout);
-	sleep(0.05);
-
+	sleep(0.01);
+	//fprintf(stderr, "pos2\n");	
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
 	size_t seqN = 0;
 	long long currentBufferFirstFrame = 0;	
@@ -370,7 +315,7 @@ int main(int argc, char *argv[])
 		unsigned bs = shm->getSizeInFrames();
 		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
 		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
-	
+		//fprintf(stderr, "d\t%d\n", rdPointer, wrPointer);
 		while(rdPointer != wrPointer) {
 			unsigned index = rdPointer % bs;
 			
@@ -437,7 +382,7 @@ int main(int argc, char *argv[])
 			// Blocksize
 			// Best block size from profiling: 2048
 			// but handle larger frames correctly
-			size_t allocSize = max(nEvents, 2048);
+			size_t allocSize = max(nEvents, 4096);
 		
 			if(outBuffer == NULL) {
 				//fprintf(stderr,"Allocating first: %d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);
@@ -501,7 +446,8 @@ int main(int argc, char *argv[])
 		fwrite(&dummy, sizeof(long long), 1, stdout);
 		fwrite(&dummy, sizeof(long long), 1, stdout);
 		fwrite(&dummy, sizeof(long long), 1, stdout);
-		fflush(stdout);	
+		fflush(stdout);
+
 	}
 
 	delete pool;		

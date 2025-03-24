@@ -35,16 +35,16 @@ include_directories("src/online_monitor")
 # even if just to check it's presence.
 if(UNIX AND NOT APPLE)
 
-set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native " )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -O3 -march=native" )
+set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -march=native -O3" )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX  -march=native -O3" )
 
-set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
+set( CMAKE_REQUIRED_DEFINITIONS -DLINUX)
 endif()
 
 set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp"  "src/raw_data/shm_raw.cpp" )
 
 add_executable("daqd" ${DAQD_SOURCES})
-add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp")
+add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp" "src/raw_data/AsyncWriter.cpp")
 
 execute_process(COMMAND root-config --incdir OUTPUT_VARIABLE ROOT_INCDIR)
 string(STRIP ${ROOT_INCDIR} ROOT_INCDIR)
@@ -122,6 +122,7 @@ add_library ( common STATIC
 	"src/base/SystemConfig.cpp"
 	"src/raw_data/RawReader.cpp"
 	"src/raw_data/shm_raw.cpp"
+	"src/raw_data/AsyncWriter.cpp"
 	"src/base/Instrumentation.cpp"
 	"src/base/CoarseSorter.cpp"
 	"src/base/ProcessHit.cpp"

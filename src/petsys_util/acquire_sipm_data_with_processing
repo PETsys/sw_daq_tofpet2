@@ -17,7 +17,7 @@ parser.add_argument("--writeFraction", type=float, required=False, default=100, 
 parser.add_argument("--writeMultipleHits", type=int, required=False, default=1, help="")
 parser.add_argument("--splitTime", type=float, required=False, default=0, help="")
 
-parser.add_argument("--cpus", type=float, required=False, default=0, help="")
+parser.add_argument("--cpus", type=float, required=False, default=8, help="")
 
 args = parser.parse_args()
 
