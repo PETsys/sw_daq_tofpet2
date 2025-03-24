@@ -33,13 +33,16 @@ struct CalibrationData{
 
 class DataWriter {
 
-    static const size_t BUFFER_SIZE = 1048576; // 1MB buffers to better handle very large rates
-	static const int N_BUFFERS = 32;
-	static const size_t WORD_SIZE = sizeof(uint64_t); 
+	static const size_t BUFFER_SIZE = 1048576; // 1MB buffers to better handle very large rates
+	static const size_t N_BUFFERS = 32;
+
+	// TODO: determine this programmatically
+        static const size_t IO_BLOCK_SIZE = 8192;       // I/O block size to which O_DIRECT needs to be aligned
 
 	struct Buffer {
-        void* data;
-        int size = 0;
+		void* data;
+		ssize_t used = 0;
+		struct iocb cb;
     };
 
     Buffer buffers[N_BUFFERS];
@@ -49,45 +52,28 @@ class DataWriter {
 public:
     DataWriter(const std::string& filename, bool acqStdMode);
     ~DataWriter();
-	void fillDataBuffer(PETSYS::RawDataFrame *dataFrame , int frameSize); 
-	void splitFrameToBuffers(PETSYS::RawDataFrame *dataFrame, int frameSize);
-    void writeCurrentDataBuffer(bool resetSize = false);
-	void swapBuffers();
-	size_t getBufferSize(){return BUFFER_SIZE;}
+
+	long long getCurrentPosition();
+	void appendData(void *buf, size_t count);
+
 	void writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID);
-	void writeCalibrationData(CalibrationData c);
-	void setAcqModeToCalibration(){acqStdMode = false;}
-	long long getCurrentPosition(){
-		if(!acqStdMode){
-			return (long long)(lseek(fd, 0, SEEK_CUR));
-		}
-		else return global_offset + buffers[currentBufferIndex].size;
-	}
 
 private:
-    int currentBufferIndex = 0;
+	void submittCurrentBuffer();
+	void completeAllBuffers();
+
+	int currentBufferIndex = 0;
 	uint64_t global_offset = 0;
-	int nSubmissions = 0;
-	bool acqStdMode = true;
 };
 
 DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
-	if(acqStdMode && strcmp(filename.c_str(), "/dev/null") != 0){
-		fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC| O_DIRECT, 0644);
-	}
-	else if(!acqStdMode){
-		setAcqModeToCalibration();
-		fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC , 0644);
-	}
-	else if (strcmp(filename.c_str(), "/dev/null") == 0){
-		fd = open(filename.c_str(), O_WRONLY);
-	}
+	fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC| O_DIRECT, 0644);
 
     if (fd < 0) {
         fprintf(stderr,"ERROR: Failed to open file");
         exit(-1);
     }
-    if (io_setup(4, &ctx) != 0){
+    if (io_setup(N_BUFFERS, &ctx) != 0){
         fprintf(stderr,"ERROR: Failed io_setup");
         exit(-1);
     }
@@ -99,82 +85,88 @@ DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
 			return;
         }
         memset(buffers[i].data, 0, BUFFER_SIZE);
+	buffers[i].used = 0;
+	memset(&buffers[i].cb, 0, sizeof(struct iocb));
     }
 }
 
 DataWriter::~DataWriter() {
-    io_destroy(ctx);
-    close(fd);
+	// Use a normal write to write any data in the last buffer
+	// but we still need to pad it to IO_BLOCK_SIZE
+	auto &currentBuffer = buffers[currentBufferIndex];
+	auto write_size = (currentBuffer.used / IO_BLOCK_SIZE) * IO_BLOCK_SIZE;
+	auto tail_size = currentBuffer.used - write_size;
+	if(tail_size != 0) write_size += IO_BLOCK_SIZE;
+
+	auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
+	assert(r == write_size);
+
+	// Finally truncate the file to the correct size
+	r = ftruncate(fd, global_offset + currentBuffer.used);
+	assert(r == 0);
+
+	io_destroy(ctx);
+	close(fd);
 }
 
-void DataWriter::fillDataBuffer(PETSYS::RawDataFrame *dataFrame , int frameSize) {
-	Buffer& buf = buffers[currentBufferIndex];
-	if(buf.size + frameSize * WORD_SIZE < BUFFER_SIZE){
-		Buffer& buf = buffers[currentBufferIndex];
-		memcpy((char*)buf.data + buf.size, (void *)(dataFrame->data), frameSize * sizeof(uint64_t));
-		buf.size += frameSize * WORD_SIZE ;
-	}
-	else{
-		splitFrameToBuffers(dataFrame, frameSize);
+void DataWriter::appendData(void *buf, size_t count)
+{
+	size_t written = 0;
+	while (written < count) {
+		auto &currentBuffer = buffers[currentBufferIndex];
+		auto bufferFree = BUFFER_SIZE - currentBuffer.used;
+		auto copySize = min(count - written, bufferFree);
+		memcpy((char *)currentBuffer.data + currentBuffer.used, (char *)buf+written, copySize);
+		currentBuffer.used += copySize;
+		written += copySize;
+
+		if(currentBuffer.used == BUFFER_SIZE) {
+			// This will also move currentBufferIndex to the next buffer
+			submittCurrentBuffer();
+		}
 	}
 }
 
-void DataWriter::splitFrameToBuffers(PETSYS::RawDataFrame *dataFrame , int frameSize) {
+
+long long DataWriter::getCurrentPosition()
+{
+	return global_offset + buffers[currentBufferIndex].used;
+}
+
+void DataWriter::completeAllBuffers()
+{
+	if(currentBufferIndex == 0) return;
+
+	// Wait for all pending writes to complete
+	struct io_event events[currentBufferIndex];
+	int completed = io_getevents(ctx, currentBufferIndex, currentBufferIndex, events, NULL);
+	assert(completed == currentBufferIndex);
+
+	currentBufferIndex = 0;
+	for(auto i = 0; i < N_BUFFERS; i++) buffers[i].used = 0;
+}
+
+void DataWriter::submittCurrentBuffer()
+{
+
 	Buffer& currentBuffer = buffers[currentBufferIndex];
-	Buffer& nextBuffer = buffers[(currentBufferIndex + 1) % N_BUFFERS];
+	assert(currentBuffer.used % IO_BLOCK_SIZE == 0);
+	assert(global_offset % IO_BLOCK_SIZE == 0);
 
-	size_t bytesForCurrentBuffer = BUFFER_SIZE - currentBuffer.size;
-	size_t bytesForNextBuffer = frameSize * WORD_SIZE - bytesForCurrentBuffer;
-
-	//Copy the the available bytes into the current buffer  and write it to disk
-	memcpy((char*)currentBuffer.data + currentBuffer.size, (void *)(dataFrame->data), bytesForCurrentBuffer);
-	writeCurrentDataBuffer();
-
-	if(nSubmissions == N_BUFFERS){
-		struct io_event events[nSubmissions];
-		int completed = io_getevents(ctx, nSubmissions, nSubmissions, events, NULL);
-		assert(completed == nSubmissions);
-		nSubmissions = 0;
-	}
-
-
-
-	//Copy the reminder of the data frame to the nex buffer and swap buffers for further writing
-	void *startDataPtr = (char *)(dataFrame->data) + bytesForCurrentBuffer;
-    memcpy(nextBuffer.data, startDataPtr, bytesForNextBuffer);
-	nextBuffer.size = bytesForNextBuffer;
-
-	swapBuffers();
-}
-
-
-void DataWriter::writeCurrentDataBuffer(bool resetBuffer){
-
-    Buffer& currentBuffer = buffers[currentBufferIndex];
-
-	struct iocb cb;
-    struct iocb* cbs[1] = {&cb};
+	struct iocb &cb = currentBuffer.cb;
+	struct iocb* cbs[1] = {&cb};
 
 	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
-    io_submit(ctx, 1, cbs);
-
-	nSubmissions++;
-	
-	//struct io_event events[1];
-	//int completed = io_getevents(ctx, 1, 1, events, NULL);
-	
-	if(resetBuffer) return;
+	assert(io_submit(ctx, 1, cbs) == 1);
 
 	global_offset += BUFFER_SIZE;
+	currentBufferIndex += 1;
+
+	if(currentBufferIndex == N_BUFFERS) {
+		// All buffers have been submitted, complete them before proceeding
+		completeAllBuffers();
+	}
 }
-
-
-void DataWriter::swapBuffers() {
-	Buffer& buf = buffers[currentBufferIndex];
-	buf.size = 0;
-    currentBufferIndex = (currentBufferIndex + 1) % N_BUFFERS;
-}
-
 
 void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID) {
 	bool qdcMode = (strcmp(mode, "qdc") == 0);
@@ -188,21 +180,9 @@ void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqS
 	if (strcmp(mode, "mixed") == 0) { header[3] = 0x1UL; }
 	header[4] = fileCreationDAQTime;
 
-	Buffer& currentBuffer = buffers[currentBufferIndex];
-
-	if(acqStdMode){
-		memcpy(currentBuffer.data, (void *)&header, sizeof(uint64_t)*8);
-		currentBuffer.size =  sizeof(uint64_t)*8;
-	}
-	else {
-		write(this->fd, (void *)&header, sizeof(uint64_t)*8);
-	}
+	appendData((void *)&header, sizeof(uint64_t)*8);
 }
 
-void DataWriter::writeCalibrationData(CalibrationData c){
-	write(this->fd, &c, sizeof(CalibrationData));
-	global_offset += sizeof(CalibrationData);
-}
 
 class CalibrationPool {
 public:
@@ -372,7 +352,7 @@ int main(int argc, char *argv[])
 					PETSYS::RawDataFrame *lostFrameInfo = new PETSYS::RawDataFrame;
 					lostFrameInfo->data[0] = (2ULL << 36) | (lastFrameID + 1);
 					lostFrameInfo->data[1] = 1ULL << 16;
-					writer.fillDataBuffer(lostFrameInfo, 2);
+					writer.appendData(lostFrameInfo->data, 2*sizeof(uint64_t));
 					delete lostFrameInfo;
 				}
 				
@@ -427,7 +407,7 @@ int main(int argc, char *argv[])
 
 			// Write out the data frame contents
 			if(acqStdMode){
-				writer.fillDataBuffer(dataFrame, frameSize);
+				writer.appendData(dataFrame->data, frameSize*sizeof(uint64_t));
 			}
 		}
 
@@ -435,10 +415,8 @@ int main(int argc, char *argv[])
 			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk
 			if(!acqStdMode){
 				calibrationPool.writeOut(&writer);
-			}	
-			else{
-				writer.writeCurrentDataBuffer(true);
 			}
+
 			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
@@ -561,7 +539,7 @@ void CalibrationPool::writeOut(DataWriter *writer)
 			CalibrationData c;
 			c.eventWord = j->first;
 			c.freq = j->second;
-			writer->writeCalibrationData(c);
+			writer->appendData(&c, sizeof(CalibrationData));
 		}
 		i->clear();
 	}
