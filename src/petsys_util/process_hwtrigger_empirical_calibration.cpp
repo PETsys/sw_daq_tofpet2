@@ -15,7 +15,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <algorithm>
-
 #include <RawReader.hpp>
 #include <SystemConfig.hpp>
 #include <CoarseSorter.hpp>
@@ -629,9 +628,9 @@ void calibrateAllModules(SystemConfig *config, CalibrationEntry *calibrationTabl
 			// We are in child
 			
 			unsigned long gAsicID = it->gAsicID;
-			unsigned long asicID = gAsicID % 64;
-			unsigned long slaveID = (gAsicID >> 6) % 32;
-			unsigned long portID = (gAsicID >> 11) % 32;
+			int asicID = gAsicID % 64;
+			int slaveID = (gAsicID >> 6) % 32;
+			int portID = (gAsicID >> 11) % 32;
 			
 			char summaryFilePrefix[1024];
 			sprintf(summaryFilePrefix, "%s_%02d_%02d_%02d", outputFilePrefix, portID, slaveID, asicID);

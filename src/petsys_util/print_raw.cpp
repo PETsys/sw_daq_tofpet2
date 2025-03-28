@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
 	long startOffset, endOffset;
 	float step1, step2;
 	RawDataFrame *tmpRawDataFrame = new RawDataFrame;
-	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
+	while(fscanf(indexFile, "%ld %ld %*d %*d %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
 		fseek(dataFile, startOffset, SEEK_SET);
 		
 		bool firstFrame = true;

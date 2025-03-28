@@ -339,7 +339,7 @@ int main(int argc, char *argv[])
 
 			stepStartOffset = writer.getCurrentPosition();
 
-			r = fprintf(tempFile, "%f\t%f\t%ld\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
+			r = fprintf(tempFile, "%f\t%f\t%ld\t%lld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(tempFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }

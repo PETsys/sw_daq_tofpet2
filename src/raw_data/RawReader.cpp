@@ -224,7 +224,7 @@ int RawReader::readFromDataFile(char *buf, int count)
 bool  RawReader::getNextStep() {
 
 	if(!indexIsTemp) {
-		int r = fscanf(indexFile, "%llu\t%llu\t%llu\t%*llu\t%f\t%f\n", &stepBegin, &stepEnd, &stepFirstFrameID, &stepValue1, &stepValue2);
+		int r = fscanf(indexFile, "%llu\t%llu\t%llu\t%*u\t%f\t%f\n", &stepBegin, &stepEnd, &stepFirstFrameID, &stepValue1, &stepValue2);
 		if(r == 5)
 			return true;
 	}
