@@ -87,6 +87,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue("trigger_mode_2_b", thresholdIndex)
 				cc.setValue(thresholdName, 61)
 		daqd.setAsicsConfig(asicsConfig)
+		daqd.checkAsicRx()
 		sleep(1 * T)
 		sleep(counter_sharing * T)
 
@@ -153,6 +154,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue(thresholdName, thresholdValue)
 
 		daqd.setAsicsConfig(asicsConfig)
+		daqd.checkAsicRx()
 		sleep(1*T)
 		next_read_start_time = time() + counter_sharing*T + 1E-3
 		for n in range(args.dark_reads):
@@ -204,6 +206,7 @@ for thresholdIndex, thresholdName, baselineName in thresholdList:
 				cc.setValue(thresholdName, thresholdValue)
 
 		daqd.setAsicsConfig(asicsConfig)
+		daqd.checkAsicRx()
 		sleep(1*T)
 		next_read_start_time = time() + counter_sharing*T + 1E-3
 		for n in range(args.dark_reads):
