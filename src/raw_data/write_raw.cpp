@@ -70,7 +70,7 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 9);
+	assert(argc == 10);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
@@ -79,6 +79,7 @@ int main(int argc, char *argv[])
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[6]);
 	bool acqStdMode = (argv[7][0] == 'N');
 	int triggerID = boost::lexical_cast<int>(argv[8]);
+	bool verbose = (argv[9][0] == 'T');
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 
@@ -115,7 +116,7 @@ int main(int argc, char *argv[])
 
 	DataWriter writer(fNameRaw, acqStdMode);
 
-	fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
+	if(verbose==true) fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
 
 	writer.writeHeader(fileCreationDAQTime, daqSynchronizationEpoch, systemFrequency, argv[4], triggerID);
 
@@ -183,7 +184,7 @@ int main(int argc, char *argv[])
 			unsigned index = rdPointer % bs;
 			
 			long long frameID = shm->getFrameID(index);
-			if(frameID <= lastFrameID) {
+			if(frameID <= lastFrameID && verbose==true) {
 				fprintf(stderr, "WARNING!! Frame ID reversal: %12lld -> %12lld | %04u %04u %04u\n", 
 					lastFrameID, frameID, 
 					blockHeader.wrPointer, blockHeader.rdPointer, rdPointer
@@ -266,15 +267,17 @@ int main(int argc, char *argv[])
 				calibrationPool.writeOut(&writer);
 			}	
 
-			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
+			if(verbose==true){
+				fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
 					stepMaxFrame); fflush(stderr);
-			fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
+				fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
 					stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
 					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
 					); 
-			fflush(stderr);
+				fflush(stderr);
+			}
 			
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 

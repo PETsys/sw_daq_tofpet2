@@ -1080,16 +1080,20 @@ class Connection:
 		f.close()
 		return None
 
-	def openRawAcquisition(self, fileNamePrefix, calMode = False):
-		return self.__openRawAcquisition(fileNamePrefix, calMode,None,None, None, None, None, None, None, None)
+	def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
+		return self.__openRawAcquisition(fileNamePrefix, calMode,None,None, None, True, None, None, None, None, None, None, verbose=verbose)
 		
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, monitor_config, event_type, output_format, fractionToWrite, hitLimit, splitTime):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, None, "./online_process", event_type, output_format, fractionToWrite, hitLimit, splitTime)
+	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, verbose=True):
+		return self.__openRawAcquisition(fileNamePrefix, False, config, None, "./online_process", False, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, verbose=verbose)
+	
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, verbose=True):
+		return self.__openRawAcquisition(fileNamePrefix, False, config, None, "./online_process", True, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, verbose=verbose)
 
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_config, monitor_toc):
-		return self.__openRawAcquisition(fileNamePrefix, False, monitor_config, monitor_toc, "./online_monitor", None, None, None, None, None)
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, verbose=True):
+		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, "./online_monitor", True, None, None, None, None, None, None, None , verbose=verbose)
 		
-	def __openRawAcquisition(self, fileNamePrefix, calMode, monitor_config, monitor_toc, monitor_exec, eventType, output_format, fractionToWrite, hitLimit, splitTime):
+	def __openRawAcquisition(self, fileNamePrefix, calMode, config, monitor_toc, monitor_exec, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, splitTime, tref, verbose=True):
+		
 		asicsConfig = self.getAsicsConfig()
 		if fileNamePrefix != "/dev/null":
 			modeFileName = fileNamePrefix + ".modf"
@@ -1125,23 +1129,23 @@ class Connection:
 			portID, slaveID = trigger
 			triggerID = 32 * portID + slaveID
   		
-
 		# Determine current time and and estimate acquisition wallclock start time
 		fileCreationDAQTime = self.getCurrentTimeTag()
 		currentTime = time()
 		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
 		
-		if monitor_exec != "./online_process":
+		if useWriteRaw:
 			cmd = [ "./write_raw", \
 			self.__shmName, \
 			fileNamePrefix, \
 			str(int(self.__systemFrequency)), \
-			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
-			str(fileCreationDAQTime),
+			str(qdcMode), "%1.12f" %  daqSynchronizationEpoch,
+            str(fileCreationDAQTime), 
 			calMode and 'T' or 'N', 
-			str(triggerID)]
+			str(triggerID),
+			verbose and 'T' or 'N']
 			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-		else:
+		if monitor_exec == "./online_process":
 			cmd = [
 			monitor_exec,
 			str(int(self.__systemFrequency)),
@@ -1149,30 +1153,32 @@ class Connection:
 			eventType,
 			output_format,
 			qdcMode,
-			monitor_config,
+			config,
 			self.__shmName,
 			str(triggerID), 
-			"%1.12f" % self.getAcquisitionStartTime(),
+			"%1.12f" % daqSynchronizationEpoch,
+            str(fileCreationDAQTime),
 			str(fractionToWrite),
 			str(hitLimit),
 			str(splitTime),
+			tref,
+			verbose and 'T' or 'N'
 			]
-			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 			template = "@?"
 			n = struct.calcsize(template)
-			data = self.__writerPipe.stdout.read(n)
-	
-		if monitor_exec == "./online_monitor":
+			data = self.__monitorPipe.stdout.read(n)
+		elif monitor_exec == "./online_monitor":
 			cmd = [
 				monitor_exec,
 				str(int(self.__systemFrequency)),
 				(qdcMode == "tot") and "tot" or "qdc",
-				monitor_config,
+				config,
 				self.__shmName,
 				monitor_toc,
 				str(triggerID), 
-				"%1.12f" % daqSynchronizationEpoch
+				"%1.12f" % self.getAcquisitionStartTime()
 				]
 			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 			data = self.__monitorPipe.stdout.read(n)
@@ -1200,11 +1206,12 @@ class Connection:
 	# @param step1 Tag to a given variable specific to this acquisition 
 	# @param step2 Tag to a given variable specific to this acquisition
 	# @param acquisitionTime Acquisition time in seconds 
-	def acquire(self, acquisitionTime, step1, step2):
+	def acquire(self, acquisitionTime, step1, step2, verbose=True):
 		workers = []
 		if self.__monitorPipe is not None:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
-		workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout)]
+		if self.__writerPipe is not None:	
+			workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout)]
 			
 		#sleep(0.25)
 		frameLength = 1024.0 / self.__systemFrequency
@@ -1287,11 +1294,13 @@ class Connection:
 			nBlocks += 1
 			if (currentFrame - lastUpdateFrame) * frameLength > 0.1:
 				t1 = time()
-				stdout.write("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)\r" % (nFrames, t1-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+				if(verbose):
+					stdout.write("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)\r" % (nFrames, t1-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
 				stdout.flush()
 				lastUpdateFrame = currentFrame
 		t1 = time()
-		print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+		if(verbose):
+			print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
 
 		# Send end of step block (with wrPointer = rdPointer)
 		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 2)
@@ -1312,6 +1321,28 @@ class Connection:
 
 		return stepFrames, stepFramesLost, stepEvents
 
+
+	def checkDataTransmission(self, acquisitionTime, testTime = 5):
+		print("INFO: Checking system data transmission...")	
+		stdout.flush()
+		frames, framesLost, events = self.acquire(testTime, 0, 0, verbose=False)
+		dataLoss = 100.0 * framesLost / frames
+		transmittedRate = events / testTime / 1e6
+		if(dataLoss > 10.0):
+			totalRate = transmittedRate * (100.0 / (100 - dataLoss))
+			user_input = input("WARNING: Estimated data loss for %.1f%% of data frames. Successful transmission/processing for %.1f Mevents/s (out of total incoming %.1f MEvents/s)."
+					"\nProceed with acquisition for %4.1f second(s)? [Y/n]\n" % (dataLoss, transmittedRate, totalRate, acquisitionTime))
+			if user_input in ('', 'y', 'yes', 'Y', 'Yes'):
+				return True
+			elif user_input in ('n', 'no', 'N', 'No'):
+				print("WARNING: Acquisition aborted")
+				return False
+			else:
+				print("WARNING: Invalid input. Acquisition aborted")
+				return False
+		else:
+			return True
+        
         ## Acquires data and decodes it into a bytes buffer
         # @param acquisitionTime Acquisition time in seconds
 	# @return A bytes buffer containing events as per shw_raw_py.cpp/unpacked_event_t

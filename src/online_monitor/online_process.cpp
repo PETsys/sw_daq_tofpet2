@@ -43,6 +43,8 @@ static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 
 enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
 
+enum timeref_t {SYNC, WALL, STEP, USER};
+
 static void normalizeLine(char *line) {
 	std::string s = std::string(line);
 	// Remove carriage return, from Windows written files
@@ -82,6 +84,7 @@ struct UndecodedHit {
 	};
 
 class Decoder : public UnorderedEventHandler<UndecodedHit, RawHit> {
+
 public:
 	Decoder(OnlineEventStream *stream, EventSink<RawHit> *sink) : UnorderedEventHandler<UndecodedHit, RawHit>(sink), stream(stream)
 	{
@@ -177,7 +180,7 @@ struct BlockHeader  {
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 15);
+	assert(argc == 16);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -191,7 +194,9 @@ int main(int argc, char *argv[])
 	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
 	double fileSplitTime = boost::lexical_cast<double>(argv[13]);
-	int nCPU = boost::lexical_cast<int>(argv[14]);
+	char *tref = argv[14];
+	bool verbose = (argv[15][0] == 'T');
+	bool useAsyncWriting = false;
 	
 	EVENT_TYPE eventType; 
 	if(strcmp(eType, "raw") == 0){
@@ -209,9 +214,11 @@ int main(int argc, char *argv[])
 	FILE_TYPE fileType; 
 	if(strcmp(fType, "binary") == 0){
 		fileType = FILE_BINARY;
+		useAsyncWriting = true;
 	}
 	if(strcmp(fType, "binaryCompact") == 0){
 		fileType = FILE_BINARY_COMPACT;
+		useAsyncWriting = true;
 	}	
 	else if(strcmp(fType, "text") == 0){
 		fileType = FILE_TEXT;
@@ -221,6 +228,21 @@ int main(int argc, char *argv[])
 	}
 	else if(strcmp(fType, "root") == 0){
 		fileType = FILE_ROOT;
+	}
+
+		
+	timeref_t tb; 
+	if(strcmp(tref, "sync") == 0){
+		tb = SYNC;
+	}
+	else if(strcmp(tref, "wall") == 0){
+		tb = WALL;
+	}
+	else if(strcmp(tref, "step") == 0){
+		tb = STEP;
+	}
+	else if(strcmp(tref, "user") == 0){
+		tb = USER;
 	}
 
 	if(eventType == RAW && fileType != FILE_TEXT && fileType != FILE_ROOT){
@@ -259,7 +281,7 @@ int main(int argc, char *argv[])
 
 	FrameType lastFrameType = FRAME_TYPE_UNKNOWN;
 
-	ThreadPool<UndecodedHit> *pool = new ThreadPool<UndecodedHit>(nCPU);
+	ThreadPool<UndecodedHit> *pool = new ThreadPool<UndecodedHit>();
 	OnlineEventStream *eventStream = new OnlineEventStream(systemFrequency, triggerID);
 	
 	// If acquisition mode is mixed, read ".modf" file to assign channel energy mode 
@@ -293,7 +315,7 @@ int main(int argc, char *argv[])
 
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, true, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
 
 	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
 
@@ -316,12 +338,50 @@ int main(int argc, char *argv[])
 		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
 		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
 		//fprintf(stderr, "d\t%d\n", rdPointer, wrPointer);
+
+		if(blockHeader.blockType == 0) {
+			// First block in a step
+			unsigned index = rdPointer % bs;
+
+			stepAllFrames = 0;
+			stepEvents = 0;
+			stepMaxFrame = 0;
+			stepLostFramesN = 0;
+			stepLostFrames0 = 0;
+
+			stepFirstFrameID = shm->getFrameID(index);
+			lastFrameID = stepFirstFrameID - 1;
+			lastFrameType = FRAME_TYPE_UNKNOWN;
+			double t0 = 0;
+			switch(tb) {
+				case SYNC:	t0 = 0;
+						break;
+				case WALL:	t0 = daqSynchronizationEpoch;
+						break;
+				case STEP:	t0 = -double(stepFirstFrameID) * 1024;
+						break;
+				case USER:	t0 = -double(fileCreationDAQTime);
+						break;
+				default:
+						t0 = 0;
+			}
+		
+			pipeline->pushT0(t0);
+
+			//r = fprintf(tempFile, "%f\t%f\t%ld\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
+			//if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+			//r = fflush(tempFile);
+			//if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
+		}
+		
+
+
 		while(rdPointer != wrPointer) {
 			unsigned index = rdPointer % bs;
 			
 			long long frameID = shm->getFrameID(index);
 			if(stepFirstFrameID == -1) stepFirstFrameID = frameID;
-			if(frameID <= lastFrameID) {
+			if(frameID <= lastFrameID && verbose==true) {
 				fprintf(stderr, "WARNING!! Frame ID reversal: %12lld -> %12lld | %04u %04u %04u\n", 
 					lastFrameID, frameID, 
 					blockHeader.wrPointer, blockHeader.rdPointer, rdPointer
@@ -415,37 +475,32 @@ int main(int argc, char *argv[])
 		pool->completeQueue();
 		
 		if(blockHeader.blockType == 2){
+			if(verbose == true){
+				fprintf(stderr, "onlineProcessing:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
+					stepAllFrames, stepEvents, 
+					float(stepEvents)/stepAllFrames,
+					stepMaxFrame); fflush(stderr);
+				fprintf(stderr, "onlineProcessing:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
+					stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
+					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
+					); 
 			
-			fprintf(stderr, "onlineDecoder:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
-				stepAllFrames, stepEvents, 
-				float(stepEvents)/stepAllFrames,
-				stepMaxFrame); fflush(stderr);
-			fprintf(stderr, "onlineDecoder:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
-				stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
-				stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
-				); 
-		
 			pipeline->report();
-			pipeline->resetCounters();
+			}
 			fflush(stderr);
-			
+
+			pipeline->resetCounters();
 			dataFileWriter->closeStep();
 			
-			stepAllFrames = 0;
-			stepEvents = 0;
-			stepMaxFrame = 0;
-			stepLostFramesN = 0;
-			stepLostFrames0 = 0;
-			lastFrameID = -1;
-			stepFirstFrameID = -1;
-			lastFrameType = FRAME_TYPE_UNKNOWN;
+			
 		}
 		
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);
-		long long dummy = 0;
-		fwrite(&dummy, sizeof(long long), 1, stdout);
-		fwrite(&dummy, sizeof(long long), 1, stdout);
-		fwrite(&dummy, sizeof(long long), 1, stdout);
+		//long long dummy = 0;
+		fwrite(&stepAllFrames, sizeof(long long), 1, stdout);
+		fwrite(&stepLostFrames0, sizeof(long long), 1, stdout);
+		fwrite(&stepEvents, sizeof(long long), 1, stdout);
+
 		fflush(stdout);
 
 	}
