@@ -1419,10 +1419,10 @@ class GUI:
             self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(True)
         else:
             self.builder.get_object("processingDataFormatBoxOptions").remove_all()
-            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"BinaryComp")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"Binary Compact")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"Binary")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(2,"Text")
-            self.builder.get_object("processingDataFormatBoxOptions").insert_text(3,"TextComp")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(3,"Text Compact")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(4,"ROOT")
 
             self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
@@ -1599,13 +1599,13 @@ class GUI:
             flagFormat = "--writeBinary"
             if outFile.endswith('.ldat'):
                 outFile, ext = os.path.splitext(outFile)
-        elif dataFormat == "BinaryComp":
+        elif dataFormat == "Binary Compact":
             flagFormat = "--writeBinaryCompact"
             if outFile.endswith('.ldat'):
                 outFile, ext = os.path.splitext(outFile)
         elif dataFormat == "ROOT":
             flagFormat = "--writeRoot"
-        elif dataFormat == "TextComp":
+        elif dataFormat == "Text Compact":
             flagFormat = "--writeTextCompact"
         else:
             flagFormat = ""

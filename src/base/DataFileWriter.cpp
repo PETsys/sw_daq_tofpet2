@@ -173,8 +173,7 @@ void DataFileWriter::closeStep(){
     }
     else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
         if(useAsyncWriting){
-            //fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, dataWriter->getCurrentPositionFromFile(), this->step1, this->step2);
-            fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, dataWriter->getCurrentPosition(), this->step1, this->step2);
+            fprintf(indexFile, "%ld\t%lld\t%e\t%e\n", stepBegin, dataWriter->getCurrentPosition(), this->step1, this->step2);
             stepBegin = dataWriter->getCurrentPosition();
         }
         else{
