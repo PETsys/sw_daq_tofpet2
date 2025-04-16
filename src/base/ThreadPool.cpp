@@ -10,8 +10,8 @@ using namespace std;
 
 namespace PETSYS {
 	BaseThreadPool::BaseThreadPool() {
-		auto nCPU = sysconf(_SC_NPROCESSORS_ONLN);
-
+		auto nCPU = sysconf(_SC_NPROCESSORS_ONLN) - int(0.1*sysconf(_SC_NPROCESSORS_ONLN));
+		if(nCPU < 1) nCPU = 1;
 		queue = std::deque<job_t>();
 		maxQueueSize = nCPU/4;
 		if(maxQueueSize < 1) maxQueueSize = 1;

@@ -1,13 +1,17 @@
 #include "DataFileWriter.hpp"
+#include"AsyncWriter.hpp"
+#include <stdio.h>
 #include <TFile.h>
 #include <TNtuple.h>
+#include <iostream>
 
 using namespace PETSYS;
 
-DataFileWriter::DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime){
+DataFileWriter::DataFileWriter(char *fName, bool useAsyncWriting, double frequency = 200E6, EVENT_TYPE eventType = RAW, FILE_TYPE fileType = FILE_TEXT, double fileEpoch = 0.0, int hitLimitToWrite = 1, int eventFractionToWrite = 1024, float splitTime = 1.0){
     this->fName = std::string(fName);
     this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
     this->fileEpoch = fileEpoch;
+
     this->eventType = eventType;
     this->eventFractionToWrite = eventFractionToWrite;
     this->eventCounter = 0;
@@ -19,6 +23,10 @@ DataFileWriter::DataFileWriter(char *fName, double frequency, EVENT_TYPE eventTy
 
     this->Tps = 1E12/frequency;
     this->Tns = Tps / 1000.;
+
+    this->Tns = Tps / 1000.;
+
+    this->useAsyncWriting = useAsyncWriting;   
 
     openFile();
 };
@@ -98,22 +106,37 @@ void DataFileWriter::openFile() {
     }
     else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
         char fName2[1024];
+
         sprintf(fName2, "%s.ldat", fName.c_str());
-        dataFile = fopen(fName2, "w");
+        if(useAsyncWriting){
+            dataWriter =  new DataWriter(fName2, true);
+        }
+        else{  
+            dataFile = fopen(fName2, "w");  
+            assert(dataFile != NULL);
+        }
         sprintf(fName2, "%s.lidx", fName.c_str());
         indexFile = fopen(fName2, "w");
-        assert(dataFile != NULL);
         assert(indexFile != NULL);
     }
+
     else if(fileType == FILE_TEXT || fileType == FILE_TEXT_COMPACT) {
-        dataFile = fopen(fName.c_str(), "w");
-        assert(dataFile != NULL);
+        if(useAsyncWriting){
+            dataWriter =  new DataWriter(fName.c_str(), true);
+        }
+        else{
+            dataFile = fopen(fName.c_str(), "w");
+             assert(dataFile != NULL);
+        }
         indexFile = NULL;
     }
 };
 	
 DataFileWriter::~DataFileWriter() {
-    closeFile();
+    if(useAsyncWriting){
+        delete dataWriter;
+    }
+    else closeFile();
     if(fileSplitTime > 0) {
         renameFile();
     }
@@ -138,7 +161,7 @@ void DataFileWriter::closeFile() {
     }
 }
 
-void DataFileWriter::closeStep() {
+void DataFileWriter::closeStep(){
     if (fileType == FILE_ROOT){
         brStepBegin = stepBegin;
         brStepEnd = hData->GetEntries();
@@ -149,8 +172,15 @@ void DataFileWriter::closeStep() {
         hFile->Write();
     }
     else if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
-        fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), this->step1, this->step2);
-        stepBegin = ftell(dataFile);
+        if(useAsyncWriting){
+            //fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, dataWriter->getCurrentPositionFromFile(), this->step1, this->step2);
+            fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, dataWriter->getCurrentPosition(), this->step1, this->step2);
+            stepBegin = dataWriter->getCurrentPosition();
+        }
+        else{
+            fprintf(indexFile, "%ld\t%ld\t%e\t%e\n", stepBegin, ftell(dataFile), this->step1, this->step2);
+            stepBegin = ftell(dataFile);
+        }
     }
     else {
         // Do nothing
@@ -252,7 +282,6 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
 
 
 void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
-    
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
@@ -294,7 +323,12 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
                 hit.energy * Eunit,
                 (int)hit.raw->channelID
             };
-            fwrite(&eo, sizeof(eo), 1, dataFile);
+            if(useAsyncWriting){
+                dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
+            }
+            else{
+                fwrite(&eo, sizeof(eo), 1, dataFile);
+            }
         }
         else if (fileType == FILE_TEXT) {
             fprintf(dataFile, "%lld\t%f\t%d\n",
@@ -305,6 +339,7 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
         }
     }	
 }
+
 
 void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
@@ -330,7 +365,12 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
         }
         else if(fileType == FILE_BINARY_COMPACT) {
             GroupHeader header = {(uint8_t)limit};
-            fwrite(&header, sizeof(header), 1, dataFile);
+            if(useAsyncWriting){
+                dataWriter->appendData(static_cast<void*>(&header) ,sizeof(header));
+            }
+            else{
+                fwrite(&header, sizeof(header), 1, dataFile);
+            }
         }
 
         for(int m = 0; m < limit; m++) {
@@ -365,7 +405,12 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     h.energy * Eunit,
                     (int)h.raw->channelID
                 };
-                fwrite(&eo, sizeof(eo), 1, dataFile);
+                if(useAsyncWriting){
+                    dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
+                }
+                else{
+                    fwrite(&eo, sizeof(eo), 1, dataFile);
+                }
             }
             else if(fileType == FILE_BINARY_COMPACT) {
                 Event eo = {
@@ -373,7 +418,12 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     h.energy * Eunit,
                     (int)h.raw->channelID
                 };
-                fwrite(&eo, sizeof(eo), 1, dataFile);
+                if(useAsyncWriting){
+                    dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
+                }
+                else{
+                    fwrite(&eo, sizeof(eo), 1, dataFile);
+                }
             }
             else if (fileType == FILE_TEXT) {
                 fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
@@ -400,7 +450,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
     checkFilePartForSplit(filePartIndex);
 
     long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
-    
+
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
@@ -432,15 +482,26 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
         }
         else if(fileType == FILE_BINARY_COMPACT) {
             CoincidenceGroupHeader header = {(uint8_t)limit1, (uint8_t)limit2};
-            fwrite(&header, sizeof(header), 1, dataFile);
+            if(useAsyncWriting){
+                dataWriter->appendData(static_cast<void*>(&header) ,sizeof(header));
+            }
+            else{
+                fwrite(&header, sizeof(header), 1, dataFile);
+            }
             for(int i = 0; i < limit1 + limit2; i++) {
                 Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
                 float Eunit = h.raw->qdcMode ? 1.0 : Tns;
                 Event eo = { 
                     ((long long)(h.time * Tps)) + tMin,
                     h.energy * Eunit,
-                    (int)h.raw->channelID};
-                fwrite(&eo, sizeof(eo), 1, dataFile);
+                    (int)h.raw->channelID
+                };
+                if(useAsyncWriting){
+                    dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
+                }
+                else{
+                    fwrite(&eo, sizeof(eo), 1, dataFile);
+                }
             }
         }
         else{
@@ -496,7 +557,12 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                         h2.energy * Eunit2,
                         (int)h2.raw->channelID		
                     };
-                    fwrite(&eo, sizeof(eo), 1, dataFile);
+                    if(useAsyncWriting){
+                        dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
+                    }
+                    else{
+                        fwrite(&eo, sizeof(eo), 1, dataFile);
+                    }
                 }
                 else if(fileType == FILE_TEXT) {
                     fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
@@ -514,4 +580,5 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
             }
         }
     }	
-};
+}
+

@@ -15,6 +15,8 @@ SimpleGrouper::SimpleGrouper(SystemConfig *systemConfig, EventSink<GammaPhoton> 
 SimpleGrouper::~SimpleGrouper()
 {
 }
+// Define a custom comparator to sort by energy in descending order
+auto comp = [](Hit* a, Hit* b) { return a->energy > b->energy; };
 
 EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffer)
 {
@@ -101,22 +103,14 @@ EventBuffer<GammaPhoton> * SimpleGrouper::handleEvents(EventBuffer<Hit> *inBuffe
 			eventFlags |= 0x8;
 		}
 		
-		// Buble sorting to put highest energy event first
+		//Sorting to put highest energy event first
+
 		bool sorted = false;
-		while(!sorted) {
-			sorted = true;
-			for(int k = 1; k < nHits; k++) {
-				if(hits[k-1]->energy < hits[k]->energy) {
-					sorted = false;
-					Hit *tmp = hits[k-1];
-					hits[k-1] = hits[k];
-					hits[k] = tmp;
-				}
-			}
-		}
-		
+
+		std::sort(hits, hits + nHits, comp);
+
 		float totalEnergy = 0;
-		// Assemble the output structure
+		// Calculate total energy and assemble the output structure
 		GammaPhoton &photon = outBuffer->getWriteSlot();
 		for(int k = 0; k < nHits; k++) {
 			photon.hits[k] = hits[k];
@@ -216,3 +210,4 @@ void SimpleGrouper::report()
 			
 	UnorderedEventHandler<Hit, GammaPhoton>::report();
 }
+

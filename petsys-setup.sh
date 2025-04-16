@@ -87,6 +87,7 @@ fi;
 
 # Make sure the package lists are up-to-date
 # and install extra repositories
+
 echo "INFO: Enabling repositories and Updating the package lists...";
 if [[ $osPrettyName == "ubuntu" ]]; then
 	sudo apt update;
