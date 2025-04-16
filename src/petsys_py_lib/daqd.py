@@ -1092,7 +1092,6 @@ class Connection:
 	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
 		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
 
-		
 	def __openRawAcquisition(self, fileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, splitTime, tref, secondary_exec, verbose=True):
 		
 		asicsConfig = self.getAsicsConfig()
