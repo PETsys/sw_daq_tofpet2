@@ -24,8 +24,10 @@ from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
 from matplotlib.figure import Figure
-
+import warnings
 import numpy as np
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class GUI:
     def __init__ (self):
@@ -82,7 +84,7 @@ class GUI:
     def execute(self,command, processName ="", message1="", message2=""):
         
         self.__usedStopButton = False
-        self.__process = subprocess.Popen(command, shell=True, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+        self.__process = subprocess.Popen(command, shell=True, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
 
         flags = fcntl(self.__process.stdout, F_GETFL) # get current p.stdout flags
         fcntl(self.__process.stdout, F_SETFL, flags | O_NONBLOCK)
@@ -121,7 +123,7 @@ class GUI:
     def read_temperature(self,command, processName ="", message1="", message2=""):
         
         self.__usedTempStopButton = False
-        self.__temperatureProcess = subprocess.Popen(command, shell=True, bufsize=0, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+        self.__temperatureProcess = subprocess.Popen(command, shell=True, bufsize=-1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
 
         flags = fcntl(self.__temperatureProcess.stdout, F_GETFL) # get current p.stdout flags
         fcntl(self.__temperatureProcess.stdout, F_SETFL, flags | O_NONBLOCK)
@@ -184,8 +186,8 @@ class GUI:
             else:
                 self.processWindow.set_title("%s (stopped by user)" % data[0])
            
-            comboBox =  self.builder.get_object("processingConvertBoxOptions")
-            self.on_processingConvertBoxOptions_changed(comboBox)
+            #comboBox =  self.builder.get_object("processingConvertBoxOptions")
+            #self.on_processingConvertBoxOptions_changed(comboBox)
 
             textView = self.builder.get_object("executeTextView")
             self.scroll_to_end(textView)
@@ -1238,6 +1240,7 @@ class GUI:
             self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(False)
             self.builder.get_object("acqProcessWhenFinishedCheck").set_active(False)
             switch.set_active(True)
+            switch.set_state(Gtk.StateType.ACTIVE)
             return True
         else:
             self.builder.get_object("acqSaveRawLabel").set_sensitive(False)
@@ -1304,8 +1307,12 @@ class GUI:
 
 
         if(onlineProcess):
+            # outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+            # if outFileName.endswith('.ldat'):
+            #     outFileName, ext = os.path.splitext(outFileName)
+            # outFile = self.__workingFolder + outFileName
             format = ""
-            flag += " --enableOnlineProcessing"
+            flag += " --enable-realtime-processing"
             flagType, flagFormat, flagFraction, flagHits, flagTimeRef = self.getProcessingOptions(outFile)
             if flagFormat == "--writeBinary":
                 format = "binary"
@@ -1318,7 +1325,7 @@ class GUI:
             elif flagFormat == "":
                 format = "text"   
 
-            flag += " --outputType %s --outputFormat %s %s %s %s" % (flagType, format, flagFraction, flagHits, flagTimeRef) 
+            flag += " --output-type %s --output-format %s %s %s %s" % (flagType, format, flagFraction, flagHits, flagTimeRef) 
             if self.builder.get_object("acqSaveRawCheck").get_active(): 
                 flag += " --writeRawData"
     
@@ -1329,7 +1336,7 @@ class GUI:
             if os.path.exists("/tmp/aquisition_starting_fifo"):
                 os.remove("/tmp/aquisition_starting_fifo")
             fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
-            flag += "--wait-on /tmp/aquisition_starting_fifo"   
+            flag += " --wait-on /tmp/aquisition_starting_fifo"   
             self.builder.get_object("execStartButton").set_sensitive(True)
 
         command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
@@ -1346,6 +1353,8 @@ class GUI:
                 inFileName, ext = os.path.splitext(inFileName)
 
             outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+            if outFileName.endswith('.ldat'):
+                outFileName, ext = os.path.splitext(outFileName)
             inFile = self.__workingFolder + inFileName
             outFile = self.__workingFolder + outFileName
 
@@ -1365,8 +1374,8 @@ class GUI:
 
             self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing","")
 
-            if(doDelayStart):
-                self.builder.get_object("execStartButton").set_sensitive(True)
+        if(doDelayStart):
+            self.builder.get_object("execStartButton").set_sensitive(True)
 
             
         return True
@@ -1435,7 +1444,7 @@ class GUI:
 
         dataFormat =  self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
        
-        if dataFormat == "Binary":
+        if dataFormat == "Binary" or dataFormat == "Binary Compact":
             extData = ".ldat"
         elif dataFormat == "ROOT":
             extData = ".root"
@@ -1466,7 +1475,7 @@ class GUI:
         self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(2,"Wall")
         self.builder.get_object("processingTimeReferenceBoxOptions").set_active(active)
 
-        if dataFormat == "Binary":
+        if dataFormat == "Binary" or dataFormat == "Binary Compact":
             extData = ".ldat"
         elif dataFormat == "ROOT":
             extData = ".root"
@@ -1651,6 +1660,9 @@ class GUI:
             inFileName, ext = os.path.splitext(inFileName)
 
         outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+        if outFileName.endswith('.ldat'):
+            outFileName, ext = os.path.splitext(outFileName)
+
         inFile = self.__workingFolder + inFileName
         outFile = self.__workingFolder + outFileName
 

@@ -518,10 +518,10 @@ class Connection:
 				for n in range(64):
 					self.__doAsicCommand(portID, slaveID, chipID, "wrChCfg", channel=n, value=ccfg)
 
-		# FEB\D-8K -> Ramp up VDD1 rail again after ASIC configuration
+		# FEB/D-8K -> Ramp up VDD1 rail again after ASIC configuration
 		for portID, slaveID in self.getActiveFEBDs():
 			if self.__activeUnits[(portID, slaveID)][0] in [ 0x0005 ]:
-				print(f'INFO: Found FEB\D 8K @ ({portID},{slaveID}). Ramping up VDD1 rail after ASIC configuration.')
+				print(f'INFO: Found FEB/D 8K @ ({portID},{slaveID}). Ramping up VDD1 rail after ASIC configuration.')
 				busID_lst = fe_power_8k.detect_active_bus(self, portID, slaveID)
 				for busID, moduleVersion in busID_lst:
 					current_dac_setting = fe_power_8k.read_dac(self, portID, slaveID, busID, moduleVersion, 'vdd1')
@@ -1081,22 +1081,51 @@ class Connection:
 		return None
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, calMode,None, None, True, None, None, None, None, None, None, None, verbose=verbose)
+		return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None, verbose=verbose)
 
-	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, secondary_exec=online_process_exec, verbose=verbose)
+	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+		processedFileNamePrefix = fileNamePrefix
+		if event_type == "raw":
+			processedFileNamePrefix += "_raw"
+		elif event_type == "singles":
+			processedFileNamePrefix += "_singles"
+		elif event_type == "groups":
+			processedFileNamePrefix += "_groups"
+		elif event_type == "coincidences":
+			processedFileNamePrefix += "_coinc"
+
+		if output_format in ["text","textCompact"]:
+			processedFileNamePrefix += ".dat"
+		elif output_format == "root":
+			processedFileNamePrefix += ".root"
+
+		return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
 	
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref,  online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, splitTime, tref, secondary_exec=online_process_exec, verbose=verbose)
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+		processedFileNamePrefix = fileNamePrefix
+		if event_type== "raw":
+			processedFileNamePrefix += "_raw"
+		elif event_type == "singles":
+			processedFileNamePrefix += "_singles"
+		elif event_type == "groups":
+			processedFileNamePrefix += "_groups"
+		elif event_type == "coincidences":
+			processedFileNamePrefix += "_coinc"
+
+		if output_format in ["text","textCompact"]:
+			processedFileNamePrefix += ".dat"
+		elif output_format == "root":
+			processedFileNamePrefix += ".root"
+		return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
 
 	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
+		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
 
-	def __openRawAcquisition(self, fileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, splitTime, tref, secondary_exec, verbose=True):
+	def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, secondary_exec, verbose=True):
 		
 		asicsConfig = self.getAsicsConfig()
-		if fileNamePrefix != "/dev/null":
-			modeFileName = fileNamePrefix + ".modf"
+		if rawFileNamePrefix != "/dev/null" and useWriteRaw:
+			modeFileName = rawFileNamePrefix + ".modf"
 			modeFile = open(modeFileName, "w")
 		else:
 			modeFile = open("/dev/null","w")
@@ -1137,7 +1166,7 @@ class Connection:
 		if useWriteRaw:
 			cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"),      
 			self.__shmName, \
-			fileNamePrefix, \
+			rawFileNamePrefix, \
 			str(int(self.__systemFrequency)), \
 			str(qdcMode), "%1.12f" %  daqSynchronizationEpoch,
             str(fileCreationDAQTime), 
@@ -1145,12 +1174,12 @@ class Connection:
 			str(triggerID),
 			verbose and 'T' or 'N']
 	
-			self.__writerPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			self.__writerPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 		if secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_process'):
 			cmd = [
 			secondary_exec,
 			str(int(self.__systemFrequency)),
-			fileNamePrefix,
+			processedFileNamePrefix,
 			eventType,
 			output_format,
 			qdcMode,
@@ -1161,11 +1190,10 @@ class Connection:
             str(fileCreationDAQTime),
 			str(fractionToWrite),
 			str(hitLimit),
-			str(splitTime),
 			tref,
 			verbose and 'T' or 'N'
 			]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
 			template = "@?"
 			n = struct.calcsize(template)
@@ -1181,7 +1209,7 @@ class Connection:
 				str(triggerID), 
 				"%1.12f" % self.getAcquisitionStartTime()
 				]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 			data = self.__monitorPipe.stdout.read(n)
 			
 
@@ -1330,9 +1358,13 @@ class Connection:
 		dataLoss = 100.0 * framesLost / frames
 		transmittedRate = events / testTime / 1e6
 		if(dataLoss > 10.0):
-			totalRate = transmittedRate * (100.0 / (100 - dataLoss))
-			user_input = input("WARNING: Estimated data loss for %.1f%% of data frames. Successful transmission/processing for %.1f Mevents/s (out of total incoming %.1f MEvents/s)."
-					"\nProceed with acquisition for %4.1f second(s)? [Y/n]\n" % (dataLoss, transmittedRate, totalRate, acquisitionTime))
+			if dataLoss<100:
+				totalRate = transmittedRate * (100.0 / (100 - dataLoss))
+				user_input = input("WARNING: Estimated data loss for %.1f%% of data frames. Successful transmission/processing for %.1f Mevents/s (out of total incoming %.1f MEvents/s)."
+						"\nProceed with acquisition for %4.1f second(s)? [Y/n]\n" % (dataLoss, transmittedRate, totalRate, acquisitionTime))
+			else:
+				user_input = input("WARNING: Estimated data loss for %.1f%% of data frames."
+						"\nProceed with acquisition for %4.1f second(s)? [Y/n]\n" % (dataLoss, acquisitionTime))
 			if user_input in ('', 'y', 'yes', 'Y', 'Yes'):
 				return True
 			elif user_input in ('n', 'no', 'N', 'No'):

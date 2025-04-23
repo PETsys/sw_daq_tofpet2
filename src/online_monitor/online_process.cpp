@@ -180,7 +180,7 @@ struct BlockHeader  {
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 16);
+	assert(argc == 15);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -193,9 +193,8 @@ int main(int argc, char *argv[])
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[10]);
 	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
-	double fileSplitTime = boost::lexical_cast<double>(argv[13]);
-	char *tref = argv[14];
-	bool verbose = (argv[15][0] == 'T');
+	char *tref = argv[13];
+	bool verbose = (argv[14][0] == 'T');
 	bool useAsyncWriting = false;
 	
 	EVENT_TYPE eventType; 
@@ -315,7 +314,7 @@ int main(int argc, char *argv[])
 
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, fileSplitTime);	
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, 0);	
 
 	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
 
