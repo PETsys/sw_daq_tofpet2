@@ -14,8 +14,7 @@ def read_counters(conn, tag, scale_factor):
 
 	# Will try to read counters for up to 2 seconds until all channels have readings with the correct tag
 	t0 = time()
-	for n in range(1):
-	#while time() - t0 < 2:
+	while time() - t0 < 2:
 		data = {}
 		problematic_channels = []
 
