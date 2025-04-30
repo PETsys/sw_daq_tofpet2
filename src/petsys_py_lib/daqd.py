@@ -1337,8 +1337,8 @@ class Connection:
 			# Because the entire frame block won't be freed until writeRaw is done, we can end up in a situation
 			# where writeRaw owns all frames and daqd has no buffer space, even if writeRaw has already processed
 			# some/most of the frame block
-			if nFramesInBlock > bs/2:
-				nFramesInBlock = bs/2
+			if nFramesInBlock > bs//2:
+				nFramesInBlock = bs//2
 
 			wrPointer = (rdPointer + nFramesInBlock) % (2*bs)
 
