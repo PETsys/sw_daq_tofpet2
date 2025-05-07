@@ -27,7 +27,7 @@ MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
 
-PROTOCOL_VERSION = 0x102
+PROTOCOL_VERSION = 0x103
 
 # Handles interaction with the system via daqd
 class Connection:
