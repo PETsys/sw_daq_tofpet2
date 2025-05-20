@@ -12,17 +12,41 @@ def main():
 		
 		asic_deserializer_vector =  connection.read_config_register(portID, slaveID, 64, 0x0302)
 		asic_decoder_vector = connection.read_config_register(portID, slaveID, 64, 0x0310)
-		
-		
-		
+
+		n_links_per_fem = 1 + connection.read_config_register(portID, slaveID, 2, 0x0100)
+
 		for n in range(64):
-			if (asic_enable_vector & (1 << n)) != 0:
-				deserializer_ok = (asic_deserializer_vector & (1 << n)) != 0
-				decoder_ok = (asic_decoder_vector & (1 << n)) != 0
-				if deserializer_ok and decoder_ok:
-					print("ASIC (%2d, %2d, %2d) is enabled and TX is OK" % (portID, slaveID, n))
-				else:
-					print("ASIC (%2d, %2d, %2d) is enabled but TX is FAILED [%d %d]" % (portID, slaveID, n, deserializer_ok, decoder_ok))
+			if (asic_enable_vector & (1 << n)) == 0: continue
+
+			print("ASIC (%2d, %2d, %2d) is enabled" % (portID, slaveID, n))
+			deserializer_ok = (asic_deserializer_vector & (1 << n)) != 0
+			decoder_ok = (asic_decoder_vector & (1 << n)) != 0
+
+			for lane in range(n_links_per_fem):
+				connection.write_config_register(portID, slaveID, 7, 0x0320, n_links_per_fem*n + lane)
+				v0 = connection.read_config_register(portID, slaveID, 32, 0x0328)
+				sleep(0.1)
+				v1 = connection.read_config_register(portID, slaveID, 32, 0x0328)
+
+				v = v1 - v0
+				if v < 0: v += 2**32
+				v = int(v / 0.1)
+				print("ASIC (%2d, %2d, %2d) lane %d code error/s: %d" % (portID, slaveID, n, lane, v))
+
+			connection.write_config_register(portID, slaveID, 7, 0x0330, n)
+			v0 = connection.read_config_register(portID, slaveID, 32, 0x0338)
+			sleep(0.1)
+			v1 = connection.read_config_register(portID, slaveID, 32, 0x0338)
+
+			v = v1 - v0
+			if v < 0: v += 2**32
+			v = int(v / 0.1)
+			print("ASIC (%2d, %2d, %2d) word error/s: %d" % (portID, slaveID, lane, v))
+
+			if deserializer_ok and decoder_ok:
+				print("ASIC (%2d, %2d, %2d) is TX is OK" % (portID, slaveID, n))
+			else:
+				print("ASIC (%2d, %2d, %2d) is TX is FAILED [%d %d]" % (portID, slaveID, n, deserializer_ok, decoder_ok))
 	return 0
 
 

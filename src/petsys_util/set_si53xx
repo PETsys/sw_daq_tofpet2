@@ -12,8 +12,8 @@ def main(argv):
 	parser = argparse.ArgumentParser(description='Set FEM powe ON/OFF')
 	parser.add_argument("-i", type=str, required=True, help="Si53xx configuration file")
 	parser.add_argument("-s", type=int, required=True, help="Si53xx clock source")
-	parser.add_argument("--port", default=0, help="Unit port ID")
-	parser.add_argument("--slave", default=0, help="Unit slave ID")
+	parser.add_argument("--port", default=0, type=int, help="Unit port ID")
+	parser.add_argument("--slave", default=0, type=int, help="Unit slave ID")
 
 	args = parser.parse_args()
 
