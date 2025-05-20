@@ -33,45 +33,6 @@ struct CalibrationData{
 	int freq;
 };
 
-	// TODO: determine this programmatically
-        static const size_t IO_BLOCK_SIZE = 8192;       // I/O block size to which O_DIRECT needs to be aligned
-		struct iocb cb;
-	void submittCurrentBuffer();
-	void completeAllBuffers();
-
-	buffers[i].used = 0;
-	memset(&buffers[i].cb, 0, sizeof(struct iocb));
-	// Use a normal write to write any data in the last buffer
-	// but we still need to pad it to IO_BLOCK_SIZE
-	auto &currentBuffer = buffers[currentBufferIndex];
-	auto write_size = (currentBuffer.used / IO_BLOCK_SIZE) * IO_BLOCK_SIZE;
-	auto tail_size = currentBuffer.used - write_size;
-	if(tail_size != 0) write_size += IO_BLOCK_SIZE;
-
-	auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
-	assert(r == write_size);
-
-	// Finally truncate the file to the correct size
-	r = ftruncate(fd, global_offset + currentBuffer.used);
-	assert(r == 0);
-
-		auto copySize = min(count - written, bufferFree);
-		memcpy((char *)currentBuffer.data + currentBuffer.used, (char *)buf+written, copySize);
-		currentBuffer.used += copySize;
-		written += copySize;
-
-		if(currentBuffer.used == BUFFER_SIZE) {
-			// This will also move currentBufferIndex to the next buffer
-			submittCurrentBuffer();
-void DataWriter::completeAllBuffers()
-{
-	if(currentBufferIndex == 0) return;
-	// Wait for all pending writes to complete
-	struct io_event events[currentBufferIndex];
-	int completed = io_getevents(ctx, currentBufferIndex, currentBufferIndex, events, NULL);
-	assert(completed == currentBufferIndex);
-	assert(currentBuffer.used % IO_BLOCK_SIZE == 0);
-	assert(global_offset % IO_BLOCK_SIZE == 0);
 
 class CalibrationPool {
 public:
@@ -304,7 +265,7 @@ int main(int argc, char *argv[])
 			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk
 			if(!acqStdMode){
 				calibrationPool.writeOut(&writer);
-			}
+			}	
 
 			if(verbose==true){
 				fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
