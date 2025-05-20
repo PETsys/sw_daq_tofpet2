@@ -8,6 +8,7 @@
 
 #include <TFile.h>
 #include <TNtuple.h>
+#include <iostream>
 
 using namespace PETSYS;
 
@@ -93,7 +94,7 @@ int main(int argc, char *argv[])
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix, RawReader::SYNC);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, 0, RAW, fileType , 0.0, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, 0.0, RAW, fileType , 0.0, 0, eventFractionToWrite, fileSplitTime);
 
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

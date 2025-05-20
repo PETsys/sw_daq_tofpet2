@@ -217,12 +217,12 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 	float step1, step2;
 
 
-	while(fscanf(indexFile, "%ld %ld %*lld %*lld %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
+	while(fscanf(indexFile, "%ld %ld %*d %*d %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
 		fseek(dataFile, startOffset, SEEK_SET);
 		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
 		RawCalibrationData *tmpRawCalDataBlock = new RawCalibrationData[nCalData];
 		
-		fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
+		auto res = fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
 		for (int i = 0; i < nCalData; i++) {
 			
 			RawEventWord eWord(tmpRawCalDataBlock[i].eventWord);   
@@ -874,7 +874,7 @@ void calibrateAsic(
 					}
 				}
 				
-				fprintf(summaryFile, "%u\t%u\t%c\t%u\t%f\n", channelID, tacID, (branchID == 0) ? 'T' : 'E', counts, sigma);
+				fprintf(summaryFile, "%lu\t%lu\t%c\t%u\t%f\n", channelID, tacID, (branchID == 0) ? 'T' : 'E', counts, sigma);
 			}
 		}
 		delete tmp1;

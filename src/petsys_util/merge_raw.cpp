@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
 		unsigned long bs = 128*1024;
 		char *buffer = new char[bs];
 
-		fread(buffer, 8, 8, inputFileRaw);
+		auto res = fread(buffer, 8, 8, inputFileRaw);
 		fwrite(buffer, 8, 8, outputFileRaw);
 
 		unsigned long stepBegin, stepEnd;
