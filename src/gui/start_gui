@@ -15,6 +15,7 @@ import os
 import subprocess
 import signal
 import os.path
+import re
 from collections import Counter
 from time import sleep, time
 import csv
@@ -22,10 +23,11 @@ from petsys import daqd, info, bias, fe_power
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
-
 from matplotlib.figure import Figure
-
+import warnings
 import numpy as np
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 class GUI:
     def __init__ (self):
@@ -38,7 +40,6 @@ class GUI:
         
         self.readTempWindow = self.builder.get_object("readTempWindow")
         self.readTempPlotWindow = self.builder.get_object("readTempPlotWindow")
-
 
         self.builder.connect_signals(self)
         
@@ -53,9 +54,6 @@ class GUI:
         self.__terminalPid = None
        
         self.__workingFolder = None
-
-        self.__febdTopology = {}
-        self.__hasClockTrigger = False
 
         self.__fem_switch_handle_set = False
         self.__bias_switch_handle_set = False
@@ -86,7 +84,7 @@ class GUI:
     def execute(self,command, processName ="", message1="", message2=""):
         
         self.__usedStopButton = False
-        self.__process = subprocess.Popen(command, shell=True, bufsize=0, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+        self.__process = subprocess.Popen(command, shell=True, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
 
         flags = fcntl(self.__process.stdout, F_GETFL) # get current p.stdout flags
         fcntl(self.__process.stdout, F_SETFL, flags | O_NONBLOCK)
@@ -121,10 +119,11 @@ class GUI:
             
         self.timeout_id = GLib.timeout_add(1000, self.check_if_finished, data)
 
+
     def read_temperature(self,command, processName ="", message1="", message2=""):
         
         self.__usedTempStopButton = False
-        self.__temperatureProcess = subprocess.Popen(command, shell=True, bufsize=0, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
+        self.__temperatureProcess = subprocess.Popen(command, shell=True, bufsize=-1, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid)
 
         flags = fcntl(self.__temperatureProcess.stdout, F_GETFL) # get current p.stdout flags
         fcntl(self.__temperatureProcess.stdout, F_SETFL, flags | O_NONBLOCK)
@@ -159,9 +158,25 @@ class GUI:
             self.builder.get_object("executeSpinner").stop()
             GLib.source_remove(self.timeout_id)
             # Make all widgets sensitive again...
+
+
             for widget in self.builder.get_objects():
                 if widget.find_property("sensitive") is not None:
                     widget.set_sensitive(True)
+            if self.builder.get_object("acqRealTimeProcess").get_active():
+                self.builder.get_object("acqSaveRawLabel").set_sensitive(True)
+                self.builder.get_object("acqSaveRawCheck").set_sensitive(True)
+                self.builder.get_object("acqProcessWhenFinishedLabel").set_sensitive(False)
+                self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(False)
+                self.builder.get_object("acqProcessWhenFinishedCheck").set_active(False)
+            else:
+                self.builder.get_object("acqSaveRawLabel").set_sensitive(False)
+                self.builder.get_object("acqSaveRawCheck").set_sensitive(False)
+                self.builder.get_object("acqSaveRawCheck").set_active(False)
+                self.builder.get_object("acqProcessWhenFinishedLabel").set_sensitive(True)
+                self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(True)
+                return False
+
 
             self.builder.get_object("executeScrollButton").set_sensitive(False)
             self.builder.get_object("executeStopButton").set_sensitive(False)
@@ -182,7 +197,9 @@ class GUI:
             if message1 != "" and not self.__usedStopButton:
                 self.show_info_dialog(message1, message2, self.processWindow)
         return True
-        
+            
+   
+
     def check_if_temp_finished(self, data):
         message1 = data[1]
         message2 = data[2]
@@ -206,6 +223,10 @@ class GUI:
         
         return True
 
+    def clean_input_request(self,line):
+        line = re.sub(r"WARNING:|\[Y/n\]", "", line)  # Remove targets
+        return line.strip()  # Trim whitespace
+
     def write_to_textview(self, fd, condition):
         if condition == GLib.IO_IN: 
             char = fd.read().decode() 
@@ -221,7 +242,14 @@ class GUI:
                 buf.delete(lineIterStart, lineIterEnd)
                 buf.place_cursor(buf.get_end_iter())
             buf.insert_at_cursor(char)
-                
+          
+            if "[Y/n]" in char: 
+                message=self.clean_input_request(char)
+                if self.show_confirmation_dialog( message, "WARNING", self.processWindow):
+                    self.__process.stdin.write("Y\n".encode('utf-8'))
+                else:
+                    self.__process.stdin.write("N\n".encode('utf-8'))
+                self.__process.stdin.flush()
             if self.__scroll:
                 self.scroll_to_end(self.builder.get_object("executeTextView"))
             return True 
@@ -1203,7 +1231,29 @@ class GUI:
 
         self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
 
+
+    def on_acqRealTimeProcess_state_set(self, switch, isOn):
+        if isOn:
+            self.builder.get_object("acqSaveRawLabel").set_sensitive(True)
+            self.builder.get_object("acqSaveRawCheck").set_sensitive(True)
+            self.builder.get_object("acqProcessWhenFinishedLabel").set_sensitive(False)
+            self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(False)
+            self.builder.get_object("acqProcessWhenFinishedCheck").set_active(False)
+            switch.set_active(True)
+            switch.set_state(Gtk.StateType.ACTIVE)
+            return True
+        else:
+            self.builder.get_object("acqSaveRawLabel").set_sensitive(False)
+            self.builder.get_object("acqSaveRawCheck").set_sensitive(False)
+            self.builder.get_object("acqSaveRawCheck").set_active(False)
+            self.builder.get_object("acqProcessWhenFinishedLabel").set_sensitive(True)
+            self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(True)
+            switch.set_active(False)
+            return False
+
+
     def on_acqAcquireButton_clicked(self, acqFileChooseButton):   
+
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
             return
@@ -1232,10 +1282,7 @@ class GUI:
         if ' ' in outFile:
             self.show_error_dialog("Please choose file name prefix without spaces")
             return
-
-        if os.path.exists(outFile+".rawf"):
-            if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
-                return True
+    
 
         mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
         time = self.builder.get_object("acqTimeSpinButton").get_value()
@@ -1243,33 +1290,104 @@ class GUI:
             self.show_error_dialog("Acquision duration time set to 0. Please choose a valid acquisition duration time.")
             return
 
-        useTrigger = self.builder.get_object("acqTriggerOn").get_active()
+        useTrigger = self.builder.get_object("acqTrigger").get_active()
+        onlineProcess = self.builder.get_object("acqRealTimeProcess").get_active()
         
+        if( not onlineProcess or (onlineProcess and self.builder.get_object("acqSaveRawCheck").get_active())):
+            if os.path.exists(outFile+".rawf"):
+                if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
+                    return True
+
+
         if useTrigger:
             flag = "--enable-hw-trigger"
+
         else:
             flag = ""
-       
-        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s" % (self.__workingFolder, outFile, mode.lower(), time, flag)
-        
-        doDelayStart = self.builder.get_object("acqManualStartYes").get_active()
+
+
+        if(onlineProcess):
+            # outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+            # if outFileName.endswith('.ldat'):
+            #     outFileName, ext = os.path.splitext(outFileName)
+            # outFile = self.__workingFolder + outFileName
+            format = ""
+            flag += " --enable-realtime-processing"
+            flagType, flagFormat, flagFraction, flagHits, flagTimeRef = self.getProcessingOptions(outFile)
+            if flagFormat == "--writeBinary":
+                format = "binary"
+            elif flagFormat == "--writeBinaryCompact":
+                format = "binaryCompact"
+            elif flagFormat == "--writeRoot":
+                format = "root"
+            elif flagFormat == "--writeTextCompact":
+                format = "textCompact"
+            elif flagFormat == "":
+                format = "text"   
+
+            flag += " --output-type %s --output-format %s %s %s %s" % (flagType, format, flagFraction, flagHits, flagTimeRef) 
+            if self.builder.get_object("acqSaveRawCheck").get_active(): 
+                flag += " --writeRawData"
+    
+      
+        doDelayStart = self.builder.get_object("acqManualStart").get_active()
 
         if(doDelayStart):
-            os.remove("/tmp/aquisition_starting_fifo")
+            if os.path.exists("/tmp/aquisition_starting_fifo"):
+                os.remove("/tmp/aquisition_starting_fifo")
             fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
-            command += "--wait-on /tmp/aquisition_starting_fifo"
-            self.startAcquisition(command, outFile)
+            flag += " --wait-on /tmp/aquisition_starting_fifo"   
             self.builder.get_object("execStartButton").set_sensitive(True)
+
+        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
+
+        if (not self.builder.get_object("acqProcessWhenFinishedCheck").get_active()):
+            self.startAcquisition(command, onlineProcess)
         else:
-            self.startAcquisition(command, outFile)
-        
+            self.builder.get_object("execStartButton").set_sensitive(False) 
+            
+            
+            inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
+            
+            if inFileName.endswith('.rawf'):
+                inFileName, ext = os.path.splitext(inFileName)
+
+            outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+            if outFileName.endswith('.ldat'):
+                outFileName, ext = os.path.splitext(outFileName)
+            inFile = self.__workingFolder + inFileName
+            outFile = self.__workingFolder + outFileName
+
+            flagType, flagFormat, flagFraction, flagHits, flagTimeRef= self.getProcessingOptions(outFileName)
+
+            if flagType == "singles":
+                command += "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef) 
+            if flagType == "coincidences":
+                command += "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef)
+            if flagType == "groups":
+                command += "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef)
+            if flagType == "raw":
+                command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s" % (self.__workingFolder, inFile, outFile, flagFormat)
+
+         
+            self.setPowerSwitchesStatus(True)
+
+            self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing","")
+
+        if(doDelayStart):
+            self.builder.get_object("execStartButton").set_sensitive(True)
+
+            
         return True
         
         
     
-    def startAcquisition(self, command, outFile, isDelayed = False):
+    def startAcquisition(self, command, onlineProcessing=False):
         self.setPowerSwitchesStatus(True)
-        self.execute(command, "Data Acquisition", "Data Acquisition Finished", "Output Files written to  %s.rawf and %s.idxf" % (outFile,outFile))
+        if onlineProcessing:
+            self.execute(command, "Data Acquisition with Real-time Processing", "Data Acquisition Finished", "")
+        else:
+            self.execute(command, "Data Acquisition", "Data Acquisition Finished", "")
     
 
     def on_execStartButton_clicked(self, button):
@@ -1300,11 +1418,22 @@ class GUI:
             self.builder.get_object("processingLabel6").set_sensitive(False)
             self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(False)
         
-        if dataType != "Raw":
+        elif dataType == "Singles":
             self.builder.get_object("processingDataFormatBoxOptions").remove_all()
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"Binary")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"Text")
             self.builder.get_object("processingDataFormatBoxOptions").insert_text(2,"ROOT")
+            self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
+            self.builder.get_object("processingLabel6").set_sensitive(True)
+            self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(True)
+        else:
+            self.builder.get_object("processingDataFormatBoxOptions").remove_all()
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(0,"Binary Compact")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(1,"Binary")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(2,"Text")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(3,"Text Compact")
+            self.builder.get_object("processingDataFormatBoxOptions").insert_text(4,"ROOT")
+
             self.builder.get_object("processingDataFormatBoxOptions").set_active(0)
             self.builder.get_object("processingLabel6").set_sensitive(True)
             self.builder.get_object("processingTimeReferenceBoxOptions").set_sensitive(True)
@@ -1315,7 +1444,7 @@ class GUI:
 
         dataFormat =  self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
        
-        if dataFormat == "Binary":
+        if dataFormat == "Binary" or dataFormat == "Binary Compact":
             extData = ".ldat"
         elif dataFormat == "ROOT":
             extData = ".root"
@@ -1346,7 +1475,7 @@ class GUI:
         self.builder.get_object("processingTimeReferenceBoxOptions").insert_text(2,"Wall")
         self.builder.get_object("processingTimeReferenceBoxOptions").set_active(active)
 
-        if dataFormat == "Binary":
+        if dataFormat == "Binary" or dataFormat == "Binary Compact":
             extData = ".ldat"
         elif dataFormat == "ROOT":
             extData = ".root"
@@ -1455,6 +1584,61 @@ class GUI:
         self.builder.get_object("processingFileChooseEntry1").set_text(fileName+extType+extData)
         return True
     
+    
+    def getProcessingOptions(self, outFile):
+        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
+        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
+        fraction = self.builder.get_object("processingFractionSpinButton").get_value()
+        timeRef = self.builder.get_object("processingTimeReferenceBoxOptions").get_active_text()
+
+        if dataType == "Singles":
+            flagType = "singles"
+        elif dataType == "Coincidences":
+            flagType = "coincidences"
+        elif dataType == "Groups":
+            flagType = "groups"
+        elif dataType == "Raw":
+            flagType = "raw"
+        
+        if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
+            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
+            return True
+        
+        if dataFormat == "Binary":
+            flagFormat = "--writeBinary"
+            if outFile.endswith('.ldat'):
+                outFile, ext = os.path.splitext(outFile)
+        elif dataFormat == "Binary Compact":
+            flagFormat = "--writeBinaryCompact"
+            if outFile.endswith('.ldat'):
+                outFile, ext = os.path.splitext(outFile)
+        elif dataFormat == "ROOT":
+            flagFormat = "--writeRoot"
+        elif dataFormat == "Text Compact":
+            flagFormat = "--writeTextCompact"
+        else:
+            flagFormat = ""
+        
+        flagFraction = "--writeFraction %d" % (fraction)
+
+        if dataType in ("Groups","Coincidences"):
+            nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
+            flagHits = "--writeMultipleHits %d" % (nHits)
+        else:
+            flagHits = ""
+       
+        if timeRef == "Sync":
+            timeRefFlag = "sync"
+        elif timeRef == "Wall":
+            timeRefFlag = "wall"
+        elif timeRef == "User":
+            timeRefFlag = "user"
+        flagTimeRef = "--timeref %s" % (timeRefFlag)
+
+        return flagType, flagFormat, flagFraction, flagHits, flagTimeRef
+    
+
+    
     def on_processButton_clicked(self, button):
         if self.__workingFolder == None:
             self.show_error_dialog("Please choose a working folder.")
@@ -1476,181 +1660,27 @@ class GUI:
             inFileName, ext = os.path.splitext(inFileName)
 
         outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
+        if outFileName.endswith('.ldat'):
+            outFileName, ext = os.path.splitext(outFileName)
+
         inFile = self.__workingFolder + inFileName
         outFile = self.__workingFolder + outFileName
 
-        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
-        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
-        fraction = self.builder.get_object("processingFractionSpinButton").get_value()
-        timeRef = self.builder.get_object("processingTimeReferenceBoxOptions").get_active_text()
-        
-        if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
-            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
-            return True
-        
-        if dataFormat == "Binary":
-            flag1 = "--writeBinary"
-            if outFile.endswith('.ldat'):
-                outFile, ext = os.path.splitext(outFile)
-
-        elif dataFormat == "ROOT":
-            flag1 = "--writeRoot"
-        else:
-            flag1 = ""
-        
-        flag2 = "--writeFraction %d" % (fraction)
-
-        if dataType in ("Groups","Coincidences"):
-            nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
-            flag3 = "--writeMultipleHits %d" % (nHits)
-        else:
-            flag3 = ""
-       
-        if timeRef == "Sync":
-            timeRefFlag = "sync"
-        elif timeRef == "Wall":
-            timeRefFlag = "wall"
-        elif timeRef == "User":
-            timeRefFlag = "user"
-        flag4 = "--timeref %s" % (timeRefFlag)
+        flagType, flagFormat, flagFraction, flagHits, flagTimeRef= self.getProcessingOptions(outFileName)
 
 
-        if dataType == "Singles":
-            command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4) 
-        if dataType == "Coincidences":
-            command = "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
-        if dataType == "Groups":
-            command = "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
-        if dataType == "Raw":
-            command = "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s" % (self.__workingFolder, inFile, outFile, flag1)
+
+        if flagType == "singles":
+            command = "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef) 
+        if flagType == "coincidences":
+            command = "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef)
+        if flagType == "groups":
+            command = "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s" % (self.__workingFolder, inFile, outFile, flagFormat, flagFraction, flagHits, flagTimeRef)
+        if flagType == "raw":
+            command = "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s" % (self.__workingFolder, inFile, outFile, flagFormat)
         
-        self.execute(command, "Raw data Processing", "Finished Data Processing", "Processed data written to  %s" % self.__workingFolder+outFileName )
+        self.execute(command, "Raw data Processing", "Finished Data Processing", "")
     
-    def on_acqAcquireProcessButton_clicked(self, button):
-        if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
-            return 
-        
-        if not self.is_daqd_running():   
-            self.show_error_dialog("daqd communication server is not running.")
-            return
-       
-        if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
-            self.show_error_dialog("Please save bias voltage settings")
-            return
-            
-        if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
-            self.show_error_dialog("Please save threshold settings.")
-            return
-
-        if self.builder.get_object("acqFileEntry").get_text() == "":
-            self.show_error_dialog("Please choose an output file name.")
-            return
-
-        dataType = self.builder.get_object("processingConvertBoxOptions").get_active_text()
-        if dataType != "Raw" and not os.path.exists(self.__workingFolder + "tdc_calibration.tsv"):
-            self.show_error_dialog("TDC calibration file not found in working folder. Please perform ASIC calibration.")
-            return
-         
-        outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
-
-        if os.path.exists(outFile+".rawf"):
-            if not self.show_confirmation_dialog("Raw data file '%s.rawf' exists in the working data folder. Overwrite?" % (self.builder.get_object("acqFileEntry").get_text())):
-                return True
-            
-        mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
-        time = self.builder.get_object("acqTimeSpinButton").get_value()
-        if time == 0:
-            self.show_error_dialog("Acquision duration time set to 0. Please choose a valid acquisition duration time.")
-            return True
-
-        useTrigger = self.builder.get_object("acqTriggerOn").get_active()
-        doDelayStart = self.builder.get_object("acqManualStartYes").get_active()
-        
-        flag = ""
-        if useTrigger:
-            flag = "--enable-hw-trigger"
-
-        flag2 = ""
-        if(doDelayStart):
-            os.remove("/tmp/aquisition_starting_fifo")
-            fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
-            flag2= "--wait-on /tmp/aquisition_starting_fifo"
-    
-        command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag, flag2)
-
-      
-
-        # if(doDelayStart):
-        #     os.remove("/tmp/aquisition_starting_fifo")
-        #     fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
-        #     command += "--wait-on /tmp/aquisition_starting_fifo"
-        #     self.startAcquisition(command, outFile)
-        #     self.builder.get_object("execStartButton").set_sensitive(True)
-        # else:
-        #     self.startAcquisition(command, outFile)
-        
-        #return True
-
-
-        fileName = self.builder.get_object("processingFileChooseEntry").get_text()
-        fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")
-
-        inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
-        
-        if inFileName.endswith('.rawf'):
-            inFileName, ext = os.path.splitext(inFileName)
-
-        outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
-        inFile = self.__workingFolder + inFileName
-        outFile = self.__workingFolder + outFileName
-
-        dataFormat = self.builder.get_object("processingDataFormatBoxOptions").get_active_text()
-        fraction = self.builder.get_object("processingFractionSpinButton").get_value()
-        timeRef = self.builder.get_object("processingTimeReferenceBoxOptions").get_active_text()
-
-        if dataFormat == "Binary":
-            flag1 = "--writeBinary"
-            if outFile.endswith('.ldat'):
-                outFile, ext = os.path.splitext(outFile)
-                
-        elif dataFormat == "ROOT":
-            flag1 = "--writeRoot"
-        else:
-            flag1 = ""
-        
-        flag2 = "--writeFraction %d" % (fraction)
-
-        if dataType in ("Groups","Coincidences"):
-            nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
-            flag3 = "--writeMultipleHits %d" % (nHits)
-        else:
-            flag3 = ""
-       
-        if timeRef == "Sync":
-            timeRefFlag = "sync"
-        elif timeRef == "Wall":
-            timeRefFlag = "wall"
-        elif timeRef == "User":
-            timeRefFlag = "user"
-        flag4 = "--timeref %s" % (timeRefFlag)
-
-        if dataType == "Singles":
-            command += "./convert_raw_to_singles --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4) 
-        if dataType == "Coincidences":
-            command += "./convert_raw_to_coincidence --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
-        if dataType == "Groups":
-            command += "./convert_raw_to_group --config %sconfig.ini -i %s -o %s %s %s %s %s;" % (self.__workingFolder, inFile, outFile, flag1, flag2, flag3, flag4)
-        if dataType == "Raw":
-            command += "./convert_raw_to_raw --config %sconfig.ini -i %s -o %s %s;" % (self.__workingFolder, inFile, outFile, flag1)
-        
-        self.setPowerSwitchesStatus(True)
-
-        self.execute(command, "Raw data Acquisition and Processing", "Finished Data Acquisition and Processing", "Processed data written to  %s" % (self.__workingFolder+outFileName))
-
-        if(doDelayStart):
-            self.builder.get_object("execStartButton").set_sensitive(True)
-
         return True
 
     def show_error_dialog(self, string):

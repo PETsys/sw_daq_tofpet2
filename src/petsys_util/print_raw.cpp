@@ -89,9 +89,9 @@ int main(int argc, char *argv[])
 		unsigned long long sumEvents = 0;
 		
 		while(ftell(dataFile) < endOffset) {
-			fread((void *)(tmpRawDataFrame->data), sizeof(uint64_t), 2, dataFile);
+		        auto res = fread((void *)(tmpRawDataFrame->data), sizeof(uint64_t), 2, dataFile);
 			auto frameSize = tmpRawDataFrame->getFrameSize();
-			fread((void *)((tmpRawDataFrame->data)+2), sizeof(uint64_t), frameSize-2, dataFile);
+			res = fread((void *)((tmpRawDataFrame->data)+2), sizeof(uint64_t), frameSize-2, dataFile);
 			
 			auto frameID = tmpRawDataFrame->getFrameID();
 			auto frameLost = tmpRawDataFrame->getFrameLost();

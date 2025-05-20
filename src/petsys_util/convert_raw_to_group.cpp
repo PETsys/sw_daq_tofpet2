@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
 
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), GROUP, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), GROUP, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

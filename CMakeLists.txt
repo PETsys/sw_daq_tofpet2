@@ -34,15 +34,17 @@ include_directories("src/online_monitor")
 # Need to define LINUX for WINDRIVER
 # even if just to check it's presence.
 if(UNIX AND NOT APPLE)
-set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
-set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX" )
-set( CMAKE_REQUIRED_DEFINITIONS -DLINUX )
+
+set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -march=native -O3" )
+set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX  -march=native -O3" )
+
+set( CMAKE_REQUIRED_DEFINITIONS -DLINUX)
 endif()
 
 set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp"  "src/raw_data/shm_raw.cpp" )
 
 add_executable("daqd" ${DAQD_SOURCES})
-add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp")
+add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp" "src/raw_data/AsyncWriter.cpp")
 
 execute_process(COMMAND root-config --incdir OUTPUT_VARIABLE ROOT_INCDIR)
 string(STRIP ${ROOT_INCDIR} ROOT_INCDIR)
@@ -103,9 +105,14 @@ configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
 configure_file("src/petsys_util/eeprom_write" "eeprom_write" COPYONLY)
 configure_file("src/petsys_util/stop_acquisition" "stop_acquisition" COPYONLY)
 configure_file("src/gui/start_gui" "start_gui" COPYONLY)
-configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade" COPYONLY)
+if((${LSB_ID_SHORT} STREQUAL "Ubuntu"))
+  configure_file("src/gui/gui_layout_ubuntu.glade" "gui/gui_layout.glade" COPYONLY)
+else()
+  configure_file("src/gui/gui_layout.glade" "gui/gui_layout.glade" COPYONLY)
+endif() 
 configure_file("src/gui/logo_PETsys.png" "gui/logo_PETsys.png" COPYONLY)
 configure_file("src/gui/logo_PETsys2.png" "gui/logo_PETsys2.png" COPYONLY)
+configure_file("src/gui/logo_PETsys3.png" "gui/logo_PETsys3.png" COPYONLY)
 configure_file("src/online_monitor/launch_monitor" "launch_monitor" COPYONLY)
 configure_file("src/petsys_util/acquire_sipm_data_with_monitoring" "acquire_sipm_data_with_monitoring" COPYONLY)
 configure_file("config.ini" "config.ini" COPYONLY)
@@ -119,6 +126,7 @@ add_library ( common STATIC
 	"src/base/SystemConfig.cpp"
 	"src/raw_data/RawReader.cpp"
 	"src/raw_data/shm_raw.cpp"
+	"src/raw_data/AsyncWriter.cpp"
 	"src/base/Instrumentation.cpp"
 	"src/base/CoarseSorter.cpp"
 	"src/base/ProcessHit.cpp"
@@ -159,3 +167,6 @@ target_link_libraries("merge_raw" common)
 
 add_executable("online_monitor" "src/online_monitor/online_monitor.cpp")
 target_link_libraries("online_monitor" common)
+
+add_executable("online_process" "src/online_monitor/online_process.cpp")
+target_link_libraries("online_process" common)

@@ -222,7 +222,7 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 		long nCalData = (endOffset - startOffset)/sizeof(RawCalibrationData);
 		RawCalibrationData *tmpRawCalDataBlock = new RawCalibrationData[nCalData];
 		
-		fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
+		auto res = fread(tmpRawCalDataBlock, sizeof(RawCalibrationData), nCalData, dataFile);	
 		for (int i = 0; i < nCalData; i++) {
 			
 			RawEventWord eWord(tmpRawCalDataBlock[i].eventWord);   

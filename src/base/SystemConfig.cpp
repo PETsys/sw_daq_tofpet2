@@ -109,8 +109,6 @@ SystemConfig *SystemConfig::fromFile(const char *configFileName, u_int64_t mask)
 			loadTimeOffsetCalibration(config, fn);
 			config->hasTimeOffsetCalibration = true;
 		}        
-		else
-			fprintf(stderr, "WARNING: time_offset_calibration_table not specified in section 'main' of '%s': timestamps of different channels may present offsets\n", configFileName);
 	}
 
 	// Load trigger configuration

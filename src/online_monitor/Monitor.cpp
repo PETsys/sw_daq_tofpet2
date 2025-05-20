@@ -125,7 +125,7 @@ namespace PETSYS { namespace OnlineMonitor {
 			exit(1);
 		}
 	
-		ftruncate(fd, shmSize);
+		auto res = ftruncate(fd, shmSize);
 		
 		auto p = ptr = (char *)mmap(NULL, 
 				shmSize, 
