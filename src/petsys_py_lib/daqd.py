@@ -27,7 +27,7 @@ MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
 
-PROTOCOL_VERSION = 0x102
+PROTOCOL_VERSION = 0x103
 
 # Handles interaction with the system via daqd
 class Connection:
@@ -1241,8 +1241,10 @@ class Connection:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
 		if self.__writerPipe is not None:	
 			workers += [(self.__writerPipe.stdin, self.__writerPipe.stdout)]
-			
-		#sleep(0.25)
+
+		# Check ASIC link status before acquiring data
+		self.checkAsicRx()
+
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 		nRequiredFrames = max(nRequiredFrames, 1) # Attempt to acquire at least 1 frame
@@ -1383,6 +1385,9 @@ class Connection:
 		frameLength = 1024.0 / self.__systemFrequency
 		nRequiredFrames = int(acquisitionTime / frameLength)
 
+		# Check ASIC link status before acquiring data
+		self.checkAsicRx()
+
 		self.__synchronizeDataToConfig()
 		wrPointer, rdPointer = (0, 0)
 		while wrPointer == rdPointer:
@@ -1455,23 +1460,34 @@ class Connection:
 		return data
 	
 	def checkAsicRx(self):
-		bad_rx_found = False
-		for portID, slaveID in self.getActiveFEBDs():
-			asic_enable_vector = self.read_config_register(portID, slaveID, 64, 0x0318)
-			asic_deserializer_vector =  self.read_config_register(portID, slaveID, 64, 0x0302)
-			asic_decoder_vector = self.read_config_register(portID, slaveID, 64, 0x0310)
+		t0 = time()
+		uu = self.getActiveFEBDs()
+		rx_enables = dict([ ((p,s), self.read_config_register(p, s, 64, 0x0318)) for p, s in uu ])
+
+		while True:
+			rx_deserializers_status = dict([ ((p,s), self.read_config_register(p, s, 64, 0x0302)) for p, s in uu ])
+			rx_decoders_status = dict([ ((p,s), self.read_config_register(p, s, 64, 0x0310)) for p, s in uu ])
 			
-			asic_bad_rx = asic_enable_vector & ~(asic_deserializer_vector & asic_decoder_vector)
-			
-			for n in range(64):
-				if (asic_bad_rx & (1 << n)) != 0:
-					a = (asic_deserializer_vector >> n) & 1
-					b = (asic_decoder_vector >> n) & 1
-					print("ASIC (%2d, %2d, %2d) RX links are down (0b%d%d)" % (portID, slaveID, n, b, a))
-					bad_rx_found = True
+			if (rx_deserializers_status == rx_enables) and (rx_decoders_status == rx_enables):
+				# All ASICs are OK
+				return True
+
+			if (time() - t0) > 10.0:
+				# Time out waiting for all RX to be up
+				for p, s in uu:
+					for n in range(64):
+						enable = (rx_enables[p,s] >> n) & 0x1
+						deserializer = (rx_deserializers_status[p,s] >> n) & 0x1
+						decoder = (rx_decoders_status[p,s] >> n) & 0x1
 					
-		if bad_rx_found:
-			raise ErrorAsicLinkDown()
+						if enable == 0:
+							continue
+
+						if (deserializer == 0) or (decoder == 0):
+							print(f"ASIC ({p:02d}, {s:02d}, {n:02d}) RX DOWN ({deserializer} {decoder})")
+
+				raise ErrorAsicLinkDown()
+
 
 	## Gets the current write and read pointer
 	def __getDataFrameWriteReadPointer(self):
