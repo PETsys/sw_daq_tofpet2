@@ -22,166 +22,16 @@
 #include <cstring>
 
 #include <libaio.h>
+#include "AsyncWriter.hpp"
 
 
 using namespace std;
+using namespace PETSYS;
 
 struct CalibrationData{
 	uint64_t eventWord;
 	int freq;
 };
-
-class DataWriter {
-
-	static const size_t BUFFER_SIZE = 1048576; // 1MB buffers to better handle very large rates
-	static const size_t N_BUFFERS = 32;
-
-	// TODO: determine this programmatically
-        static const size_t IO_BLOCK_SIZE = 8192;       // I/O block size to which O_DIRECT needs to be aligned
-
-	struct Buffer {
-		void* data;
-		ssize_t used = 0;
-		struct iocb cb;
-    };
-
-    Buffer buffers[N_BUFFERS];
-    io_context_t ctx{};
-	int fd;
-
-public:
-    DataWriter(const std::string& filename, bool acqStdMode);
-    ~DataWriter();
-
-	long long getCurrentPosition();
-	void appendData(void *buf, size_t count);
-
-	void writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID);
-
-private:
-	void submittCurrentBuffer();
-	void completeAllBuffers();
-
-	int currentBufferIndex = 0;
-	uint64_t global_offset = 0;
-};
-
-DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
-	fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC| O_DIRECT, 0644);
-
-    if (fd < 0) {
-        fprintf(stderr,"ERROR: Failed to open file");
-        exit(-1);
-    }
-    if (io_setup(N_BUFFERS, &ctx) != 0){
-        fprintf(stderr,"ERROR: Failed io_setup");
-        exit(-1);
-    }
-
-	for (int i = 0; i < N_BUFFERS; i++) {
-        int ret = posix_memalign(&buffers[i].data, BUFFER_SIZE, BUFFER_SIZE);
-        if (ret != 0) {
-            fprintf(stderr,"ERROR: Failed posix_memalign alocation");
-			return;
-        }
-        memset(buffers[i].data, 0, BUFFER_SIZE);
-	buffers[i].used = 0;
-	memset(&buffers[i].cb, 0, sizeof(struct iocb));
-    }
-}
-
-DataWriter::~DataWriter() {
-	// Use a normal write to write any data in the last buffer
-	// but we still need to pad it to IO_BLOCK_SIZE
-	auto &currentBuffer = buffers[currentBufferIndex];
-	auto write_size = (currentBuffer.used / IO_BLOCK_SIZE) * IO_BLOCK_SIZE;
-	auto tail_size = currentBuffer.used - write_size;
-	if(tail_size != 0) write_size += IO_BLOCK_SIZE;
-
-	auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
-	assert(r == write_size);
-
-	// Finally truncate the file to the correct size
-	r = ftruncate(fd, global_offset + currentBuffer.used);
-	assert(r == 0);
-
-	io_destroy(ctx);
-	close(fd);
-}
-
-void DataWriter::appendData(void *buf, size_t count)
-{
-	size_t written = 0;
-	while (written < count) {
-		auto &currentBuffer = buffers[currentBufferIndex];
-		auto bufferFree = BUFFER_SIZE - currentBuffer.used;
-		auto copySize = min(count - written, bufferFree);
-		memcpy((char *)currentBuffer.data + currentBuffer.used, (char *)buf+written, copySize);
-		currentBuffer.used += copySize;
-		written += copySize;
-
-		if(currentBuffer.used == BUFFER_SIZE) {
-			// This will also move currentBufferIndex to the next buffer
-			submittCurrentBuffer();
-		}
-	}
-}
-
-
-long long DataWriter::getCurrentPosition()
-{
-	return global_offset + buffers[currentBufferIndex].used;
-}
-
-void DataWriter::completeAllBuffers()
-{
-	if(currentBufferIndex == 0) return;
-
-	// Wait for all pending writes to complete
-	struct io_event events[currentBufferIndex];
-	int completed = io_getevents(ctx, currentBufferIndex, currentBufferIndex, events, NULL);
-	assert(completed == currentBufferIndex);
-
-	currentBufferIndex = 0;
-	for(auto i = 0; i < N_BUFFERS; i++) buffers[i].used = 0;
-}
-
-void DataWriter::submittCurrentBuffer()
-{
-
-	Buffer& currentBuffer = buffers[currentBufferIndex];
-	assert(currentBuffer.used % IO_BLOCK_SIZE == 0);
-	assert(global_offset % IO_BLOCK_SIZE == 0);
-
-	struct iocb &cb = currentBuffer.cb;
-	struct iocb* cbs[1] = {&cb};
-
-	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
-	assert(io_submit(ctx, 1, cbs) == 1);
-
-	global_offset += BUFFER_SIZE;
-	currentBufferIndex += 1;
-
-	if(currentBufferIndex == N_BUFFERS) {
-		// All buffers have been submitted, complete them before proceeding
-		completeAllBuffers();
-	}
-}
-
-void DataWriter::writeHeader(unsigned long long fileCreationDAQTime, double daqSynchronizationEpoch, long systemFrequency, char *mode, int triggerID) {
-	bool qdcMode = (strcmp(mode, "qdc") == 0);
-	uint64_t header[8];
-	for(int i = 0; i < 8; i++)
-		header[i] = 0;
-	header[0] |= uint32_t(systemFrequency);
-	header[0] |= (qdcMode ? 0x1UL : 0x0UL) << 32;
-	memcpy(header+1, &daqSynchronizationEpoch, sizeof(double));
-	if (triggerID != -1) { header[2] = 0x8000 + triggerID; }
-	if (strcmp(mode, "mixed") == 0) { header[3] = 0x1UL; }
-	header[4] = fileCreationDAQTime;
-
-	appendData((void *)&header, sizeof(uint64_t)*8);
-}
 
 
 class CalibrationPool {
@@ -220,7 +70,7 @@ enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA,
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 9);
+	assert(argc == 10);
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
@@ -229,6 +79,7 @@ int main(int argc, char *argv[])
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[6]);
 	bool acqStdMode = (argv[7][0] == 'N');
 	int triggerID = boost::lexical_cast<int>(argv[8]);
+	bool verbose = (argv[9][0] == 'T');
 
 	PETSYS::SHM_RAW *shm = new PETSYS::SHM_RAW(shmObjectPath);
 
@@ -265,7 +116,7 @@ int main(int argc, char *argv[])
 
 	DataWriter writer(fNameRaw, acqStdMode);
 
-	fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
+	if(verbose==true) fprintf(stderr, "INFO: Writing data to '%s.rawf' and index to '%s.idxf'\n", outputFilePrefix, outputFilePrefix);
 
 	writer.writeHeader(fileCreationDAQTime, daqSynchronizationEpoch, systemFrequency, argv[4], triggerID);
 
@@ -319,7 +170,7 @@ int main(int argc, char *argv[])
 
 			stepStartOffset = writer.getCurrentPosition();
 
-			r = fprintf(tempFile, "%f\t%f\t%ld\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
+			r = fprintf(tempFile, "%f\t%f\t%ld\t%lld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(tempFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
@@ -333,7 +184,7 @@ int main(int argc, char *argv[])
 			unsigned index = rdPointer % bs;
 			
 			long long frameID = shm->getFrameID(index);
-			if(frameID <= lastFrameID) {
+			if(frameID <= lastFrameID && verbose==true) {
 				fprintf(stderr, "WARNING!! Frame ID reversal: %12lld -> %12lld | %04u %04u %04u\n", 
 					lastFrameID, frameID, 
 					blockHeader.wrPointer, blockHeader.rdPointer, rdPointer
@@ -354,8 +205,7 @@ int main(int argc, char *argv[])
 					lostFrameInfo->data[1] = 1ULL << 16;
 					writer.appendData(lostFrameInfo->data, 2*sizeof(uint64_t));
 					delete lostFrameInfo;
-				}
-				
+				}				
 				// .. and we set the lastFrameType
 				lastFrameType = FRAME_TYPE_ALL_LOST;
 			}
@@ -415,17 +265,19 @@ int main(int argc, char *argv[])
 			// If acquiring calibration data, at the end of each calibration step, write compressed data to disk
 			if(!acqStdMode){
 				calibrationPool.writeOut(&writer);
-			}
+			}	
 
-			fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
+			if(verbose==true){
+				fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
 					stepMaxFrame); fflush(stderr);
-			fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
+				fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
 					stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
 					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
 					); 
-			fflush(stderr);
+				fflush(stderr);
+			}
 			
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 
@@ -438,7 +290,6 @@ int main(int argc, char *argv[])
 			if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			r = fflush(tempFile);
 			if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
-
 		}
 
 		fwrite(&rdPointer, sizeof(uint32_t), 1, stdout);

@@ -34,6 +34,10 @@ def read_counters(conn, tag, scale_factor):
 	raise Exception("Did not receive readings for the following channels: " + s)
 
 def main():
+	s = ", ".join([str(x) for x in problematic_channels ])
+	raise Exception("Did not receive readings for the following channels: " + s)
+
+def main():
 	parser = argparse.ArgumentParser(description='Acquire data for threshold calibration')
 	parser.add_argument("--config", type=str, required=True, help="Configuration file")
 	parser.add_argument("-o", type=str, dest="outFilePrefix", required=True, help="Data file prefix")
@@ -95,7 +99,7 @@ def main():
 		counter_sharing = 8
 
 	print("counter_sharing  = %(counter_sharing)d" % locals())
-
+	
 	# Perform a couple of dummy reads to check we are getting counter data with the correct tag
 	conn.setAsicsConfig(asicsConfig)
 	conn.checkAsicRx()
@@ -250,7 +254,7 @@ def main():
 	outFile.close()
 
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
-
+	
 	return 0
 
 if __name__ == '__main__':

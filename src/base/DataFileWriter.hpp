@@ -7,7 +7,7 @@
 #include <TFile.h>
 #include <TNtuple.h>
 #include <OrderedEventHandler.hpp>
-
+#include"AsyncWriter.hpp"
 namespace PETSYS {
 	
 enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT};
@@ -67,6 +67,8 @@ private:
 	float step1;
 	float step2;
 
+	bool useAsyncWriting;
+	DataWriter *dataWriter;
 	FILE *dataFile;
 	FILE *indexFile;
 	off_t stepBegin;
@@ -88,7 +90,7 @@ private:
 	unsigned short	brJ;
 	
 	long long	brTimeDelta;
-    long long	brTime;
+	long long	brTime;
 	unsigned int	brChannelID;
 	float		brToT;
 	float		brEnergy;
@@ -121,7 +123,7 @@ private:
 	unsigned short	brEFine;
 
 public:
-	DataFileWriter(char *fName, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime);
+	DataFileWriter(char *fName,  bool useAsyncWriting, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime);
 	~DataFileWriter(); 
 	
 	void openFile(); 

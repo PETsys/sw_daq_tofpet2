@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(), COINCIDENCE, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), COINCIDENCE, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {
@@ -152,6 +152,7 @@ int main(int argc, char *argv[])
 		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
 		dataFileWriter->setStepValues(step1, step2);
+
 		if(!simulateHwTrigger){
 			reader->processStep(true,
 					new CoarseSorter(
