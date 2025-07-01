@@ -36,6 +36,30 @@ def spi_reg(conn, portID, slaveID, chipID, l, data_out):
 	r = sum(r)
 	
 	return r
+	
+	
+""" SPI register with write/read command"""
+def spi_reg2_read(conn, portID, slaveID, chipID, l):
+	# Read command is 0b00000000 + l bits
+	cmd = 0
+	r = spi_reg(conn, portID, slaveID, chipID, l+8, cmd)
+	
+	#print(f"0x{r:X}")
+	r &= ~(0b11111111 << l) # Force 8 MSB to 0
+	return r
+	
+	
+	
+
+def spi_reg2_write(conn, portID, slaveID, chipID, l, value):
+	# Write command is 0b01000000 + l bits
+	cmd = (0b01000000 << l ) | value
+	spi_reg(conn, portID, slaveID, chipID, l+8, cmd)
+	
+	# Return the readback
+	return spi_reg2_read(conn, portID, slaveID, chipID, l)
+	
+
 
 class ADCException(Exception): pass
 class DACException(Exception): pass
