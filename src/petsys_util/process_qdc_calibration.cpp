@@ -427,13 +427,16 @@ void calibrateAsic(
 			char functionName[16];
 			sprintf(functionName, "pol%d", order);
 
-			pFine->Fit(functionName, "Q", "", xMin, xMax);
+			pFine->Fit(functionName, "QW", "", xMin, xMax);
 			TF1 *polN = pFine->GetFunction(functionName);
 			if(polN == NULL) // No fit
 				continue;
 
 			float chi2 = polN->GetChisquare();
 			if(chi2 == 0) // Chi² == 0 is a bad fit
+				continue;
+			float ndf = polN->GetNDF();
+			if (chi2/ndf > 1000) // Poor fit
 				continue;
 
 			if(order >= 0) entry.p0 = polN->GetParameter(0);
