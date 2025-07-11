@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.0 FATAL_ERROR)
 project(sw_daq_tofpet2)
+if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
+	if (NOT CMAKE_BUILD_TYPE)
+		set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+	endif()
+endif()
+
 
 find_program(LSB_RELEASE_EXEC lsb_release REQUIRED)
 execute_process(COMMAND ${LSB_RELEASE_EXEC} -is
@@ -31,14 +37,9 @@ include_directories("src/raw_data")
 include_directories("src/base")
 include_directories("src/online_monitor")
 
-# Need to define LINUX for WINDRIVER
-# even if just to check it's presence.
-if(UNIX AND NOT APPLE)
-
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
 set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -march=native -O3" )
 set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX  -march=native -O3" )
-
-set( CMAKE_REQUIRED_DEFINITIONS -DLINUX)
 endif()
 
 set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp"  "src/raw_data/shm_raw.cpp" )
