@@ -22,19 +22,19 @@ DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
 	fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC| O_DIRECT, 0644);
 
 	if (fd < 0) {
-		fprintf(stderr,"ERROR: Failed to open file");
+		fprintf(stderr,"ERROR at '%s':%d open('%s') failed (%d)", __FILE__, __LINE__, filename.c_str(), errno);
 		exit(-1);
 	}
 
 	if (io_setup(N_BUFFERS, &ctx) != 0){
-		fprintf(stderr,"ERROR: Failed io_setup");
+		fprintf(stderr,"ERROR at '%s':%d io_setup failed (%d)", __FILE__, __LINE__, errno);
 		exit(-1);
 	}
 
 	for (int i = 0; i < N_BUFFERS; i++) {
         int ret = posix_memalign(&buffers[i].data, BUFFER_SIZE, BUFFER_SIZE);
         if (ret != 0) {
-		fprintf(stderr,"ERROR: Failed posix_memalign alocation");
+		fprintf(stderr,"ERROR at '%s':%d posix_memalign alocation failed (%d)", __FILE__, __LINE__, errno);
 		exit(-1);
         }
         memset(buffers[i].data, 0, BUFFER_SIZE);
@@ -54,11 +54,19 @@ DataWriter::~DataWriter() {
 	if(tail_size != 0) write_size += IO_BLOCK_SIZE;
 
 	auto r = pwrite(fd, currentBuffer.data, write_size, global_offset);
-	assert(r == write_size);
-
+	if(r == -1) {
+		fprintf(stderr,"ERROR at '%s':%d pwrite failed (%d)", __FILE__, __LINE__, errno);
+		exit(-1);
+	}
+	else if (r != write_size) {
+		fprintf(stderr, "ERROR at '%s':%d pwrite (..., %ld, ...) returned %ld\n", __FILE__, __LINE__, write_size, r);
+	}
 	// Finally truncate the file to the correct size
 	r = ftruncate(fd, global_offset + currentBuffer.used);
-	assert(r == 0);
+	if(r != 0) {
+		fprintf(stderr, "ERROR at '%s':%d ftruncate failed (%d)", __FILE__, __LINE__, errno);
+		exit(-1);
+	}
 
 	io_destroy(ctx);
 	close(fd);
@@ -112,7 +120,10 @@ void DataWriter::completeAllBuffers()
 	// Wait for all pending writes to complete
 	struct io_event events[currentBufferIndex];
 	int completed = io_getevents(ctx, currentBufferIndex, currentBufferIndex, events, NULL);
-	assert(completed == currentBufferIndex);
+	if(completed != currentBufferIndex) {
+		fprintf(stderr, "ERROR at '%s':%d %d != %d", __FILE__, __LINE__, completed, currentBufferIndex);
+		exit(-1);
+	}
 
 	currentBufferIndex = 0;
 	for(auto i = 0; i < N_BUFFERS; i++) buffers[i].used = 0;
@@ -131,8 +142,8 @@ void DataWriter::submittCurrentBuffer()
 
 	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
 	if(io_submit(ctx, 1, cbs) != 1) {
-		fprintf(stderr, "DataWriter::submittCurrentBuffer() failed with error %d\n", errno);
-		exit(1);
+		fprintf(stderr, "ERROR at '%s':%d io_submit failed (%d)", __FILE__, __LINE__, errno);
+		exit(-1);
 	}
 
 	global_offset += BUFFER_SIZE;
