@@ -13,22 +13,29 @@ using namespace PETSYS;
 using namespace std;
 
 DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
+	if (filename == "/dev/null") {
+		// Intentionally set fd to -1 when writing to /dev/null
+		fd = -1;
+		return;
+	}
+
 	fd = open(filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC| O_DIRECT, 0644);
 
-    if (fd < 0) {
-        fprintf(stderr,"ERROR: Failed to open file");
-        exit(-1);
-    }
-    if (io_setup(N_BUFFERS, &ctx) != 0){
-        fprintf(stderr,"ERROR: Failed io_setup");
-        exit(-1);
-    }
+	if (fd < 0) {
+		fprintf(stderr,"ERROR: Failed to open file");
+		exit(-1);
+	}
+
+	if (io_setup(N_BUFFERS, &ctx) != 0){
+		fprintf(stderr,"ERROR: Failed io_setup");
+		exit(-1);
+	}
 
 	for (int i = 0; i < N_BUFFERS; i++) {
         int ret = posix_memalign(&buffers[i].data, BUFFER_SIZE, BUFFER_SIZE);
         if (ret != 0) {
-            fprintf(stderr,"ERROR: Failed posix_memalign alocation");
-			return;
+		fprintf(stderr,"ERROR: Failed posix_memalign alocation");
+		exit(-1);
         }
         memset(buffers[i].data, 0, BUFFER_SIZE);
 	buffers[i].used = 0;
@@ -37,6 +44,8 @@ DataWriter::DataWriter(const std::string& filename, bool acqStdMode) {
 }
 
 DataWriter::~DataWriter() {
+	if(fd == -1) return;
+
 	// Use a normal write to write any data in the last buffer
 	// but we still need to pad it to IO_BLOCK_SIZE
 	auto &currentBuffer = buffers[currentBufferIndex];
@@ -57,6 +66,8 @@ DataWriter::~DataWriter() {
 
 void DataWriter::appendData(void *buf, size_t count)
 {
+	if(fd == -1) return;
+
 	size_t written = 0;
 	while (written < count) {
 		auto &currentBuffer = buffers[currentBufferIndex];
@@ -76,12 +87,17 @@ void DataWriter::appendData(void *buf, size_t count)
 
 long long DataWriter::getCurrentPosition()
 {
+	if(fd == -1) return 0;
+
 	return global_offset + buffers[currentBufferIndex].used;
 }
 
 
 long long DataWriter::getCurrentPositionFromFile()
 {
+	if(fd == -1) return 0;
+
+
 	off_t currentFilePos = lseek(fd, 0, SEEK_CUR);
 	return (long long) currentFilePos;
 }
@@ -89,6 +105,8 @@ long long DataWriter::getCurrentPositionFromFile()
 
 void DataWriter::completeAllBuffers()
 {
+	if(fd == -1) return;
+
 	if(currentBufferIndex == 0) return;
 
 	// Wait for all pending writes to complete
@@ -102,6 +120,7 @@ void DataWriter::completeAllBuffers()
 
 void DataWriter::submittCurrentBuffer()
 {
+	if(fd == -1) return;
 
 	Buffer& currentBuffer = buffers[currentBufferIndex];
 	assert(currentBuffer.used % IO_BLOCK_SIZE == 0);
