@@ -13,11 +13,11 @@
 <h1 align="center">TOFPET2 Data Acquisition Software</h1>
 
 <div align="center">
-<img src="images/gui_screen.png" width="70%" height="70%">
+<img src="images/gui_screen.png" width="70%">
 </div>
 
 <div align="center">
-<img src="images/term_animation.svg" width="70%" height="70%">
+<img src="images/term_animation.svg" width="70%">
 </div>
 
 # About
@@ -29,9 +29,9 @@ _For <b>official hardware and software guides</b> please check the <a href="http
 
 # Requirements
 ### Operating System Compatibility
-The OS must be 64-bit Linux. The distributions supported by PETsys Electronics are CentOS 7-2009, CentOS Stream 8, RHEL >=8.5 and Ubuntu versions 20.04 and 22.04.
+The OS must be 64-bit Linux. The distributions supported by PETsys Electronics are CentOS 7-2009, CentOS Stream 8, Alma Linux 8, RHEL >=8.5 and Ubuntu versions 20.04, 22.04 and 24.04.
 ### Dependencies
-On supported distributions, all dependencies should be automatically installed during the installation procedure. If you are trying to run our software on a non-supported distribution, check the code of the `petsys-setup.sh` script for the list of dependencies.
+On supported distributions, all dependencies should be automatically installed during the installation procedure. If you are trying to run our software on a non-supported distribution, check the code of the `petsys-setup` script for the list of dependencies.
 ### Compatibility
 Different software releases may require different firmware versions in order to work correctly. Please refer to the _Readout System - Requirements and Compatibility_ document that can be found under the [TOFPET2 Downloads/Documentation](https://www.petsyselectronics.com/web/public/pages/18) section mentioned above.
 
@@ -41,7 +41,7 @@ Different software releases may require different firmware versions in order to 
 2. Install all requirements by running:
    ```sh
    su -
-   sh petsys-setup.sh
+   ./petsys-setup
    exit
    ```
 3. Navigate to this new folder and create a 'build' folder:
@@ -52,11 +52,11 @@ Different software releases may require different firmware versions in order to 
 4. Prepare the build compliation:
    * If using CENTOS7-2009:
    ```sh
-   cmake3 -DCMAKE_BUILD_TYPE=Release ..
+   cmake3 ..
    ```
    * If using other supported distros:
    ```sh
-   cmake -DCMAKE_BUILD_TYPE=Release ..
+   cmake ..
    ```
 5. Finally, run:
    ```sh
@@ -73,7 +73,7 @@ to the software installation folder and type:
    ```
 
 <div align="center">
-<img src="images/gui_screen.png" width="65%" height="65%">
+<img src="images/gui_screen.png" width="65%">
 </div>
 
 More experienced users requiring custom functionality, can check out our utility scripts under `./petsys_util/` and/or make use of our Python libraries that can be found in `./petsys_py_lib/`.
