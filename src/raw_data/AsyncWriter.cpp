@@ -111,7 +111,10 @@ void DataWriter::submittCurrentBuffer()
 	struct iocb* cbs[1] = {&cb};
 
 	io_prep_pwrite(&cb, this->fd, currentBuffer.data, BUFFER_SIZE, global_offset);
-	assert(io_submit(ctx, 1, cbs) == 1);
+	if(io_submit(ctx, 1, cbs) != 1) {
+		fprintf(stderr, "DataWriter::submittCurrentBuffer() failed with error %d\n", errno);
+		exit(1);
+	}
 
 	global_offset += BUFFER_SIZE;
 	currentBufferIndex += 1;

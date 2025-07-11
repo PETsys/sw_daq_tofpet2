@@ -23,7 +23,14 @@ SHM_RAW::SHM_RAW(std::string shmPath)
 		exit(1);
 	}
 	shmSize = lseek(shmfd, 0, SEEK_END);
-	assert(shmSize = MaxRawDataFrameQueueSize * sizeof(RawDataFrame));
+	if(shmSize == (off_t)-1) {
+		fprintf(stderr, "Seeking '%s' returned %d (errno = %d)\n", shmPath.c_str(), shmfd, errno );
+		exit(1);
+	}
+	else if(shmSize != (MaxRawDataFrameQueueSize * sizeof(RawDataFrame))) {
+		fprintf(stderr, "%s' has incorrect size\n", shmPath.c_str());
+		exit(1);
+	}
 	
 	shm = (RawDataFrame *)mmap(NULL, 
 				shmSize,
