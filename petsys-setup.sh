@@ -1,10 +1,6 @@
 #!/bin/bash
 
 #PETSys Software dependencies setup script
-#based on PetaLinux environment setup script
-#original version by Tony McDowell (tmcdowe@xilinx.com)
-#updated version by Sandeep Gundlupet Raju (sandeep.gundlupet-raju@xilinx.com)
-#repurposed version by Tiago Coutinho (tcoutinho@petsyselectronics.com)
 
 #enable  debug=1 -- this disables actual changes on the host machine using dry-run options.
 #disable debug=0 -- to proceed with installation.
@@ -52,6 +48,8 @@ if [ $currentUser != "root" ]; then echo "ERROR: Running as "$actualUser". Pleas
 if [[ $osPrettyName == "ubuntu" && $osVersion == "20.04" ]]; then
  	true
 elif [[ $osPrettyName == "ubuntu" && $osVersion == "22.04" ]]; then
+    true
+elif [[ $osPrettyName == "ubuntu" && $osVersion == "24.04" ]]; then
  	true
 elif [[ $osPrettyName == "rhel" && $osVersion == "7" ]]; then
  	true
@@ -61,7 +59,7 @@ elif [[ $osPrettyName == "rhel" && $osVersion == "9" ]]; then
  	true
 else
 	echo "ERROR: Cannot determine host operating system!"
-	echo "WARNING: This script is only supported on Ubuntu 20.04 and 22.04 and RHEL/CentOS 7-9 Linux distribution!"
+	echo "WARNING: This script is only supported on Ubuntu 20.04, 22.04, 24.04 and RHEL/CentOS 7-9 Linux distribution!"
 	exit 1;
 fi;
 
@@ -89,10 +87,11 @@ fi;
 
 # Make sure the package lists are up-to-date
 # and install extra repositories
+
 echo "INFO: Enabling repositories and Updating the package lists...";
 if [[ $osPrettyName == "ubuntu" ]]; then
 	sudo apt update;
-	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio1 libaio-dev;
+	apt -y install cmake gcc g++ libboost-dev libboost-python-dev libboost-regex-dev libiniparser-dev dpkg-dev cmake binutils libx11-dev libxpm-dev libxft-dev libxext-dev python3 libssl-dev python3-bitarray python3-matplotlib python3-pandas stow dkms xterm git libaio-dev python3-gi-cairo;
 
 elif [[ $osPrettyName == "rhel" && $osVersion == 7 ]]; then
 	sudo yum -y install epel-release;
@@ -135,19 +134,24 @@ fi
 if [ $osPrettyName == "ubuntu" ] && [ $debug -eq 0 ] && [ $installROOT -eq 1 ]; then
 	echo "INFO: Building ROOT from source";
 	cd /tmp;
-	wget https://root.cern/download/root_v6.28.02.source.tar.gz;
-	tar xvzf root_v6.28.02.source.tar.gz;
-	cd root-6.28.02/;
+	versionToInstall=6.28.02
+	if [ $osVersion == "24.04" ] ; then
+		versionToInstall=6.34.04
+	fi
+	wget https://root.cern/download/root_v$versionToInstall.source.tar.gz;
+	tar xvzf root_v$versionToInstall.source.tar.gz;
+	cd root-$versionToInstall/;
 	mkdir build;
 	cd build;
-	cmake -DCMAKE_INSTALL_PREFIX=/usr/local/stow/root-v6.28.02 -DCMAKE_INSTALL_MANDIR=share/man ..;
+	cmake -DCMAKE_INSTALL_PREFIX=/usr/local/stow/root-v$versionToInstall -DCMAKE_INSTALL_MANDIR=share/man ..;
 	# Two step building as parallel building sometimes failes due to lack of RAM
 	make -k -j$(nproc)
 	make
 	sudo make install;
 	cd /usr/local/stow;
-	sudo stow root-v6.28.02;
+	sudo stow root-v$versionToInstall;
 	sudo ldconfig;
+
 elif [ $debug -eq 1 ]; then
 	echo "DEBUG: Skipping ROOT installation commands because debug mode is on.";
 fi;

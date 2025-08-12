@@ -93,7 +93,6 @@ int main(int argc, char *argv[])
 					else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 					break;
 			case 8: 	fileEpoch = boost::lexical_cast<double>(optarg); break;
-
 			default:	displayUsage(argv[0]); exit(1);
 			}
 		}
@@ -131,7 +130,7 @@ int main(int argc, char *argv[])
 
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, reader->getFrequency(),  SINGLE, fileType, fileEpoch, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(),  SINGLE, fileType, fileEpoch, 0, eventFractionToWrite, fileSplitTime);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {
@@ -140,6 +139,7 @@ int main(int argc, char *argv[])
 		printf("Processing step %d: (%f, %f)\n", stepIndex+1, step1, step2);
 		fflush(stdout);
 		dataFileWriter->setStepValues(step1, step2);
+
 		if(!simulateHwTrigger){
 			reader->processStep(true,
 					new CoarseSorter(
@@ -156,7 +156,6 @@ int main(int argc, char *argv[])
 					new NullSink<Hit>()
 					))));
 		}
-		
 		dataFileWriter->closeStep();
 		stepIndex += 1;
 	}
