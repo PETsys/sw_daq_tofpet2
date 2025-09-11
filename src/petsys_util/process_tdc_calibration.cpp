@@ -461,6 +461,7 @@ void calibrateAsic(
 
 		lowerT0 = fmodf(lowerT0, TDC_PERIOD);
 		upperT0 = fmodf(upperT0, TDC_PERIOD);
+		if(upperT0 < lowerT0) upperT0 += TDC_PERIOD; // upperT0 must always be after lower T0
 		float tEdge = (lowerT0 + upperT0)/2;
 		float tEdgeTolerance = upperT0 - lowerT0;
 		// Fit a line to a TDC period to determine the interpolation factor
