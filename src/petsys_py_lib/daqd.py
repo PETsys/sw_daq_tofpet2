@@ -1088,9 +1088,9 @@ class Connection:
 		if event_type == "raw":
 			processedFileNamePrefix += "_raw"
 		elif event_type == "singles":
-			processedFileNamePrefix += "_singles"
+			processedFileNamePrefix += "_single"
 		elif event_type == "groups":
-			processedFileNamePrefix += "_groups"
+			processedFileNamePrefix += "_group"
 		elif event_type == "coincidences":
 			processedFileNamePrefix += "_coinc"
 
@@ -1106,9 +1106,9 @@ class Connection:
 		if event_type== "raw":
 			processedFileNamePrefix += "_raw"
 		elif event_type == "singles":
-			processedFileNamePrefix += "_singles"
+			processedFileNamePrefix += "_single"
 		elif event_type == "groups":
-			processedFileNamePrefix += "_groups"
+			processedFileNamePrefix += "_group"
 		elif event_type == "coincidences":
 			processedFileNamePrefix += "_coinc"
 
