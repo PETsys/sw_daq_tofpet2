@@ -54,7 +54,7 @@ def main(argv):
     conn = daqd.Connection()
     conn.initializeSystem()
     
-    fe_eeprom.program_m95080(conn,fem_type,new_sn_lst,new_s_cfg_lst)
+    fe_eeprom.program_multiple_m95080(conn,fem_type,new_sn_lst,new_s_cfg_lst)
     
     for portID, slaveID in conn.getActiveFEBDs():
         fe_power.set_fem_power(conn, portID, slaveID, 'off')

@@ -418,30 +418,6 @@ void calibrateAsic(
 		TH1D *hFine = hFine2->ProjectionY(hName);
 		hFine->Rebin(8);
 		hFine->Smooth(4);
-		float adcMean = hFine->GetMean();
-		int adcMeanBin = hFine->FindBin(adcMean);
-		int adcMeanCount = hFine->GetBinContent(adcMeanBin);
-		
-		int adcMinBin = adcMeanBin;
-		while(hFine->GetBinContent(adcMinBin) > 0.20 * adcMeanCount)
-			adcMinBin--;
-		
-		int adcMaxBin = adcMeanBin;
-		while(hFine->GetBinContent(adcMaxBin) > 0.20 * adcMeanCount)
-			adcMaxBin++;
-		
-		float adcMin = hFine->GetBinCenter(adcMinBin);
-		float adcMax = hFine->GetBinCenter(adcMaxBin);
-		
-		/*
-		 * WARNING Hopefully, the following is not needed with TOFPET 2
-		 */
-// 		// Set limits on ADC range to exclude spurious things.
-// 		hFine->GetYaxis()->SetRangeUser(
-// 			adcMin - 32 > 0.5 * nominalM ? adcMin - 32 : 0.5 * nominalM,
-// 			adcMax + 32 < 4.0 * nominalM ? adcMax + 32 : 4.0 * nominalM
-// 			);
-			
 		
 			
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_%c_pFine_X", portID, slaveID, chipID, channelID, tacID, bStr);
@@ -453,33 +429,27 @@ void calibrateAsic(
 		
 		
 		// Obtain a rough estimate of the edge position
-		float tEdge = 0.0;
 		float lowerT0 = 0.0;
 		float upperT0 = 0.0;
-		float maxSlope = 0;
-		adcMin = 1024.0;
-		for(int n = 10; n >= 1; n--) {
-			for(int j = 1; j < (nBinsX - 1 - n); j++) {
-				float v1 = pFine->GetBinContent(j);
-				float v2 = pFine->GetBinContent(j+n);
-				float e1 =  pFine->GetBinError(j);
-				float e2 =  pFine->GetBinError(j+n);
-				int c1 = pFine->GetBinEntries(j);
-				int c2 = pFine->GetBinEntries(j+n);
-				float t1 = pFine->GetBinCenter(j);
-				float t2 = pFine->GetBinCenter(j+n);
-				
-				if(c1 == 0 || c2 == 0) continue;
-				if(e1 > 5.0 || e2 > 5.0) continue;
-				
-				float slope = (v2 - v1)/(t2 - t1);
-				if(slope > maxSlope) {
-					tEdge = (t2 + t1)/2;
-					lowerT0 = t1;// - 0.5 * pFine->GetXaxis()->GetBinWidth(0);
-					upperT0 = t2;// + 0.5 * pFine->GetXaxis()->GetBinWidth(0);
-					adcMin = fminf (adcMin, pFine->GetBinContent(j));
-					maxSlope = slope;
-				}
+		float adcMin = 1024.0;
+		float adcMax = 0;
+		for(int j = 0; j < nBinsX; j++) {
+			int count = pFine->GetBinEntries(j+1);
+			if(count == 0) continue;
+
+			float error = pFine->GetBinError(j+1);
+			if(error > 5) continue;
+
+			float v = pFine->GetBinContent(j+1);
+
+			if(v > adcMax) {
+				adcMax = v;
+				upperT0 = pFine->GetBinCenter(j+1);
+			}
+
+			if(v < adcMin) {
+				adcMin = v;
+				lowerT0 = pFine->GetBinCenter(j+1);
 			}
 		}
 		
@@ -488,13 +458,11 @@ void calibrateAsic(
 					portID, slaveID, chipID, channelID, tacID, bStr);
 			continue;
 		}
-		
-		while(lowerT0 > TDC_PERIOD && tEdge > TDC_PERIOD && upperT0 > TDC_PERIOD) {
-				lowerT0 -= TDC_PERIOD;
-				tEdge -= TDC_PERIOD;
-				upperT0 -= TDC_PERIOD;
-		}
-			
+
+		lowerT0 = fmodf(lowerT0, TDC_PERIOD);
+		upperT0 = fmodf(upperT0, TDC_PERIOD);
+		if(upperT0 < lowerT0) upperT0 += TDC_PERIOD; // upperT0 must always be after lower T0
+		float tEdge = (lowerT0 + upperT0)/2;
 		float tEdgeTolerance = upperT0 - lowerT0;
 		// Fit a line to a TDC period to determine the interpolation factor
 		pFine->Fit("pol1", "Q", "", tEdge + tEdgeTolerance, tEdge + TDC_PERIOD  - tEdgeTolerance);
@@ -526,7 +494,7 @@ void calibrateAsic(
 		float m;
 		float tB;
 		float p2;
-		float tE; 
+		float tE = tEdge; 
 		float a0, a1, a2;
 		float currChi2 = INFINITY;
 		float prevChi2 = INFINITY;
@@ -534,7 +502,7 @@ void calibrateAsic(
 		int nTry = 0;
 		float maxChi2 = 2E4;
 		do {
-			pf->SetParameter(0, tEdge);		pf->SetParLimits(0, lowerT0, upperT0);
+			pf->SetParameter(0, tE);		pf->SetParLimits(0, lowerT0, upperT0);
 			pf->SetParameter(1, adcMin);		pf->SetParLimits(1, adcMin - estimatedM * tEdgeTolerance, adcMin);
 			pf->SetParameter(2, estimatedM);	pf->SetParLimits(2, 0.98 * estimatedM, 1.02 * estimatedM),
 			pFine->Fit("periodicF1", "Q", "", xMin, xMax);
@@ -558,19 +526,7 @@ void calibrateAsic(
 			nTry += 1;
 			
 		} while((currChi2 <= 0.95*prevChi2) && (nTry < 10));
-		
-		
 
-
-		//if(prevChi2 > maxChi2 && currChi2 > maxChi2) {
-		//	fprintf(stderr, "WARNING: NO FIT OR VERY BAD FIT (1). Skipping TAC (%02u %02d %02d %02d %u %c)\n",
-		//	portID, slaveID, chipID, channelID, tacID, bStr);
-	//	delete pf;
-	//		continue;
-	//	}
-		
-	
-		
 		TF1 *pf2 = new TF1("periodicF2", periodicF2, xMin, xMax,  nPar2);
 		pf2->SetNpx(2*nBinsX);
 		for(int p = 0; p < nPar2; p++) pf2->SetParName(p, paramNames2[p]);
@@ -583,13 +539,11 @@ void calibrateAsic(
 		a1 = m;
 		a2 = -1;
 
-		//std::cout << b << " " << m << " " <<std::endl;
- 
-		tE = tEdge - 0.05;
-
 		do{
-				
-			pf2->SetParameter(0, tE);       pf2->SetParLimits(0, tE-0.06, tE+0.06); 
+			
+			if(tE < lowerT0) tE = upperT0;
+			if(tE > upperT0) tE = lowerT0;
+			pf2->SetParameter(0, tE);       pf2->SetParLimits(0, lowerT0, upperT0);
 			pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
 			pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
 			pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.01); // Very small values of a2 cause rouding errors
@@ -625,13 +579,11 @@ void calibrateAsic(
 			a1 = m;
 			a2 = -1;
 
-			//std::cout << b << " " << m << " " <<std::endl;
- 
-			tE = tEdge - 0.05;
-
 			do{
 				
-				pf2->SetParameter(0, tE);       pf2->SetParLimits(0, tE-0.06, tE+0.06); 
+				if(tE < lowerT0) tE = upperT0;
+				if(tE > upperT0) tE = lowerT0;
+				pf2->SetParameter(0, tE);       pf2->SetParLimits(0, lowerT0, upperT0);
 				pf2->SetParameter(1, a0);	   //pf2->SetParLimits(1, 0.1, 200.0);
 				pf2->SetParameter(2, a1);	   //pf2->SetParLimits(2, 0.1, 300.0);
 				pf2->SetParameter(3, a2);	   pf2->SetParLimits(3, -20, -0.01); // Very small values of a2 cause rouding errors
@@ -661,15 +613,15 @@ void calibrateAsic(
 			delete pf2;
 			continue;
 		}
-	
+		
 		CalibrationEntry &entry = calibrationTable[gid];
 		entry.t0 = 0;
-		entry.tEdge = tEdge = pf2->GetParameter(0);
+		entry.tEdge = pf2->GetParameter(0);
 		entry.a0 = a0 = pf2->GetParameter(1);
 		entry.a1 = a1 = pf2->GetParameter(2);
 		entry.a2 = a2 = pf2->GetParameter(3);
 		entry.valid = true;
-	
+
 		delete pf;
 		delete pf2;
 	}
