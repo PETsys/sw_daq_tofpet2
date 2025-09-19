@@ -1,5 +1,5 @@
 # kate: indent-mode: python; indent-pasted-text false; indent-width 4; replace-tabs: on;
-# vim: tabstop=8 softtabstop=0 expandtab shiftwidth=4 smarttab
+# vim: tabstop=4 softtabstop=0 expandtab shiftwidth=4 smarttab
 
 from datetime import datetime
 from . import spi, info
@@ -17,7 +17,8 @@ SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB, 'NA': 0x12}
 FEM_PARAMETERS = {  
                     'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202] },
                     'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] },
-                    'radialis'      : { 'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2] }
+                    'radialis'      : { 'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2] },
+                    'fem128mux_v2'  : { 'unique_id'   : [ 0x0f, 0xcb, 0x4d, 0xf6, 0xb7, 0xc1, 0x4f, 0x2a, 0x9a, 0xa7, 0xac, 0xc3, 0xa7, 0x2b, 0x4f, 0x6d ] },
                  }
 
 S_CFG_BYTES_PER_CH = 3                          
@@ -27,6 +28,18 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
                             0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
                             0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'] 
+                            ],
+                'fem128_c' :[
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
+                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
+                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86']
+                            ],
+                'fem128mux_v2' :[
+                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
+                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
+                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
+                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86']
                             ],
                 'fem_256' :[
                             3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
@@ -58,7 +71,7 @@ S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel
                             2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
                             3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA']
                             ] 
-                }                 
+                }
 
 ########################################
 #
@@ -168,7 +181,7 @@ def verify_checksum_m95080(conn, portID, slaveID, moduleID):
     else: 
         return eeprom.verify_checksum()
 
-def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
+def program_multiple_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
     #Get list of modules 
     detected_lst = []
     for portID, slaveID in conn.getActiveFEBDs():
@@ -194,9 +207,15 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
         
     #Program EEPROM
     for idx, [portID, slaveID, moduleID] in enumerate(detected_lst):
+        new_sn = new_sn_lst[idx] if new_sn_lst else None
+        program_m95080(conn, portID, slaveID, moduleID, new_sn, new_s_cfg_lst)
+
+    return True
+
+def program_m95080(conn, portID, slaveID, moduleID, fem_type, new_sn=None, new_s_cfg_lst=None):
         eeprom = m95080_eeprom(conn,portID,slaveID,moduleID)
         was_programmed = eeprom.is_programmed()
-        if was_programmed: 
+        if was_programmed:
             print(f'INFO: ({portID},{slaveID},{moduleID}) has been previously PROGRAMMED.')
         else:
             print(f'INFO: ({portID},{slaveID},{moduleID}) was NOT previously programmed.')
@@ -224,8 +243,8 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
         #Set Serial Number
         sn_adr  = prom_mapping['sn'][0]
         sn_size = prom_mapping['sn'][1]
-        if new_sn_lst:
-            sn = list(new_sn_lst[idx].to_bytes( sn_size, byteorder ='big'))
+        if new_sn:
+            sn = list(new_sn.to_bytes( sn_size, byteorder ='big'))
         elif was_programmed:
             sn = list(eeprom.read(sn_adr, sn_size))
         else:
@@ -244,7 +263,7 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
         for key, value in prom_mapping.items():
             start_adr    = value[0]
             expected_len = value[1]
-            measured_len = len(value[2]) 
+            measured_len = len(value[2])
             if measured_len != expected_len:
                 print(f'ERROR: Length of {key} is {measured_len}. Expected length is {expected_len}.')
                 return False
@@ -266,10 +285,10 @@ def program_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
             #print(f'Writing {key}: {value[2]}') #*For Debug
             eeprom.write(value[0], value[2])
 
-        #CONFIRM CHECKSUM 
+        #CONFIRM CHECKSUM
         if not eeprom.verify_checksum():
-            print('ERROR: WRITE FAILED! INVALID CHECKSUM!')
-            input('Press ENTER to acknowledge..')
+            raise WriteError('ERROR: WRITE FAILED! INVALID CHECKSUM!')
     
-    return True
+        return True
 
+class WriteError(Exception): pass

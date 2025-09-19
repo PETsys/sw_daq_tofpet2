@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# kate: indent-mode: python; indent-pasted-text false; indent-width 8; replace-tabs: off; remove-trailing-space on;
+# vim: tabstop=4 shiftwidth=4 noexpandtab smarttab
 
 from petsys import daqd, config
 from copy import deepcopy
@@ -11,14 +12,11 @@ def read_counters(conn, tag, scale_factor):
 	for p,s in conn.getActiveFEBDs():
 		conn.write_config_register(p, s, 8, 0x0348, tag)
 
-
 	# Will try to read counters for up to 2 seconds until all channels have readings with the correct tag
 	t0 = time()
 	while time() - t0 < 2:
 		data = {}
 		problematic_channels = []
-
-	
 		for portID, slaveID, chipID in conn.getActiveAsics():
 			vv = conn.read_mem_ctrl(portID, slaveID, 5, 32, 64*chipID, 64)
 			for channelID, v in enumerate(vv):
@@ -27,12 +25,15 @@ def read_counters(conn, tag, scale_factor):
 					problematic_channels.append((portID, slaveID, chipID, channelID))
 				else:
 					data[(portID, slaveID, chipID, channelID)] = (v & 0xFFFFFF) / scale_factor
-				
+
 		if problematic_channels == []:
 			# All values came with the expected tag
 			return data
-			
-	
+
+	s = ", ".join([str(x) for x in problematic_channels ])
+	raise Exception("Did not receive readings for the following channels: " + s)
+
+def main():
 	s = ", ".join([str(x) for x in problematic_channels ])
 	raise Exception("Did not receive readings for the following channels: " + s)
 
@@ -74,31 +75,29 @@ def main():
 	activeChannels = [ (portID, slaveID, chipID, channelID) for channelID in range(64) for portID, slaveID, chipID in activeAsics ]
 
 	# Adjust baseline
-
 	for (portID, slaveID, chipID), ac in list(asicsConfig.items()):
 		if not ac: continue
 		gc = ac.globalConfig
-		
+
 		if conn.getAsicSubtype(portID, slaveID, chipID) == "2B":
 			COUNTER_SETTING = 0x4
 		else:
 			COUNTER_SETTING = 0b110
 
 		print(portID, slaveID, chipID, COUNTER_SETTING)
-		
+
 		gc.setValue("counter_en", 0b1)
 		gc.setValue("counter_period", COUNTER_SETTING)
 		for cc in ac.channelConfig:
 			cc.setValue("trigger_mode_1", 0)
 			cc.setValue("counter_mode", 0xF)
 			cc.setValue("trigger_b_latched", 0)
-			
 
 	counter_sharing = 1
 	asicSubTypes = set([ conn.getAsicSubtype(portID, slaveID, chipID) for portID, slaveID, chipID in list(asicsConfig.keys()) ])
 	if "2B" in asicSubTypes:
 		counter_sharing = 8
-		
+
 	print("counter_sharing  = %(counter_sharing)d" % locals())
 	
 	# Perform a couple of dummy reads to check we are getting counter data with the correct tag
@@ -145,7 +144,7 @@ def main():
 
 				else:
 					new_b = b
-				
+
 				asicsConfig[(portID, slaveID, chipID)].channelConfig[channelID].setValue(baselineName, new_b)
 
 				if not channelOK:
@@ -193,7 +192,7 @@ def main():
 				s = next_read_start_time - time()
 				if s > 0: sleep(s)
 				next_read_start_time = time() + counter_sharing*T + 1E-3
-				
+
 				read_tag = (read_tag + 1) % 256
 				disc_duty_cycle = read_counters(conn, read_tag, COUNT_MAX)
 				for (portID, slaveID, chipID, channelID), v in disc_duty_cycle.items():
@@ -201,7 +200,7 @@ def main():
 
 			stdout.write(".")
 			stdout.flush()
-			
+
 		stdout.write("\n")
 
 	#
@@ -222,7 +221,7 @@ def main():
 		input("Set normal operation bias voltage and press ENTER")
 	else:
 		systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON)
-		
+
 	darkProfiles = {}
 	print("Scanning threshold for dark counts")
 	for thresholdIndex, thresholdName, baselineName in thresholdList:
@@ -244,17 +243,16 @@ def main():
 				s = next_read_start_time - time()
 				if s > 0: sleep(s)
 				next_read_start_time = time() + counter_sharing*T + 1E-3
-				
 				read_tag = (read_tag + 1) % 256
 				event_rate = read_counters(conn, read_tag, T)
 				for (portID, slaveID, chipID, channelID), v in event_rate.items():
 					outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
-					
+
 			stdout.write(".")
 			stdout.flush()
 		stdout.write("\n")
 	outFile.close()
-		
+
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
 	
 	return 0
