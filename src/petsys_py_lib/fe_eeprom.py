@@ -117,6 +117,7 @@ class m95080_eeprom:
             self.write(adr, [0x00])
 
     def max10_erase(self):
+        self.wren()
         return spi.m95080_ll(self.__conn, self.__portID, self.__slaveID, self.__spiID, [0b00001000], 0)
     
     def rdsr(self): #Read Status Register
@@ -208,7 +209,7 @@ def program_multiple_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
     #Program EEPROM
     for idx, [portID, slaveID, moduleID] in enumerate(detected_lst):
         new_sn = new_sn_lst[idx] if new_sn_lst else None
-        program_m95080(conn, portID, slaveID, moduleID, new_sn, new_s_cfg_lst)
+        program_m95080(conn, portID, slaveID, moduleID, fem_type, new_sn, new_s_cfg_lst)
 
     return True
 
