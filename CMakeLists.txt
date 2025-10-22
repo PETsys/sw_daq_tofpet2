@@ -102,7 +102,6 @@ configure_file("src/petsys_util/read_communication_counters" "read_communication
 configure_file("src/petsys_util/check_asic_links" "check_asic_links" COPYONLY)
 configure_file("src/petsys_util/change_calibration_topology" "change_calibration_topology" COPYONLY)
 configure_file("src/petsys_util/psqc_fetp.C" "psqc_fetp.C" COPYONLY)
-configure_file("src/petsys_util/eeprom_write" "eeprom_write" COPYONLY)
 configure_file("src/petsys_util/stop_acquisition" "stop_acquisition" COPYONLY)
 configure_file("src/gui/start_gui" "start_gui" COPYONLY)
 if((${LSB_ID_SHORT} STREQUAL "Ubuntu"))
