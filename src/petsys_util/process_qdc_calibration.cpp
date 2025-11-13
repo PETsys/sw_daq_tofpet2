@@ -333,7 +333,7 @@ void calibrateAsic(
 		unsigned portID = (gid >> 19) % 32;
 		char hName[128];
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_hFine2", portID, slaveID, chipID, channelID, tacID);
-		hFine2_list[gid-gidStart] = new TH2S(hName, hName, nBins, xMin, xMax, 1024, 0, 1024);
+		hFine2_list[gid-gidStart] = new TH2S(hName, hName, 2*nBins, xMin, xMax, 1024, 0, 1024);
 	}
 	
 	struct timespec t0;
@@ -385,9 +385,19 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
-		float yMin = pFine->GetMinimum(2);
-		int bMin = pFine->FindFirstBinAbove(yMin);
-		bMin = (bMin > 1) ? bMin : 1;
+		float yMin = 1024;
+		int bMin = nBins;
+		for(int b = nBins; b >= 1; b--) {
+		    auto e = pFine->GetBinError(b);
+		    if(e == 0) continue;
+		    if(e > 5) continue;
+
+		    auto v = pFine->GetBinContent(b);
+		    if(v < (yMin - 0.5)) {
+			yMin = v;
+			bMin = b;
+		    }
+		}
 		float xMin = pFine->GetBinLowEdge(bMin);
 
 		float yMax = pFine->GetMaximum() * 0.97;
@@ -483,7 +493,7 @@ void calibrateAsic(
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_control_E", portID, slaveID, chipID, channelID, tacID);
 		
 		int ControlHistogramNBins = 128;
-		float ControlHistogramRange = 5.0;
+		float ControlHistogramRange = 10.0;
 		hControlE_list[gid-gidStart] = new TH1S(hName, hName, ControlHistogramNBins, -ControlHistogramRange, ControlHistogramRange);
 	}
 	
@@ -540,7 +550,7 @@ void calibrateAsic(
 	c->Divide(2, 2);
 	TH1F *hCounts = new TH1F("hCounts", "", 64*4, 0, 64);
 	TH1S *hResolution = new TH1S("hResolution", "QDC resolution histograms", 256, 0, 5.0);
-	TGraphErrors *gResolution = new TGraphErrors(64*4);
+	auto gResolution = new TGraph(64*4);
 	gResolution->SetName("gResolution");
 	int gResolutionNPoints = 0;
 	
@@ -569,17 +579,10 @@ void calibrateAsic(
 					hMax100Time->Fill(entry.xMax100);
 					
 					if(hControlE->GetEntries() >= 1000) {
-						hControlE->Fit("gaus", "Q");
-						TF1 *fit = hControlE->GetFunction("gaus");
-						if(fit != NULL) {
-							sigma = fit->GetParameter(2);
-							float sigmaError = fit->GetParError(2);
-							gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
-							gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
-							hResolution->Fill(sigma);
-							
-							gResolutionNPoints += 1;					
-						}
+						sigma = hControlE->GetRMS();
+						gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
+						hResolution->Fill(sigma);
+						gResolutionNPoints += 1;
 					}
 					
 				}
