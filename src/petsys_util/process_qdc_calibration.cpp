@@ -50,6 +50,8 @@ struct CalibrationData{
 	unsigned short tfine;
 	unsigned short ecoarse;
 	unsigned short qfine;	
+	unsigned short tp_length;
+	float tp_phase;
 	int freq;
 	bool saturation;
 	
@@ -276,6 +278,8 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 			calData.ecoarse = eWord.getECoarse();
 			calData.tfine = eWord.getTFine();
 			calData.qfine = eWord.getEFine();			
+			calData.tp_length = step1;
+			calData.tp_phase = step2;
 			calData.freq = tmpRawCalDataBlock[i].freq;       	
 			calData.saturation = (step1 == -1);
 			fwrite(&calData, sizeof(CalibrationData), 1, f);	
@@ -320,9 +324,11 @@ void calibrateAsic(
 	// Build the histograms
 	TH2S **hFine2_list = new TH2S *[nQAC];
 	unsigned short *maxADC = new unsigned short[nQAC];
+	float *integration_time_bin_offset = new float[nQAC];
 	for(int n = 0; n < nQAC; n++) {
 		hFine2_list[n] = NULL;
 		maxADC[n] = 0;
+		integration_time_bin_offset[n] = 0;
 	}
 	
 	for(unsigned gid = gidStart; gid < gidEnd; gid++) {
@@ -332,7 +338,7 @@ void calibrateAsic(
 		unsigned slaveID = (gid >> 14) % 32;
 		unsigned portID = (gid >> 19) % 32;
 		char hName[128];
-		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_hFine2", portID, slaveID, chipID, channelID, tacID);
+		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_hFine2_raw", portID, slaveID, chipID, channelID, tacID);
 		hFine2_list[gid-gidStart] = new TH2S(hName, hName, 2*nBins, xMin, xMax, 1024, 0, 1024);
 	}
 	
@@ -356,12 +362,20 @@ void calibrateAsic(
 			if((calData.ecoarse - calData.tcoarse) < -256) calData.ecoarse += 1024;  
 			float ti = calData.ecoarse - calData.getTime(config);
 		
-			for(int j = 0; j < calData.freq; j++)
-				hFine2_list[calData.gid-gidStart]->Fill(ti, calData.qfine);
+			for(int j = 0; j < calData.freq; j++) {
+				auto h2 = hFine2_list[calData.gid-gidStart];
+				h2->Fill(ti, calData.qfine);
+
+				auto xaxis = h2->GetXaxis();
+				int bin = xaxis->FindBin(ti);
+				float binCentre = xaxis->GetBinCenter(bin);
+				float error = ti - binCentre;
+				integration_time_bin_offset[calData.gid-gidStart] += error;
+			}
 			asicPresent = true;
 		}
 	}
-	
+
 	struct timespec t1;
 	clock_gettime(CLOCK_REALTIME, &t1);
 	
@@ -381,6 +395,19 @@ void calibrateAsic(
 					portID, slaveID, chipID, channelID, tacID);
 			continue;
 		}
+
+		// Shift the X-axis so the bin centres align with the actual integration times
+		float &bin_offset = integration_time_bin_offset[gid-gidStart];
+		bin_offset /= hFine2->GetEntries();
+
+		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_hFine2", portID, slaveID, chipID, channelID, tacID);
+		TH2S * h_centred = new TH2S(hName, hName, 2*nBins, xMin + bin_offset, xMax + bin_offset, 1024, 0, 1024);
+		for(int i = 0; i <= (2*nBins)+1; i++)
+			for (int j = 0; j <= 1024+1; j++)
+				h_centred->SetBinContent(i, j, hFine2->GetBinContent(i, j));
+
+		delete hFine2;
+		hFine2 = h_centred;
 
 		sprintf(hName, "c_%02d_%02d_%02d_%02d_%d_pFine", portID, slaveID, chipID, channelID, tacID);
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
@@ -631,6 +658,7 @@ void calibrateAsic(
 	rootFile->Write();
 	delete rootFile;
 
+	delete [] integration_time_bin_offset;
 	delete [] maxADC;
 	delete tmp0;	
 }
