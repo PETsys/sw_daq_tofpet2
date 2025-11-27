@@ -11,67 +11,65 @@ from copy import deepcopy
 #
 #################################
 
+FEM_PARAMETERS = {
+    # FEM 256 PETsys
+    '11ND' : {
+        'unique_id' : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202],
+        'sensors' : {
+            0: (3, 'sipm', 'NA'),
+            1: (2, 'sipm', 'NA'),
+            2: (1, 'sipm', 'NA'),
+            3: (0, 'sipm', 'NA'),
+            4: (0, 'asic', 'LMT87'),
+            5: (2, 'asic', 'LMT87'),
+            6: (3, 'asic', 'LMT87'),
+            7: (1, 'asic', 'LMT87'),
+        }
+    },
+
+    # FEM 256 R
+    '11XF' : {
+        'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2],
+        'sensors' : {
+            0: (3, 'asic', 'LMT87'),
+            1: (2, 'asic', 'LMT87'),
+            2: (0, 'asic', 'LMT87'),
+            3: (1, 'asic', 'LMT87'),
+            4: (0, 'sipm', 'NA'),
+            5: (1, 'sipm', 'NA'),
+            6: (2, 'sipm', 'NA'),
+            7: (3, 'sipm', 'NA'),
+        }
+    },
+
+    # FEB/I 128
+    '11LR' : {
+        'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93],
+        'sensors' : {
+            # ASIC sensor type will depend on FEB/A but so far only FEB/A with LMT86 have been produced
+            0: (1, 'asic', 'LMT86'),
+            1: (1, 'sipm', 'NA'),
+            2: (0, 'sipm', 'NA'),
+            3: (0, 'asic', 'LMT86')
+        }
+    },
+
+    # FEM128 MUXv2
+    '13AG' : {
+        'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93],
+        'sensors' : {
+            0: (1, 'asic', 'LMT86'),
+            1: (1, 'sipm', 'NA'),
+            2: (0, 'sipm', 'NA'),
+            3: (0, 'asic', 'LMT86')
+        }
+    },
+}
+
+
 DEVICE_TO_BYTE = {'asic' : 0xAA, 'sipm' : 0xBB}
 SENSOR_TO_BYTE = {'LMT86': 0xAA, 'LMT87': 0xAB, 'LMT70': 0xBB, 'NA': 0x12}
-
-FEM_PARAMETERS = {  
-                    'fem256_petsys' : { 'unique_id'   : [140, 212, 190, 132, 107,  29,  77,  96, 165, 101,  77,  72, 252, 163,  63, 202] },
-                    'fem128_c'      : { 'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93] },
-                    'radialis'      : { 'unique_id'   : [ 95, 224, 251, 240,  53, 208,  17, 238, 190,  86,   2,  66, 172,  18,   0,   2] },
-                    'fem128mux_v2'  : { 'unique_id'   : [ 0x0f, 0xcb, 0x4d, 0xf6, 0xb7, 0xc1, 0x4f, 0x2a, 0x9a, 0xa7, 0xac, 0xc3, 0xa7, 0x2b, 0x4f, 0x6d ] },
-                 }
-
-S_CFG_BYTES_PER_CH = 3                          
-S_CFG_OPTIONS = {             #LOCATION,DEVICE,SENSOR TYPE ; 3 bytes per channel ; Each line is an ADC channelID
-                'default' :[
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'], 
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'] 
-                            ],
-                'fem128_c' :[
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86']
-                            ],
-                'fem128mux_v2' :[
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86'],
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT86']
-                            ],
-                'fem_256' :[
-                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT70'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
-                            ], 
-                'fem_256_p' :[
-                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
-                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['LMT87'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87']
-                            ],
-                'radialis' :[
-                            3,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            2,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            0,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            1,DEVICE_TO_BYTE['asic'],SENSOR_TO_BYTE['LMT87'],
-                            0,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
-                            1,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
-                            2,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA'],
-                            3,DEVICE_TO_BYTE['sipm'],SENSOR_TO_BYTE['NA']
-                            ] 
-                }
+S_CFG_BYTES_PER_CH = 3
 
 ########################################
 #
@@ -181,7 +179,7 @@ def verify_checksum_m95080(conn, portID, slaveID, moduleID):
     else: 
         return eeprom.verify_checksum()
 
-def program_multiple_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
+def program_multiple_m95080(conn,fem_type,new_sn_lst=None,sipm_sensor_type='NA'):
     #Get list of modules 
     detected_lst = []
     for portID, slaveID in conn.getActiveFEBDs():
@@ -208,11 +206,11 @@ def program_multiple_m95080(conn,fem_type,new_sn_lst=None,new_s_cfg_lst=None):
     #Program EEPROM
     for idx, [portID, slaveID, moduleID] in enumerate(detected_lst):
         new_sn = new_sn_lst[idx] if new_sn_lst else None
-        program_m95080(conn, portID, slaveID, moduleID, new_sn, new_s_cfg_lst)
+        program_m95080(conn, portID, slaveID, moduleID, new_sn, sipm_sensor_type)
 
     return True
 
-def program_m95080(conn, portID, slaveID, moduleID, fem_type, new_sn=None, new_s_cfg_lst=None):
+def program_m95080(conn, portID, slaveID, moduleID, fem_type, new_sn, sipm_sensor_type):
         eeprom = m95080_eeprom(conn,portID,slaveID,moduleID)
         was_programmed = eeprom.is_programmed()
         if was_programmed:
@@ -231,24 +229,20 @@ def program_m95080(conn, portID, slaveID, moduleID, fem_type, new_sn=None, new_s
         #Set sensor configuration
         s_cfg_adr  = prom_mapping['s_cfg'][0]
         s_cfg_size = prom_mapping['s_cfg'][1]
-        if new_s_cfg_lst:
-            padded_s_cfg_lst = new_s_cfg_lst + [0xFF] * (s_cfg_size - len(new_s_cfg_lst)) #Pad until correct size
-            s_cfg = padded_s_cfg_lst
-        elif was_programmed:
-            s_cfg = list(eeprom.read(s_cfg_adr, s_cfg_size))
-        else:
-            s_cfg = [0xFF for n in range(s_cfg_size)]
+
+        new_s_cfg_lst = sorted([ (ch, loc, what, sensor) for ch, (loc, what, sensor) in FEM_PARAMETERS[fem_type]['sensors'].items() ])
+        new_s_cfg_lst = [ (loc, what, sensor if sensor != 'NA' else sipm_sensor_type) for (ch, loc, what, sensor) in new_s_cfg_lst ]
+        new_s_cfg_lst = [ (loc, DEVICE_TO_BYTE[what], SENSOR_TO_BYTE[sensor]) for loc, what, sensor in new_s_cfg_lst ]
+        new_s_cfg_lst = sum([ list(x) for x in new_s_cfg_lst ], [])
+
+        padded_s_cfg_lst = new_s_cfg_lst + [0xFF] * (s_cfg_size - len(new_s_cfg_lst)) #Pad until correct size
+        s_cfg = padded_s_cfg_lst
         prom_mapping['s_cfg'][2] = s_cfg
 
         #Set Serial Number
         sn_adr  = prom_mapping['sn'][0]
         sn_size = prom_mapping['sn'][1]
-        if new_sn:
-            sn = list(new_sn.to_bytes( sn_size, byteorder ='big'))
-        elif was_programmed:
-            sn = list(eeprom.read(sn_adr, sn_size))
-        else:
-            sn = [0xFF for n in range(sn_size)]
+        sn = list(new_sn.to_bytes( sn_size, byteorder ='big'))
         prom_mapping['sn'][2] = sn
 
         #Calculate checksum value

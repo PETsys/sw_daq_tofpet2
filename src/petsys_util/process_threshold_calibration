@@ -32,29 +32,46 @@ def normalizeAndSplit(l):
 	return l
 
 def getBaselineAndNoise(profile):
-	low = profile.GetBinCenter(profile.FindFirstBinAbove(0.1)) - 0.5
-	high = profile.GetBinCenter(profile.FindFirstBinAbove(0.9)) + 0.5
+
+	b2 = profile.FindFirstBinAbove(0.8)
+	if b2 >= 64:
+		print("WARNING: Can't find bin > 0.8")
+		return -1, 100
+
+	b1 = profile.FindFirstBinAbove(0.2)
+	if b1 == b2:
+		b1 = b2 - 1
+
+
+	x1 = profile.GetBinCenter(b1)
+	x2 = profile.GetBinCenter(b2)
+	y1 = profile.GetBinContent(b1)
+	y2 = profile.GetBinContent(b2)
+
+	m = (y2 - y1)/(x2 - x1)
+	b = y2  - x1 * m
+
+	mu = (0.5 - b) / m
+	sigma = 0.5 / m
 
 	fSigmoid.FixParameter(0, 1.0);
 
-	fSigmoid.SetParameter(1, high-low);
-	fSigmoid.SetParLimits(1, 0.05, high-low)
+	fSigmoid.SetParameter(1, sigma);
+	fSigmoid.SetParLimits(1, 0.05, 2*sigma)
 
-	fSigmoid.SetParameter(2, (low+high)/2.0)
-	fSigmoid.SetParLimits(2, low, high)
+	fSigmoid.SetParameter(2, mu)
+	fSigmoid.SetParLimits(2, mu - 2*sigma, mu+2*sigma)
 
 	profile.Fit("fSigmoid", "", "", 0, 64)
 	f = profile.GetFunction("fSigmoid")
 
 	if f:
-			zero= f.GetParameter(2)
-			noise = f.GetParameter(1)
+			mu = f.GetParameter(2)
+			sigma = f.GetParameter(1)
 	else:
 		print("WARNING: No fit for %s" % profile.GetName())
-		zero = (low+high)/2.0
-		noise = 0.05
 
-	return zero, noise
+	return mu, sigma
 
 def getThresholdForRate(profile, rate):
 	threshold = profile.FindFirstBinAbove(rate) - profile.FindBin(0)
