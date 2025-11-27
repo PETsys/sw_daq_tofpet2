@@ -134,7 +134,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 					if(useEnergyCal){
 						float Energy =  cen.p0 * pow(cen.p1,pow(out.energy,cen.p2)) + cen.p3 * out.energy - cen.p0;	 
 						out.energy = Energy;
-						if(cen.p0 == 0) eventFlags |= 0x16;
+						if(cen.p0 == 0) eventFlags |= 0x10;
 					}
 				
 				}
@@ -160,7 +160,7 @@ EventBuffer<Hit> * ProcessHit::handleEvents (EventBuffer<RawHit> *inBuffer)
 		if((eventFlags & 0x2) != 0) lTDCCalibrationMissing += 1;
 		if((eventFlags & 0x4) != 0) lQDCCalibrationMissing += 1;
 		if((eventFlags & 0x8) != 0) lXYZMissing += 1;
-		if((eventFlags & 0x16) != 0) lEnergyCalibrationMissing += 1;
+		if((eventFlags & 0x10) != 0) lEnergyCalibrationMissing += 1;
 
 		if(eventFlags == 0) {
 			out.valid = true;
