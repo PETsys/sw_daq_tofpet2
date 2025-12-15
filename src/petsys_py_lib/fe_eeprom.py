@@ -56,7 +56,7 @@ FEM_PARAMETERS = {
 
     # FEM128 MUXv2
     '13AG' : {
-        'unique_id'   : [191, 203, 103, 147,  77,  48, 100, 252, 163, 223,  74, 225, 183, 251,  54,  93],
+        'unique_id'   : [ 0x0f, 0xcb, 0x4d, 0xf6, 0xb7, 0xc1, 0x4f, 0x2a, 0x9a, 0xa7, 0xac, 0xc3, 0xa7, 0x2b, 0x4f, 0x6d ],
         'sensors' : {
             0: (1, 'asic', 'LMT86'),
             1: (1, 'sipm', 'NA'),
