@@ -138,7 +138,7 @@ if [ $osPrettyName == "ubuntu" ] && [ $debug -eq 0 ] && [ $installROOT -eq 1 ]; 
 	if [ $osVersion == "24.04" ] ; then
 		versionToInstall=6.34.04
 	fi
-	wget https://root.cern/download/root_v$versionToInstall.source.tar.gz;
+	wget https://root.cern.ch/download/root_v$versionToInstall.source.tar.gz;
 	tar xvzf root_v$versionToInstall.source.tar.gz;
 	cd root-$versionToInstall/;
 	mkdir build;
