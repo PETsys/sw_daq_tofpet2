@@ -35,7 +35,7 @@ def getBaselineAndNoise(profile):
 
 	b2 = profile.FindFirstBinAbove(0.8)
 	if b2 >= 64:
-		print("WARNING: Can't find bin > 0.8")
+		print("WARNING: Can't find bin > 0.8 in %s" % profile.GetName())
 		return -1, 100
 
 	b1 = profile.FindFirstBinAbove(0.2)
@@ -50,6 +50,9 @@ def getBaselineAndNoise(profile):
 
 	m = (y2 - y1)/(x2 - x1)
 	b = y2  - x1 * m
+	if m == 0:
+		print("WARNING: Can't find edge in %s" % profile.GetName())
+		return -1, 100
 
 	mu = (0.5 - b) / m
 	sigma = 0.5 / m
