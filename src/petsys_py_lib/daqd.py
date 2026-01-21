@@ -530,7 +530,7 @@ class Connection:
 					#print(portID, slaveID, busID, moduleVersion, current_dac_setting, new_dac_setting)
 		
 		# Allow some ms for the deserializer to lock to the 8B/10B pattern
-		sleep(0.010)
+		sleep(0.1)
 
 		# Check which ASICs are receiving properly data words
 		deserializerStatus = [ False for x in range(MAX_PORTS * MAX_SLAVES * MAX_CHIPS) ]
