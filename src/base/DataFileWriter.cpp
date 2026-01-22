@@ -4,6 +4,7 @@
 #include <TFile.h>
 #include <TNtuple.h>
 #include <iostream>
+#include <math.h>
 
 using namespace PETSYS;
 
