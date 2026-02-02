@@ -33,7 +33,8 @@ def main():
 		elif no_tgr:
 			trigger_port = i
 		else:
-			trigger_port = connection.read_config_register(portID, slaveID, 16, 0x0610) ^ 0xFFFF
+			connection.write_config_register(portID, slaveID, 16, 0x0450, 2)
+			trigger_port = connection.read_config_register(portID, slaveID, 16, 0x0460)
 
 		d = connection.getUnitInfo(portID, slaveID)
 		n_fem = info.fem_per_febd(d)

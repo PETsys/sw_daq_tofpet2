@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os, sys
+sys.path += [ "sw_daq_tofpet2", "shared" ]
+
+from petsys import daqd # type: ignore
+import argparse, time
+
+
+def get_link_info(conn, portID, slaveID, linkID):
+	conn.write_config_register(portID, slaveID, 16, 0x0450, linkID)
+	locked = conn.read_config_register(portID, slaveID, 1, 0x0458) == 1
+	data = conn.read_config_register(portID, slaveID, 16, 0x0460)
+	errors = conn.read_config_register(portID, slaveID, 32, 0x0468)
+
+	locked = 'LOCKED' if locked else 'NOT LOCKED'
+	return locked, data, errors
+	
+	
+
+def main(argv):
+	parser = argparse.ArgumentParser(description='Check link betwen CLK&TGR and FEB/Ds')
+	args = parser.parse_args()
+
+	conn = daqd.Connection()
+
+
+	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
+	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
+	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
+	time.sleep(0.010)
+
+	# Get information for all links
+	febd_link_status_1 = {}
+	for portID, slaveID in conn.getActiveFEBDs():
+		for linkID in range(3):
+			febd_link_status_1[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
+	
+	portID, slaveID = conn.getTriggerUnit()
+	tgr_link_status_1 = {}
+	for linkID in range(128+16):
+		tgr_link_status_1[linkID] = get_link_info(conn, portID, slaveID, linkID)
+
+	# Wait 1 seconds and get information again, mainly to be able to compute an error rate
+	time.sleep(2.0)
+	febd_link_status_2 = {}
+	for portID, slaveID in conn.getActiveFEBDs():
+	        for linkID in range(3):
+	                febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
+
+	portID, slaveID = conn.getTriggerUnit()
+	tgr_link_status_2 = {}
+	for linkID in range(128+16):
+                tgr_link_status_2[linkID] = get_link_info(conn, portID, slaveID, linkID)
+
+
+	for k in febd_link_status_1.keys():
+		l1, d1, e1 = febd_link_status_1[k]
+		l2, d2, e2 = febd_link_status_2[k]
+
+		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e1
+		e /= 2
+		febd_link_status_1[k] = (l1, d1, e)
+
+	for k in tgr_link_status_1.keys():
+		l1, d1, e1 = tgr_link_status_1[k]
+		l2, d2, e2 = tgr_link_status_2[k]
+
+		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e
+		e /= 2
+		tgr_link_status_1[k] = (l1, d1, e)
+
+	for portID, slaveID in conn.getActiveFEBDs():
+		l, d, e = febd_link_status_1[(portID, slaveID, 2)]
+
+		if l != "LOCKED":
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) UNKNOWN CLK&TGR PORT")
+			port = None
+		else:
+			port = d
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port:2d}")
+
+
+		print(f"              SYNC", check_link(*febd_link_status_1[(portID, slaveID, 0)], 0x8000, 0x8000))
+		print(f"              GATE", check_link(*febd_link_status_1[(portID, slaveID, 1)], 0x8001, 0x8001))
+		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000A))
+
+		if port is not None:
+			for lane in range(4):
+				print(f"     TRIGGER OUT {lane}", check_link(*tgr_link_status_1[4*port +  lane], 16*port + lane, 16*port+lane))
+			print(f"    TRIGGER STATUS", check_link(*tgr_link_status_1[128+port], port, port))
+
+
+			
+	return 0
+
+def check_link(l, d, e, dmin, dmax):
+	ok = l == "LOCKED"
+	ok &= (d >= dmin) and (d <= dmax)
+	ok &= e < 20 
+	
+	ok = "OK" if ok else "FAIL"
+	return f"{ok:4s} {l:12s} with value 0x{d:04X} {e:9} errors/s"
+
+
+if __name__ == '__main__':
+	sys.exit(main(sys.argv))
