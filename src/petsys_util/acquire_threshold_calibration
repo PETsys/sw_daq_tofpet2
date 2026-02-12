@@ -42,6 +42,7 @@ def main():
 	parser.add_argument("--config", type=str, required=True, help="Configuration file")
 	parser.add_argument("-o", type=str, dest="outFilePrefix", required=True, help="Data file prefix")
 	parser.add_argument("--nreads-noise", dest="noise_reads", type=int, required=False, default=4)
+	parser.add_argument("--enable-dark-scans", dest="performDarkScan", action="store_true", default=False, help="Enable this option to measure the SIPM dark count rate for all possible discriminator threshold values")
 	parser.add_argument("--nreads-dark", dest="dark_reads", type=int, required=False, default=4)
 	parser.add_argument("--ext-bias", dest="ext_bias", action="store_true", default=False, help="Prompt user to set bias")
 	args = parser.parse_args()
@@ -206,55 +207,56 @@ def main():
 	#
 	# Measure dark counts
 	#
-	outFile = open(args.outFilePrefix + "_dark.tsv", "w")
-	for ac in list(asicsConfig.values()):
-		if not ac: continue
-		gc = ac.globalConfig
-		for cc in ac.channelConfig:
-			cc.setValue("trigger_mode_1", 0)
-			cc.setValue("counter_mode", 0xC)
-			cc.setValue("trigger_b_latched", 0)
-			cc.setValue("dead_time", 20)
+	if args.performDarkScan:
+		outFile = open(args.outFilePrefix + "_dark.tsv", "w")
+		for ac in list(asicsConfig.values()):
+			if not ac: continue
+			gc = ac.globalConfig
+			for cc in ac.channelConfig:
+				cc.setValue("trigger_mode_1", 0)
+				cc.setValue("counter_mode", 0xC)
+				cc.setValue("trigger_b_latched", 0)
+				cc.setValue("dead_time", 20)
 
-	if args.ext_bias:
-		systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
-		input("Set normal operation bias voltage and press ENTER")
-	else:
-		systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON)
+		if args.ext_bias:
+			systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
+			input("Set normal operation bias voltage and press ENTER")
+		else:
+			systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON)
 
-	darkProfiles = {}
-	print("Scanning threshold for dark counts")
-	for thresholdIndex, thresholdName, baselineName in thresholdList:
-		stdout.write("%6s " % thresholdName); stdout.flush()
-		for thresholdValue in range(64):
-			for ac in list(asicsConfig.values()):
-				for cc in ac.channelConfig:
-					cc.setValue("vth_t1", 0)
-					cc.setValue("vth_t2", 0)
-					cc.setValue("vth_e", 0)
-					cc.setValue("trigger_mode_2_b", thresholdIndex)
-					cc.setValue(thresholdName, thresholdValue)
+		darkProfiles = {}
+		print("Scanning threshold for dark counts")
+		for thresholdIndex, thresholdName, baselineName in thresholdList:
+			stdout.write("%6s " % thresholdName); stdout.flush()
+			for thresholdValue in range(64):
+				for ac in list(asicsConfig.values()):
+					for cc in ac.channelConfig:
+						cc.setValue("vth_t1", 0)
+						cc.setValue("vth_t2", 0)
+						cc.setValue("vth_e", 0)
+						cc.setValue("trigger_mode_2_b", thresholdIndex)
+						cc.setValue(thresholdName, thresholdValue)
 
-			conn.setAsicsConfig(asicsConfig)
-			conn.checkAsicRx()
-			sleep(1*T)
-			next_read_start_time = time() + counter_sharing*T + 1E-3
-			for n in range(args.dark_reads):
-				s = next_read_start_time - time()
-				if s > 0: sleep(s)
+				conn.setAsicsConfig(asicsConfig)
+				conn.checkAsicRx()
+				sleep(1*T)
 				next_read_start_time = time() + counter_sharing*T + 1E-3
-				read_tag = (read_tag + 1) % 256
-				event_rate = read_counters(conn, read_tag, T)
-				for (portID, slaveID, chipID, channelID), v in event_rate.items():
-					outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
+				for n in range(args.dark_reads):
+					s = next_read_start_time - time()
+					if s > 0: sleep(s)
+					next_read_start_time = time() + counter_sharing*T + 1E-3
+					read_tag = (read_tag + 1) % 256
+					event_rate = read_counters(conn, read_tag, T)
+					for (portID, slaveID, chipID, channelID), v in event_rate.items():
+						outFile.write("%d\t%d\t%d\t%d\t%s\t%d\t%f\n" % (portID, slaveID, chipID, channelID, thresholdName, thresholdValue, v))
 
-			stdout.write(".")
-			stdout.flush()
-		stdout.write("\n")
-	outFile.close()
+				stdout.write(".")
+				stdout.flush()
+			stdout.write("\n")
+		outFile.close()
 
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_OFF)
-	
+
 	return 0
 
 if __name__ == '__main__':

@@ -60,27 +60,52 @@ struct CalibrationEntry {
 	float a0;
 	float a1;
 	float a2;
-	bool valid;
+	bool  valid;
+	float resolution;
 };
 
+struct ChipCalibrationStats{
+	int    uncalibrated;
+	double tRmsMean;
+	double tRmsMax;
+	double tRmsMin;
 
+	double eRmsMean;
+	double eRmsMax;
+	double eRmsMin;
+};
+
+float getClockFrequency(char *inputFilePrefix);
 void sortData(char *inputFilePrefix, char *tmpFilePrefix);
 void calibrateAsic(
 	unsigned long gAsicID,
-	int linearityDataFile, int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
+	int linearityDataFile, int linearityNbins,
+    float linearityRangeMinimum, float linearityRangeMaximum,
+	float frequency,
 	CalibrationEntry *calibrationTable,
 	float nominalM,
 	char *summaryFilePrefix
 );
 
 void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
-		CalibrationEntry *calibrationTable,  float nominalM, char *outputFilePrefix, char *tmpFilePrefix);
+		       CalibrationEntry *calibrationTable,
+		       float nominalM,
+		       char *outputFilePrefix,
+		       char *tmpFilePrefix,
+		       float frequency);
 		
 void adjustCalibrationTable(CalibrationEntry *calibrationTable);
 
 void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
 
+void formatChipId(char *out, const int gChipID);
+
+ChipCalibrationStats summarizeChipCalibration(CalibrationEntry *calibrationTable, const int gChipID);
+
+void printCalibrationSummary(CalibrationEntry *calibrationTable, const char *outputFilePrefix);
+
 void deleteTemporaryFiles(const char *tmpFilePrefix);
+
 
 void displayUsage() {
 }
@@ -156,19 +181,41 @@ int main(int argc, char *argv[])
 		calibrationTable[gid].a0 = 0.0;
 		calibrationTable[gid].a1 = 0.0;
 		calibrationTable[gid].a2 = 0.0;
+		calibrationTable[gid].resolution = 0.0;
 	}
 
 	if(doSorting) {
 		sortData(inputFilePrefix, tmpFilePrefix);
 	}
-	calibrateAllAsics(nBins, xMin, xMax, calibrationTable, nominalM, outputFilePrefix, tmpFilePrefix);
+	float frequency = getClockFrequency(inputFilePrefix);
+	calibrateAllAsics(nBins, xMin, xMax, calibrationTable, nominalM, outputFilePrefix, tmpFilePrefix, frequency);
 	adjustCalibrationTable(calibrationTable);
 	writeCalibrationTable(calibrationTable, outputFilePrefix);
+	printCalibrationSummary(calibrationTable, outputFilePrefix);
 	if(!keepTemporary) {
 		deleteTemporaryFiles(tmpFilePrefix);
 	}
 
 	return 0;
+}
+
+float getClockFrequency(char *inputFilePrefix){
+
+	char fName[1024];
+	sprintf(fName, "%s.rawf", inputFilePrefix);
+	FILE *dataFile = fopen(fName, "r");
+	if(dataFile == NULL) {
+		fprintf(stderr, "Could not open '%s' for reading: %s\n", fName, strerror(errno));
+		exit(1);
+	}
+	uint64_t header;
+	size_t n = fread(&header, 1, sizeof(uint64_t), dataFile);
+
+	unsigned frequency =  header & 0xFFFFFFFFUL;
+
+	fclose(dataFile);
+
+	return frequency;
 }
 
 void sortData(char *inputFilePrefix, char *tmpFilePrefix)
@@ -215,7 +262,6 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 	
 	long startOffset, endOffset;
 	float step1, step2;
-
 
 	while(fscanf(indexFile, "%ld %ld %*d %*d %f %f\n", &startOffset, &endOffset, &step1, &step2) == 4) {
 		fseek(dataFile, startOffset, SEEK_SET);
@@ -267,10 +313,7 @@ void sortData(char *inputFilePrefix, char *tmpFilePrefix)
 			calData.freq = tmpRawCalDataBlock[i].freq;
 			calData.phase = step1;			
 			fwrite(&calData, sizeof(CalibrationData), 1, f);
-
-		      
 		
-			
 		}
 
 	}
@@ -318,7 +361,9 @@ static Double_t periodicF2 (Double_t *xx, Double_t *pp)
 
 void calibrateAsic(
 	unsigned long gAsicID,
-	int linearityDataFile, int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
+	int linearityDataFile, int linearityNbins,
+	float linearityRangeMinimum, float linearityRangeMaximum,
+	float frequency,
 	CalibrationEntry *calibrationTable,
 	float nominalM,
 	char *summaryFilePrefix
@@ -401,10 +446,7 @@ void calibrateAsic(
 		unsigned slaveID = (gid >> 15) % 32;
 		unsigned portID = (gid >> 20) % 32;
 		char hName[128];
-		
 
-		//if(channelID!=36)continue;
-		 
 		TH2S *hFine2 = hFine2_list[gid-gidStart];
 		if(hFine2 == NULL) continue;
 		if(hFine2->GetEntries() < 1000) {
@@ -427,7 +469,18 @@ void calibrateAsic(
 		float xMin = pFine->GetXaxis()->GetXmin();
 		float xMax = pFine->GetXaxis()->GetXmax();
 		
-		
+		int nFilled = 0;
+
+		for (int i = 1; i <= nBinsX; i++) {
+			if (pFine->GetBinEntries(i) > 0)
+				nFilled++;
+		}
+		if(nFilled < linearityNbins * 0.5) {
+			fprintf(stderr, "WARNING: Not enough data to calibrate. Skipping TAC (%02u %02d %02d %02d %u %c)\n",
+					portID, slaveID, chipID, channelID, tacID, bStr);
+			continue;
+		}
+
 		// Obtain a rough estimate of the edge position
 		float lowerT0 = 0.0;
 		float upperT0 = 0.0;
@@ -788,7 +841,7 @@ void calibrateAsic(
 		TH1F *hCounts = hCount_list[branchID] = new TH1F(hName, "", 64*4, 0, 64);
 		
 		sprintf(hName, "hResolution_%c", bStr);
-		TH1S *hResolution = new TH1S(hName, "TDC resolution histogram", 256, 0.0, 0.1);
+		TH1S *hResolution = new TH1S(hName, "TDC resolution histogram", 256, 0.0, 200);
 		
 		TGraphErrors *gResolution = new TGraphErrors(64*4);
 		sprintf(hName, "gResolution_%c", bStr);
@@ -804,7 +857,7 @@ void calibrateAsic(
 				
 				unsigned counts = 0;
 				float sigma = 5000;
-				
+				float Tps = 1.0/frequency*1E12;
 				if(hControlE != NULL) {
 					counts = hControlE->GetEntries();
 					hCounts->SetBinContent(1 + 4*channelID + tacID, counts);
@@ -814,13 +867,13 @@ void calibrateAsic(
 							hControlE->Fit("gaus", "Q");
 							TF1 *fit = hControlE->GetFunction("gaus");
 							if(fit != NULL) {
-								sigma = fit->GetParameter(2);
+								sigma = fit->GetParameter(2) * Tps;
 								float sigmaError = fit->GetParError(2);
 								gResolution->SetPoint(gResolutionNPoints, channelID + 0.25*tacID, sigma);
 								gResolution->SetPointError(gResolutionNPoints, 0, sigmaError);
 								hResolution->Fill(sigma);
-								
-								gResolutionNPoints += 1;					
+								gResolutionNPoints += 1;
+								entry.resolution = sigma;
 							}
 						}
 					}
@@ -841,14 +894,14 @@ void calibrateAsic(
 		gResolution->SetTitle("TDC resolution");
 		gResolution->GetXaxis()->SetTitle("Channel");
 		gResolution->GetXaxis()->SetRangeUser(0, 64);
-		gResolution->GetYaxis()->SetTitle("Resolution (clk RMS)");
-		gResolution->GetYaxis()->SetRangeUser(0, 0.1);
+		gResolution->GetYaxis()->SetTitle("Resolution (ps RMS)");
+		gResolution->GetYaxis()->SetRangeUser(0, 200);
 		gResolution->Draw("AP");
 		gResolution->Write();
 		
 		c->cd(3*branchID + 3);
 		hResolution->SetTitle("TDC resolution histogram");
-		hResolution->GetXaxis()->SetTitle("TDC resolution (clk RMS)");
+		hResolution->GetXaxis()->SetTitle("TDC resolution (ps RMS)");
 		hResolution->Draw("HIST");
 		
 	}
@@ -866,7 +919,7 @@ void calibrateAsic(
 }
 
 void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float linearityRangeMaximum,
-		       CalibrationEntry *calibrationTable, float nominalM, char *outputFilePrefix, char *tmpFilePrefix)
+		       CalibrationEntry *calibrationTable, float nominalM, char *outputFilePrefix, char *tmpFilePrefix, float frequency)
 {
 	char fName[1024];
 	sprintf(fName, "%s_list.tmp", tmpFilePrefix);
@@ -933,8 +986,7 @@ void calibrateAllAsics(int linearityNbins, float linearityRangeMinimum, float li
 			printf("Calibrating ASIC (%2lu %2lu %2lu)\n", portID, slaveID, chipID);
 			fflush(stdout);
 			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_SEQUENTIAL | POSIX_FADV_WILLNEED);
-			calibrateAsic(gAsicID, tmpDataFile, linearityNbins, linearityRangeMinimum, linearityRangeMaximum,
-				      calibrationTable, nominalM, summaryFilePrefix);
+			calibrateAsic(gAsicID, tmpDataFile, linearityNbins, linearityRangeMinimum, linearityRangeMaximum, frequency, calibrationTable, nominalM, summaryFilePrefix);
 			posix_fadvise(tmpDataFile, 0, 0, POSIX_FADV_DONTNEED);
 			exit(0);
 		} else {
@@ -1022,6 +1074,152 @@ void writeCalibrationTable(CalibrationEntry *calibrationTable, const char *outpu
 	fclose(f);
 }
 
+
+void formatChipId(char *out, const int gChipID)
+{
+	unsigned chipID = gChipID % 64;
+	unsigned slaveID = (gChipID >> 6) % 32;
+	unsigned portID = (gChipID >> 11) % 32;	
+	sprintf(out, "(%02d,%02d,%02d)", portID, slaveID, chipID);
+}
+
+ChipCalibrationStats summarizeChipCalibration(CalibrationEntry *calibrationTable, const int gChipID)
+{
+    ChipCalibrationStats out = {0};
+
+    double tSum = 0.0;
+    double eSum = 0.0;
+    int    tCount = 0;
+    int    eCount = 0;
+
+    out.tRmsMin =  1e30;
+    out.eRmsMin =  1e30;
+    out.tRmsMax = -1e30;
+    out.eRmsMax = -1e30;
+
+    unsigned long startTAC = gChipID * 512;
+    for (unsigned long gid = startTAC; gid < startTAC + 512; gid++) {
+	    int ch = gid/8;
+
+	    unsigned branchID = gid % 2;
+
+	    const CalibrationEntry &entry = calibrationTable[gid];
+
+	    if (!entry.valid) {
+		    if(gid%8==0) out.uncalibrated++;
+		    continue;
+	    }
+
+	    if (branchID == 0) {
+		    out.tRmsMin = (entry.resolution < out.tRmsMin) ? entry.resolution : out.tRmsMin;
+		    out.tRmsMax = (entry.resolution > out.tRmsMax) ? entry.resolution : out.tRmsMax;
+		    tSum += entry.resolution;
+		    tCount++;
+	    } else {
+		    out.eRmsMin = (entry.resolution < out.eRmsMin) ? entry.resolution : out.eRmsMin;
+		    out.eRmsMax = (entry.resolution > out.eRmsMax) ? entry.resolution : out.eRmsMax;
+		    eSum += entry.resolution;
+		    eCount++;
+	    }
+    }
+
+    out.tRmsMean = (tCount > 0) ? tSum / tCount : 0.0;
+    out.eRmsMean = (tCount > 0) ? eSum / eCount : 0.0;
+
+    return out;
+}
+
+
+void printCalibrationSummary(CalibrationEntry *calibrationTable, const char *outputFilePrefix)
+{
+
+	char fName[1024];
+	sprintf(fName, "%s_summary.tsv", outputFilePrefix);
+	FILE *summaryFile = fopen(fName, "w");
+	if(summaryFile == NULL) {
+                fprintf(stderr, "Could not open '%s' for writing: %s\n", fName, strerror(errno));
+                exit(1);
+	}
+	fprintf(summaryFile,
+		"#portID\tslaveID\tchipID\tuncalibratedChannels\t"
+		"t_RMS_Mean_ps\tt_RMS_Max_ps\tt_RMS_Min_ps\t"
+		"e_RMS_Mean_ps\te_RMS_Max_ps\te_RMS_Min_ps\n"
+		);
+
+	char pad[64] = {0};
+	for (int i = 0; i < 28 && i < 63; i++) pad[i] = ' ';
+
+	printf("\n\n%sTDC CALIBRATION SUMMARY\n", pad);
+
+	printf("┌────────────┬──────────┬──────────────────────────┬──────────────────────────┐\n");
+	printf("│    Chip    │ Uncalib  │ T Branch Resolution (ps) │ E Branch Resolution (ps) │\n");
+
+	printf("│     ID     │ Channels ├────────┬────────┬────────┼────────┬────────┬────────┤\n");
+
+	printf("│            │          │  Mean  │  Max   │  Min   │  Mean  │  Max   │  Min   │\n");
+
+
+	for (int gChipID = 0; gChipID < MAX_N_ASIC; gChipID++) {
+		bool chipIsPresent = false;
+		unsigned startTacID = 512 * gChipID;
+
+		for(int ch = 0 ; ch < 64 ; ch++){
+			CalibrationEntry &entryT = calibrationTable[startTacID + 8*ch];
+			CalibrationEntry &entryE = calibrationTable[startTacID + 8*ch + 4];
+			if(entryT.valid && entryE.valid){
+				chipIsPresent = true;
+				break;
+			}
+		}
+		if(!chipIsPresent)continue;
+
+		printf("├────────────┼──────────┼────────┼────────┼────────┼────────┼────────┼────────┤\n");
+
+		char cid[32];
+		formatChipId(cid, gChipID);
+
+		ChipCalibrationStats chipStats = summarizeChipCalibration(calibrationTable, gChipID);
+
+		int    tUncalibrated;
+		double tRmsMean;
+		double tRmsMax;
+		double tRmsMin;
+
+		int    eUncalibrated;
+		double eRmsMean;
+		double eRmsMax;
+		double eRmsMin;
+
+		printf("│ %-11s│%6d    │%6.1f  │%6.1f  │%6.1f  │%6.1f  │%6.1f  │%6.1f  │\n",
+		       cid,
+		       chipStats.uncalibrated,
+		       chipStats.tRmsMean,
+		       chipStats.tRmsMax,
+		       chipStats.tRmsMin,
+		       chipStats.eRmsMean,
+		       chipStats.eRmsMax,
+		       chipStats.eRmsMin);
+
+		unsigned chipID = gChipID % 64;
+		unsigned slaveID = (gChipID >> 6) % 32;
+		unsigned portID = (gChipID >> 11) % 32;	
+		fprintf(summaryFile,
+			"%d\t%d\t%d\t%d\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\n",
+			portID, slaveID, chipID,
+			chipStats.uncalibrated,
+			chipStats.tRmsMean,
+			chipStats.tRmsMax,
+			chipStats.tRmsMin,
+			chipStats.eRmsMean,
+			chipStats.eRmsMax,
+			chipStats.eRmsMin
+			);
+
+		//printf("%s├─────────────┼────────────┼──────────┼──────────┼──────────┼────────────┼──────────┼──────────┼──────────┤\n", pad);
+	}
+
+	printf("└────────────┴──────────┴────────┴────────┴────────┴────────┴────────┴────────┘\n\n");
+}
 void deleteTemporaryFiles(const char *tmpFilePrefix)
 {
         char fName[1024];
