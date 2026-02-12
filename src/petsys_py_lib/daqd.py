@@ -27,7 +27,7 @@ MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
 
-PROTOCOL_VERSION = 0x103
+PROTOCOL_VERSION = 0x104
 
 # Handles interaction with the system via daqd
 class Connection:
@@ -358,8 +358,15 @@ class Connection:
 			asicType = self.read_config_register(portID, slaveID, 16, 0x0102)
 			if asicType != 0x0002:
 				raise ErrorInvalidAsicType(portID, slaveID, asicType)
-			
-		if self.getTriggerUnit() is not None and [ self.getTriggerUnit() ] != self.getActiveFEBDs():
+
+		tu = self.getTriggerUnit()
+		if tu is None:
+			# Operationw without a trigger is no longer supported
+			raise Exception("No Trigger unit has been found")
+		elif [ tu ] == self.getActiveFEBDs():
+			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b000)
+			# E-kit with internal trigger unit
+		else:
 			# We have a distributed trigger
 			# Run trigger signal calibration sequence
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
@@ -368,9 +375,26 @@ class Connection:
 			sleep(0.010)
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
-		elif self.getTriggerUnit() is None:
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b000)
 
+
+			def get_link_info(portID, slaveID, linkID):
+				self.write_config_register(portID, slaveID, 16, 0x0450, linkID)
+				locked = self.read_config_register(portID, slaveID, 1, 0x0458) == 1
+				value = self.read_config_register(portID, slaveID, 16, 0x0460)
+				return locked, value
+
+			# Check that necessary signals from/to CLK&TGR are operating correctly
+			for portID, slaveID in self.getActiveFEBDs():
+				l, v = get_link_info(portID, slaveID, 0)
+				if not l or v != 0x8000: raise ErrorBadClockTriggerLink(portID, slaveID, "SYNC", l, v)
+
+				l, v = get_link_info(portID, slaveID, 2)
+				if not l or v > 16: raise ErrorBadClockTriggerLink(portID, slaveID, "TGR IN", l, v)
+				trigger_port = v
+
+				for lane in range(4):
+					l, v = get_link_info(*tu, 4*trigger_port + lane)
+					if not l or v != (trigger_port * 16 + lane): raise ErrorBadClockTriggerLink(portID, slaveID, f"TGR OUT {lane}", l, v)
 
 		# Generate a local sync
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
@@ -1775,3 +1799,15 @@ class ErrorTooManyTriggerUnits(Exception):
 
 class ErrorAcquisitionStopped(Exception):
 	pass
+
+class ErrorBadClockTriggerLink(Exception):
+	def __init__(self, febd_port, febd_slave, link_str, locked, value):
+		self.__febd_port = febd_port
+		self.__febd_slave = febd_slave
+		self.__link_str  = link_str
+		self.__locked = locked
+		self.__value = value
+
+	def __str__(self):
+		locked = 'LOCKED' if self.__locked else 'NOT LOCKED'
+		return f"Link error on {self.__link_str} between CLK&TGR and FEB/D ({self.__febd_port:2d}, {self.__febd_slave:2d}) {locked} with value 0x{self.__value:04X}"
