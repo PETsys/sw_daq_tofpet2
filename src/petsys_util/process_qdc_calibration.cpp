@@ -893,7 +893,6 @@ ChipCalibrationStats summarizeChipCalibration(CalibrationEntry *calibrationTable
 
 	if (entry->xMax100 < out.qdcMaxIntegTime)//The max integration time the min of all the max times
                 out.qdcMaxIntegTime = entry->xMax100;
-        if(entry->xMax100 < 55)printf("%d %f %f\n", gid-startTAC,entry->xMax100, out.qdcMaxIntegTime );
     }
 
     out.rmsMean = (tCount > 0) ? tSum / tCount : 0.0;
