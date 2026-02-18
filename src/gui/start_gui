@@ -872,7 +872,7 @@ class GUI:
         command = ""
         if do_cal[0]:
             command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder + "config.ini -o " + self.__workingFolder + "disc_calibration;"
-            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
+            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "disc_calibration -o " + self.__workingFolder+"disc_calibration;"
             command += "python3 -u ./make_simple_disc_settings_table --config " + self.__workingFolder + "config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
             
         if do_cal[1]:
