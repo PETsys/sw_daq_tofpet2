@@ -390,8 +390,9 @@ void calibrateAsic(
 			CalibrationData &calData = calDataBuffer[i];
 			
 			assert(hFine2_list[calData.gid-gidStart] != NULL);
-			maxADC[calData.gid-gidStart] = (maxADC[calData.gid-gidStart] > calData.qfine) ? maxADC[calData.gid-gidStart] : calData.qfine;
+
 			if(calData.saturation) continue;
+			maxADC[calData.gid-gidStart] = (maxADC[calData.gid-gidStart] > calData.qfine) ? maxADC[calData.gid-gidStart] : calData.qfine;
 
 			if((calData.ecoarse - calData.tcoarse) < -256) calData.ecoarse += 1024;  
 			float ti = calData.ecoarse - calData.getTime(config);
@@ -447,31 +448,31 @@ void calibrateAsic(
 		TProfile *pFine = hFine2->ProfileX(hName, 1, -1, "s");
 		
 		float yMin = 1024;
-		int bMin = nBins;
-		for(int b = nBins; b >= 1; b--) {
-		    auto e = pFine->GetBinError(b);
-		    if(e == 0) continue;
-		    if(e > 5) continue;
+		int bMin = 2*nBins;
+		for(int b = 2*nBins; b >= 1; b--) {
+			auto e = pFine->GetBinError(b);
+			if(e == 0) continue;
+			if(e > 5) continue;
 
-		    auto v = pFine->GetBinContent(b);
-		    if(v < (yMin - 0.5)) {
-			yMin = v;
-			bMin = b;
-		    }
+			auto v = pFine->GetBinContent(b);
+			if(v < (yMin - 0.5)) {
+				yMin = v;
+				bMin = b;
+			}
 		}
 		float xMin = pFine->GetBinLowEdge(bMin);
 
 		float yMax = pFine->GetMaximum() * 0.97;
 		int bMax = pFine->FindFirstBinAbove(yMax);
-		bMax = (bMax < (nBins-1)) ? bMax : (nBins-1);
+		bMax = (bMax < (2*nBins-1)) ? bMax : (2*nBins-1);
 		float xMax = pFine->GetBinLowEdge(bMax+1);
-		
+
 		// Integration limit with 100 counts remaining
 		float yMax100 = maxADC[gid-gidStart] - 100;
 		int bMax100 = pFine->FindFirstBinAbove(yMax100);
-		if(bMax100 == -1) bMax100 = nBins;
+		if(bMax100 == -1) bMax100 = 2*nBins;
 		bMax100 = (bMax100 > 1) ? bMax100 : 1;
-		bMax100 = (bMax100 < (nBins-1)) ? bMax100 : (nBins-1);
+		bMax100 = (bMax100 < (2*nBins-1)) ? bMax100 : (2*nBins-1);
 		float xMax100 = pFine->GetBinLowEdge(bMax100+1);
 
 		// Clear entry 
@@ -492,9 +493,12 @@ void calibrateAsic(
 		entry.xMax100 = xMax100;
 		entry.valid = false;
 
-		
-		// Attempt to fit 9th order polynomial but fall back down to 3rd order if needed
-		for(int order = 8; (order > 3) && !entry.valid; order--) {
+		int maxOrder = xMin < 100 ? 8 : 7;
+		if(xMin > 180) maxOrder = 6;
+		if(xMin > 230) maxOrder = 5;
+
+		// Attempt to fit high order polynomial but fall back down to 3rd order if needed
+		for(int order = maxOrder; (order > 3) && !entry.valid; order--) {
 			char functionName[16];
 			sprintf(functionName, "pol%d", order);
 
