@@ -343,6 +343,7 @@ class Connection:
 		self.setTestPulseNone()
 		self.disableEventGate()
 		self.disableCoincidenceTrigger()
+		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 64, 0x0318, 0x0)
 
 		# Set all bias to minimum
 		# Setting to zero DAC but will be saturated by mezzanine specific code
@@ -360,15 +361,19 @@ class Connection:
 				raise ErrorInvalidAsicType(portID, slaveID, asicType)
 
 		tu = self.getTriggerUnit()
+		t0 = time()
 		if tu is None:
 			# Operationw without a trigger is no longer supported
 			raise Exception("No Trigger unit has been found")
 		elif [ tu ] == self.getActiveFEBDs():
-			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b000)
 			# E-kit with internal trigger unit
+			# Generate a local sync
+			for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
+			for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 		else:
 			# We have a distributed trigger
 			# Run trigger signal calibration sequence
+			self.write_config_register(*tu, 64, 0x02D0, 0xFFFFFFFFFFFFFFFF)
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
 			for portID, slaveID in self.getActiveUnits(): self.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
@@ -384,6 +389,7 @@ class Connection:
 				return locked, value
 
 			# Check that necessary signals from/to CLK&TGR are operating correctly
+			trigger_port_mask = 0x0
 			for portID, slaveID in self.getActiveFEBDs():
 				l, v = get_link_info(portID, slaveID, 0)
 				if not l or v != 0x8000: raise ErrorBadClockTriggerLink(portID, slaveID, "SYNC", l, v)
@@ -391,41 +397,36 @@ class Connection:
 				l, v = get_link_info(portID, slaveID, 2)
 				if not l or v > 16: raise ErrorBadClockTriggerLink(portID, slaveID, "TGR IN", l, v)
 				trigger_port = v
+				trigger_port_mask |= (1 << trigger_port)
 
 				for lane in range(4):
 					l, v = get_link_info(*tu, 4*trigger_port + lane)
 					if not l or v != (trigger_port * 16 + lane): raise ErrorBadClockTriggerLink(portID, slaveID, f"TGR OUT {lane}", l, v)
 
-		# Generate a local sync
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
 
-		# Generate master sync (if available) and start acquisition
-		# First, cycle master sync enable on/off to calibrate sync reception
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
-		sleep(0.010)
-		# Then enable master sync reception...
-		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
-		# ... and generate the sync
-		if self.getTriggerUnit() is not None:
-			# We have either
-			# (a) a single FEB/D with GbE
-			# (b) a distributed trigger
-			# Generate sync in the unit responsible for CLK and TGR
-			portID, slaveID = self.getTriggerUnit()
-			if [(portID,slaveID)] != self.getActiveFEBDs():
-				print("INFO: TGR unit is (%2d, %2d)" % (portID, slaveID))
-			else:
-				print("INFO: Evaluation kit: FEB/D with GBE connection @ (%2d, %2d)" % (portID, slaveID))
-			self.write_config_register(portID, slaveID, 2, 0x0201, 0b01)
-			self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+			# Set the known active trigger port mask in the clk/tgr unit
+			self.write_config_register(*tu, 64, 0x02D0, trigger_port_mask)
 
-		# Enable acquisition
-		# This will include a 220 ms sleep period for daqd and the DAQ card to clear buffers
+			# Enable master sync reception in FEB/Ds
+			for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b10)
+			# Generate master sync in CLK&TGR unit
+			self.write_config_register(*tu, 2, 0x0201, 0b01)
+			self.write_config_register(*tu, 2, 0x0201, 0b00)
+
+		# Finally set the system to normal acquisition
 		self.__setAcquisitionMode(1)
-		# Finally, disable sync reception
+		# and disable master sync reception
 		for portID, slaveID in self.getActiveFEBDs(): self.write_config_register(portID, slaveID, 2, 0x0201, 0b00)
+
+		# Check that we have indeed reset everything
+		time_tags = dict([ ((portID, slaveID), self.read_config_register(portID, slaveID, 46, 0x0203)) for portID, slaveID in self.getActiveUnits() ])
+		t1 = time()
+		max_tt = t1 - t0
+
+		time_tags = dict([ (key, tt / self.__systemFrequency) for key, tt in time_tags.items() ])
+		bad_time_tags = dict([ (key, tt) for key, tt in time_tags.items() if tt > max_tt ])
+		if bad_time_tags != {}:
+			raise ErrorUnsynchronizedUnits(bad_time_tags.keys())
 
 		if skipFEM:
 			return None
@@ -616,8 +617,6 @@ class Connection:
 			else:
 				raise ErrorAsicPresenceInconsistent(inconsistentStateAsics)
 
-		self.__setSorterMode(True)
-
 		for portID, slaveID in self.getActiveFEBDs():
 			lst = []
 
@@ -638,6 +637,7 @@ class Connection:
 			else:
 				print("INFO: FEB/D (%2d, %2d) has 0 active ASICs." % (portID, slaveID))
 
+		# Check that the DAQ is now running properly
 		self.__synchronizeDataToConfig()
 		return None
 		
@@ -1595,7 +1595,6 @@ class Connection:
 		# Set the read pointer to write pointer, in order to consume all available frames in buffer
 		wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
 		self.__setDataFrameReadPointer(wrPointer)
-		return
 
 		# WARNING
 		#: Don't actually remove code below until the new synchronization scheme has been better tested
@@ -1615,11 +1614,9 @@ class Connection:
 			while True:
 				df = self.__getDecodedDataFrame()
 				assert df != None
-				if df == None:
-					continue;
 
 				if  df['id'] > targetFrameID:
-					#print "Found frame %d (%f)" % (df['id'], df['id'] * frameLength)
+					#print("Found frame %d (%f)" % (df['id'], df['id'] * frameLength))
 					break
 
 				# Set the read pointer to write pointer, in order to consume all available frames in buffer
@@ -1811,3 +1808,11 @@ class ErrorBadClockTriggerLink(Exception):
 	def __str__(self):
 		locked = 'LOCKED' if self.__locked else 'NOT LOCKED'
 		return f"Link error on {self.__link_str} between CLK&TGR and FEB/D ({self.__febd_port:2d}, {self.__febd_slave:2d}) {locked} with value 0x{self.__value:04X}"
+
+class ErrorUnsynchronizedUnits(Exception):
+	def __init__(self, unit_list):
+		self.__unit_list = unit_list
+
+	def __str__(self):
+		s = [ "(%2d, %2d)" % key for key in self.__unit_list ]
+		return "Failed to synchronize units: " + ", ".join(s)

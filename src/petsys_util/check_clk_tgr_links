@@ -25,7 +25,8 @@ def main(argv):
 
 	conn = daqd.Connection()
 
-
+	tu = conn.getTriggerUnit()
+	conn.write_config_register(*tu, 64, 0x02D0, 0xFFFFFFFFFFFFFFFF)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
@@ -37,10 +38,9 @@ def main(argv):
 		for linkID in range(3):
 			febd_link_status_1[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
 	
-	portID, slaveID = conn.getTriggerUnit()
 	tgr_link_status_1 = {}
 	for linkID in range(128+16):
-		tgr_link_status_1[linkID] = get_link_info(conn, portID, slaveID, linkID)
+		tgr_link_status_1[linkID] = get_link_info(conn, *tu, linkID)
 
 	# Wait 1 seconds and get information again, mainly to be able to compute an error rate
 	time.sleep(2.0)
@@ -49,10 +49,9 @@ def main(argv):
 	        for linkID in range(3):
 	                febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
 
-	portID, slaveID = conn.getTriggerUnit()
 	tgr_link_status_2 = {}
 	for linkID in range(128+16):
-                tgr_link_status_2[linkID] = get_link_info(conn, portID, slaveID, linkID)
+                tgr_link_status_2[linkID] = get_link_info(conn, *tu, linkID)
 
 
 	for k in febd_link_status_1.keys():
@@ -71,12 +70,14 @@ def main(argv):
 		e /= 2
 		tgr_link_status_1[k] = (l1, d1, e)
 
+	retval = 0
 	for portID, slaveID in conn.getActiveFEBDs():
 		l, d, e = febd_link_status_1[(portID, slaveID, 2)]
 
 		if l != "LOCKED":
-			print(f"FEB/D ({portID:2d}, {slaveID:2d}) UNKNOWN CLK&TGR PORT")
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR UNKNOWN CLK&TGR PORT")
 			port = None
+			retval = 1
 		else:
 			port = d
 			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port:2d}")
@@ -91,9 +92,7 @@ def main(argv):
 				print(f"     TRIGGER OUT {lane}", check_link(*tgr_link_status_1[4*port +  lane], 16*port + lane, 16*port+lane))
 			print(f"    TRIGGER STATUS", check_link(*tgr_link_status_1[128+port], port, port))
 
-
-			
-	return 0
+	return retval
 
 def check_link(l, d, e, dmin, dmax):
 	ok = l == "LOCKED"
