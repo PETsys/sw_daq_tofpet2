@@ -43,7 +43,9 @@ def main(argv):
 		tgr_link_status_1[linkID] = get_link_info(conn, *tu, linkID)
 
 	# Wait 1 seconds and get information again, mainly to be able to compute an error rate
-	time.sleep(2.0)
+	T = 10.0
+	print(f"Waiting for {T} seconds...")
+	time.sleep(T)
 	febd_link_status_2 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
 	        for linkID in range(3):
@@ -67,7 +69,7 @@ def main(argv):
 		l2, d2, e2 = tgr_link_status_2[k]
 
 		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e
-		e /= 2
+		e /= T
 		tgr_link_status_1[k] = (l1, d1, e)
 
 	retval = 0
@@ -85,7 +87,7 @@ def main(argv):
 
 		print(f"              SYNC", check_link(*febd_link_status_1[(portID, slaveID, 0)], 0x8000, 0x8000))
 		print(f"              GATE", check_link(*febd_link_status_1[(portID, slaveID, 1)], 0x8001, 0x8001))
-		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000A))
+		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000F))
 
 		if port is not None:
 			for lane in range(4):
