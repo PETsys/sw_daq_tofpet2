@@ -16,11 +16,12 @@ def get_link_info(conn, portID, slaveID, linkID):
 
 	locked = 'LOCKED' if locked else 'NOT LOCKED'
 	return locked, data, errors
-	
-	
+
+MAP = [  f"J{i%2+1}_F{i//2+1}" for i in range(16) ]
 
 def main(argv):
 	parser = argparse.ArgumentParser(description='Check link betwen CLK&TGR and FEB/Ds')
+	parser.add_argument("--time", default=10, type=float, help="Delay to gather statistics")
 	args = parser.parse_args()
 
 	conn = daqd.Connection()
@@ -44,8 +45,8 @@ def main(argv):
 
 	# Wait 1 seconds and get information again, mainly to be able to compute an error rate
 	T = 10.0
-	print(f"Waiting for {T} seconds...")
-	time.sleep(T)
+	print(f"Waiting for {args.time} seconds...")
+	time.sleep(args.time)
 	febd_link_status_2 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
 	        for linkID in range(3):
@@ -61,7 +62,7 @@ def main(argv):
 		l2, d2, e2 = febd_link_status_2[k]
 
 		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e1
-		e /= 2
+		e /= args.time
 		febd_link_status_1[k] = (l1, d1, e)
 
 	for k in tgr_link_status_1.keys():
@@ -69,7 +70,7 @@ def main(argv):
 		l2, d2, e2 = tgr_link_status_2[k]
 
 		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e
-		e /= T
+		e /= args.time
 		tgr_link_status_1[k] = (l1, d1, e)
 
 	retval = 0
@@ -82,7 +83,8 @@ def main(argv):
 			retval = 1
 		else:
 			port = d
-			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port:2d}")
+			port_str = MAP[port]
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port_str}")
 
 
 		print(f"              SYNC", check_link(*febd_link_status_1[(portID, slaveID, 0)], 0x8000, 0x8000))
@@ -107,3 +109,4 @@ def check_link(l, d, e, dmin, dmax):
 
 if __name__ == '__main__':
 	sys.exit(main(sys.argv))
+
