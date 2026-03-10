@@ -158,7 +158,7 @@ class m95080_eeprom:
         chksum, chksum_reading = 0, []
         for key in self.PROM_TEMPLATE.keys():
             r = self.read_entry(key)
-            if key is 'chksum':
+            if key == 'chksum':
                 chksum_reading = [x for x in r]
             else:
                 chksum += sum(r)
