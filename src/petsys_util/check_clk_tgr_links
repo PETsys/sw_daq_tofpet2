@@ -35,10 +35,18 @@ def main(argv):
 
 	# Get information for all links
 	febd_link_status_1 = {}
+	febd_sysclk_status_1 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
 		for linkID in range(3):
 			febd_link_status_1[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
-	
+		pll_up = conn.read_config_register(portID, slaveID, 1, 0x0200) == 1
+		if pll_up:
+			pll_up_counter = conn.read_config_register(portID, slaveID, 64, 0x02E0) / conn.getSystemFrequency()
+		else:
+			pll_up_counter = -1
+
+		febd_sysclk_status_1[portID, slaveID] = (pll_up, pll_up_counter)
+
 	tgr_link_status_1 = {}
 	for linkID in range(128+16):
 		tgr_link_status_1[linkID] = get_link_info(conn, *tu, linkID)
@@ -48,9 +56,19 @@ def main(argv):
 	print(f"Waiting for {args.time} seconds...")
 	time.sleep(args.time)
 	febd_link_status_2 = {}
+	febd_sysclk_status_2 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
-	        for linkID in range(3):
-	                febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
+		for linkID in range(3):
+			febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
+
+		pll_up = conn.read_config_register(portID, slaveID, 1, 0x0200) == 1
+		if pll_up:
+			pll_up_counter = conn.read_config_register(portID, slaveID, 64, 0x02E0) / conn.getSystemFrequency()
+		else:
+			pll_up_counter = -1
+
+		febd_sysclk_status_2[portID, slaveID] = (pll_up, pll_up_counter)
+
 
 	tgr_link_status_2 = {}
 	for linkID in range(128+16):
@@ -65,6 +83,14 @@ def main(argv):
 		e /= args.time
 		febd_link_status_1[k] = (l1, d1, e)
 
+	for k in febd_sysclk_status_1.keys():
+		up1, uptime1 = febd_sysclk_status_1[k]
+		up2, uptime2 = febd_sysclk_status_2[k]
+
+		up = up1 and up2
+		delta = (uptime2 - uptime1) if up else 0
+		febd_sysclk_status_1[k] = (up, delta, uptime2)
+
 	for k in tgr_link_status_1.keys():
 		l1, d1, e1 = tgr_link_status_1[k]
 		l2, d2, e2 = tgr_link_status_2[k]
@@ -75,6 +101,16 @@ def main(argv):
 
 	retval = 0
 	for portID, slaveID in conn.getActiveFEBDs():
+		up, delta, uptime = febd_sysclk_status_1[portID, slaveID]
+		if not up:
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR SYSCLK NOT LOCKED")
+			continue
+		elif delta < args.time:
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR SYSCLK UNSTABLE LOCKED FOR {uptime:4.1f} seconds")
+
+
+
+
 		l, d, e = febd_link_status_1[(portID, slaveID, 2)]
 
 		if l != "LOCKED":
@@ -87,6 +123,7 @@ def main(argv):
 			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port_str}")
 
 
+		print(f"               CLK", f"OK   LOCKED FOR {uptime:4.1f} seconds")
 		print(f"              SYNC", check_link(*febd_link_status_1[(portID, slaveID, 0)], 0x8000, 0x8000))
 		print(f"              GATE", check_link(*febd_link_status_1[(portID, slaveID, 1)], 0x8001, 0x8001))
 		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000F))

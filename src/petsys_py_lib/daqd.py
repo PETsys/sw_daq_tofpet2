@@ -834,7 +834,7 @@ class Connection:
 			doOnce = False
 
 			nTries = nTries + 1
-			if nTries > 5: print("Timeout sending command. Retry %d of %d" % (nTries, maxTries))
+			if nTries > 5: print(f"Timeout sending command to ({portID:2d}, {slaveID:2d}) Retry {nTries} of {maxTries}")
 
 			sn = self.__lastSN
 			self.__lastSN = (sn + 1) & 0x7FFF
