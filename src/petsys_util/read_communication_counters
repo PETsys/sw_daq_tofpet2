@@ -12,16 +12,15 @@ daqd = daqd.Connection()
 
 
 daq_stats = []
+print("--- DAQ PORTS ---")
 for portID in daqd.getActivePorts():
-#	print("DAQ Port %2d: " % portID, "%12d transmitted %12d received (%d errors)" % daqd.getPortCounts(portID))
 	daq_stats.append((
 		portID,
 		*daqd.getPortCounts(portID)
 	))
 
-print("--- DAQ PORTS ---")
 daq_stats = pd.DataFrame(
-	columns = [ "portID", "tx", "rx", "rx_errors" ],
+	columns = [ "portID", "tx", "rx", "rx_crc_err" ],
 	data = daq_stats
 )
 
@@ -40,11 +39,13 @@ for portID, slaveID in daqd.getActiveUnits():
 
 	mup = daqd.read_config_register(portID, slaveID, 64, 0x0470) * 5E-9
 	sup = daqd.read_config_register(portID, slaveID, 64, 0x0478) * 5E-9
+	merr = daqd.read_config_register(portID, slaveID, 64, 0x0480)
+	serr = daqd.read_config_register(portID, slaveID, 64, 0x0488)
 
 	mtx, mrx, mrxBad, slaveOn, stx, srx, srxBad = daqd.getFEBDCount1(portID, slaveID)
 	slaveOn = slaveOn != 0
 	if not slaveOn:
-		sup, stx, srx, srxBad = -1, -1, -1, -1
+		sup, serr, stx, srx, srxBad = -1, -1, -1, -1, -1
 
 	base_pcb, fw_variant, prom_variant = daqd.getUnitInfo(portID, slaveID)
 	unit_version = "0x%016X" % daqd.read_config_register(portID, slaveID, 64, 0xFFF0)
@@ -66,16 +67,16 @@ for portID, slaveID in daqd.getActiveUnits():
 		unit_version,
 		unit_up_counter,
 		pll_up, pll_up_counter, time_tag,
-		mup, mtx, mrx, mrxBad,
-		slaveOn, sup, stx, srx, srxBad
+		mup, merr, mtx, mrx, mrxBad,
+		slaveOn, serr, sup, stx, srx, srxBad
 		))
 
 unit_stats = pd.DataFrame(
 	columns = [
 		"portID", "slaveID", "unit_type", "fw_version",
 		"uptime", "sysclk_up", "sysclk_uptime", "sysclk_timetag",
-		"mlink_uptime", "mlink_tx", "mlink_rx", "mlink_rx_errors",
-		"slink_up", "slink_uptime", "slink_tx", "slink_rx", "slink_rx_errors" ],
+		"mlink_uptime", "mlink_err", "mlink_tx", "mlink_rx", "mlink_rx_crc_err",
+		"slink_up", "slink_err", "slink_uptime", "slink_tx", "slink_rx", "slink_rx_crc_err" ],
 	data = unit_stats
 )
 
