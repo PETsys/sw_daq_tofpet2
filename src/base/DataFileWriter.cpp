@@ -25,10 +25,7 @@ DataFileWriter::DataFileWriter(char *fName, bool useAsyncWriting, double frequen
     this->Tps = 1E12/frequency;
     this->Tns = Tps / 1000.;
 
-    this->Tns = Tps / 1000.;
-
     this->useAsyncWriting = useAsyncWriting;   
-
     openFile();
 };
 

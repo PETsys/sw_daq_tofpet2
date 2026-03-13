@@ -286,7 +286,7 @@ class GUI:
         textview.scroll_to_mark(mark, 0.0, True, 0.0, 1.0)
 
     def on_MainWindow_delete_event(self, MainWindow, data): 
-        if self.show_confirmation_dialog("This will close any running process","Exit?"):
+        if self.show_confirmation_dialog("This will close any running processes","Exit?"):
             if self.__process is not None:
                 os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
             if self.__daqdPid != None and self.is_daqd_running():
@@ -299,7 +299,7 @@ class GUI:
                                 
     def on_executeWindow_delete_event(self, window, data): 
         if self.__process is not None:
-            if self.show_confirmation_dialog("Closing window will stop the running process. Proceed?", "", self.processWindow):
+            if self.show_confirmation_dialog("Closing the window will stop the running process. Proceed?", "", self.processWindow):
                 os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
                 window.hide()
         else:
@@ -309,7 +309,7 @@ class GUI:
 
     def on_readTempWindow_delete_event(self, window, data): 
         if self.__temperatureProcess is not None:
-            if self.show_confirmation_dialog("Closing window will stop temperature monitoring. Proceed?", "", self.readTempWindow):
+            if self.show_confirmation_dialog("Closing the window will stop temperature monitoring. Proceed?", "", self.readTempWindow):
                 os.killpg(os.getpgid(self.__temperatureProcess.pid), signal.SIGTERM)
                 window.hide()
         else:
@@ -320,7 +320,7 @@ class GUI:
         # Main menu handler functions       
 
     def on_menuFileQuit_activate(self, menuFileQuit): # quit with Quit button
-        if self.show_confirmation_dialog("This will close any running process","Exit?"):
+        if self.show_confirmation_dialog("This will close any running processes","Exit?"):
             if self.__process is not None:
                 os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
             if self.__daqdPid != None and self.is_daqd_running():
@@ -337,11 +337,10 @@ class GUI:
         about.set_website("http://www.petsyselectronics.com")
         about.set_website_label("petsyselectronics.com")
         about.set_program_name("TOFPET2 Data Acquisition Software")
-        about.set_authors(["Ricardo Bugalho","Luis Ferramacho"])
         about.show()
         
     def on_menuHelpDoc_activate(self, menuHelpDoc):
-        Gtk.show_uri_on_window(None, "https://www.petsyselectronics.com/web/private/folder/18/d2Vic2l0ZS9kb2N1bWVudGF0aW9uL1RPRlBFVDIgRG93bmxvYWRzL0RvY3VtZW50YXRpb24=/2",0)
+        Gtk.show_uri_on_window(None, "https://www.petsyselectronics.com/web/private/folder/18/d2Vic2l0ZS9kb2N1bWVudGF0aW9uL1RlY2huaWNhbCBEb2N1bWVudGF0aW9uICYgVXNlciBHdWlkZXM=/1",0)
  
     def on_daqdSwitch_state_set(self, daqdSwitch, isON):
 
@@ -361,7 +360,7 @@ class GUI:
                     daqdPids = subprocess.check_output(["pidof", "daqd"])
                     pidsToKill = daqdPids.decode("ascii").split(" ")
 
-                    if self.show_confirmation_dialog("There are other instances of daqd running in the system. Kill them and open a new instance?"):
+                    if self.show_confirmation_dialog("Other instances of 'daqd' are running. Kill them and start a new instance?"):
                         for pid in pidsToKill:
                             os.kill(int(pid), signal.SIGTERM)
                     else:
@@ -384,7 +383,7 @@ class GUI:
                     daqdPid = subprocess.check_output(["pidof", "daqd"])
                     self.__daqdPid = daqdPid.decode("ascii").split(" ")[0]
                 else:
-                    self.show_error_dialog("daqd server was unable to start correctly. Please check error message in the terminal and retry")
+                    self.show_error_dialog("The 'daqd' server failed to start. Please check the terminal for error messages and try again")
                     self.__daqdPid = None
                     self.__daqd_switch_handle_set = True
                     daqdSwitch.set_active(False)
@@ -480,12 +479,12 @@ class GUI:
             self.builder.get_object("biasSpinButton1").set_value(float(prebd[0]))
             self.builder.get_object("biasSpinButton2").set_value(float(bd[0]))
             self.builder.get_object("biasSpinButton3").set_value(float(ov[0]))
-            self.show_info_dialog("WARNING: Simple Bias Settings file detected in working folder", "Values were updated in the Bias Settings Section")
+            self.show_info_dialog("WARNING: A Simple Bias Settings file was found in the working folder", "Values have been updated in the Bias Settings section")
         else:
             self.builder.get_object("biasSpinButton1").set_value(0)
             self.builder.get_object("biasSpinButton2").set_value(0)
             self.builder.get_object("biasSpinButton3").set_value(0)
-            self.show_info_dialog("WARNING: Custom Bias Settings file detected in working folder", "Save button in Bias Settings Section can override them")
+            self.show_info_dialog("WARNING: A Custom Bias Settings file was found in the working folder", "Clicking ‘Save’ in the Bias Settings section will overwrite it")
 
     def check_disc_settings_file(self):
         filename = self.__workingFolder + "disc_settings.tsv"
@@ -507,17 +506,17 @@ class GUI:
             self.builder.get_object("threshSpinButton1").set_value(float(vth_t1[0]))
             self.builder.get_object("threshSpinButton2").set_value(float(vth_t2[0]))
             self.builder.get_object("threshSpinButton3").set_value(float(vth_e[0]))
-            self.show_info_dialog("WARNING: Simple Discriminator Thresholds Settings file detected in working folder", "Values were updated in the ASIC Thresholds Settings Section")
+            self.show_info_dialog("WARNING: A Simple Discriminator Threshold Settings file was found in the working folder", "Values have been updated in the ASIC Threshold Settings section")
         else:
             self.builder.get_object("threshSpinButton1").set_value(0)
             self.builder.get_object("threshSpinButton2").set_value(0)
             self.builder.get_object("threshSpinButton3").set_value(0)
-            self.show_info_dialog("WARNING: Custom Discriminator Thresholds Settings file detected in working folder", "Caution: Save button in ASIC Thresholds Settings Section will overwrite it!")
+            self.show_info_dialog("WARNING: A Custom Discriminator Threshold Settings file was found in the working folder", " Clicking ‘Save’ in the ASIC Threshold Settings section will overwrite it")
 
     def on_dataFolderEntry_activate(self, dataFolderEntry):
         folderExists= os.path.exists(dataFolderEntry.get_text())
         if not folderExists:
-            if self.show_confirmation_dialog("No such folder exists. Create folder?"):
+            if self.show_confirmation_dialog("The folder does not exist. Create it?"):
                 subprocess.call("mkdir "+ dataFolderEntry.get_text(), shell=True) 
                 self.__workingFolder = dataFolderEntry.get_text() + "/"
             else: 
@@ -529,13 +528,13 @@ class GUI:
             
     def on_biasApplyButton_clicked(self, biasApplyButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return
         if not os.path.exists(self.__workingFolder + "config.ini"):
-            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect and save button to create one.")
+            self.show_error_dialog("The ‘config.ini’ file was not found in the working folder. Please use the ‘Detect' and 'Save’ buttons in the ‘System Configuration’ section.")
             return
         if not os.path.exists(self.__workingFolder + "bias_calibration.tsv"):
-            self.show_error_dialog("Bias Calibration file not detected in working folder. Please use the detect and save button in 'System Configuration' section.")
+            self.show_error_dialog("Bias calibration file not found in the working directory. Please use the ‘Detect' and 'Save’ buttons in the ‘System Configuration’ section.")
             return
 
         preBD = self.builder.get_object("biasSpinButton1").get_value()
@@ -546,7 +545,7 @@ class GUI:
         outFile = self.__workingFolder + "bias_settings.tsv"
         
         if os.path.exists(outFile):
-            if not self.show_confirmation_dialog("A Bias Settings file exists in the working folder. Overwrite?"):
+            if not self.show_confirmation_dialog("A Bias Settings file already exists in the working folder. Overwrite it?"):
                 return
             
         command = "./make_simple_bias_settings_table --config %s --offset 0.75 --prebd %.2f --bd %.2f --over %.2f -o %s" % (configFile, preBD, BD, OV, outFile)
@@ -557,10 +556,10 @@ class GUI:
        
     def on_biasEditButton_clicked(self, biasEditButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return
         if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
-            self.show_error_dialog("Please use the save button before editing the bias settings file.")
+            self.show_error_dialog("Click ‘Save’ before editing the bias settings file.")
         appChooser = self.builder.get_object("applicationChooser")
         response = appChooser.run()
         if response == Gtk.ResponseType.OK:
@@ -571,10 +570,10 @@ class GUI:
     
     def on_threshEditButton_clicked(self, threshEditButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
         if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
-            self.show_error_dialog("Please use the save button before editing the discriminator settings file.")
+            self.show_error_dialog("Click ‘Save’ before editing the discriminator thresholds settings file.")
         appChooser = self.builder.get_object("applicationChooser")
         response = appChooser.run()
         if response == Gtk.ResponseType.OK:
@@ -585,10 +584,10 @@ class GUI:
     
     def on_editMapsButton_clicked(self, mapsEditButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
         if not os.path.exists(self.__workingFolder + "map_channel.tsv"):
-            self.show_error_dialog("Please use the detect and save button before editing the channel and trigger maps.")
+            self.show_error_dialog("Please click ‘Detect‘ and ‘Save’ before editing the channel and trigger maps.")
         appChooser = self.builder.get_object("applicationChooser")
         response = appChooser.run()
         if response == Gtk.ResponseType.OK:
@@ -600,10 +599,10 @@ class GUI:
 
     def on_editConfigButton_clicked(self, mapsEditButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
         if not os.path.exists(self.__workingFolder + "config.ini"):
-            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect button and save a valid configuration")
+            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the ‘Detect‘ button and save a valid configuration")
         appChooser = self.builder.get_object("applicationChooser")
         response = appChooser.run()
         if response == Gtk.ResponseType.OK:
@@ -614,13 +613,13 @@ class GUI:
 
     def on_threshApplyButton_clicked(self, threshApplyButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
         if not os.path.exists(self.__workingFolder + "config.ini"):
-            self.show_error_dialog("'config.ini' file not found in the working folder. Please use the detect and save button to create one.")
+            self.show_error_dialog("The ‘config.ini’ file was not found in the working folder. Please use the ‘Detect' and 'Save’ buttons in the ‘System Configuration’ section.")
             return
         if not os.path.exists(self.__workingFolder + "disc_calibration.tsv"):
-            self.show_error_dialog("Discriminator Calibration file not detected in working folder. Please perform ASIC calibration.")
+            self.show_error_dialog("Discriminator calibration file not found in the working folder. Please perform ASIC calibration.")
             return
 
         vth_t1 = self.builder.get_object("threshSpinButton1").get_value()
@@ -630,7 +629,7 @@ class GUI:
         configFile = self.__workingFolder + "config.ini"
         outFile = self.__workingFolder + "disc_settings.tsv"
         if os.path.exists(outFile):
-            if not self.show_confirmation_dialog("A Discriminator Threshold Settings file exists in the working folder. Overwrite?"):
+            if not self.show_confirmation_dialog("A Discriminator Threshold Settings file was found in the working folder. Overwrite the existing file?"):
                 return
             
         command = "./make_simple_disc_settings_table --config %s --vth_t1 %d --vth_t2 %d --vth_e %d -o %s" % (configFile, int(vth_t1), int(vth_t2), int(vth_e), outFile)
@@ -641,7 +640,7 @@ class GUI:
 
     def on_systemDetectButton_clicked(self, systemButton):
         if not self.is_daqd_running():
-            self.show_error_dialog("daqd communication server is not running.")
+            self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
             return
 
         self.__febdTopology = {}
@@ -651,7 +650,7 @@ class GUI:
 
         febds = connection.getActiveFEBDs()
         if not febds:
-            self.show_error_dialog("No FEB/Ds detected. Please check connections and try again.")
+            self.show_error_dialog("No FEB/Ds detected. Please check the connections and try again.")
             return True
 
         tgr = connection.getTriggerUnit()
@@ -779,7 +778,7 @@ class GUI:
         
     def saveSystemSettings(self):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
         
         if not os.path.exists(self.__workingFolder + "config.ini"):
@@ -835,15 +834,15 @@ class GUI:
             
     def on_asicCalStartButton_clicked(self, systemCalStartButton):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return
         
         if not self.is_daqd_running():
-            self.show_error_dialog("daqd communication server is not running.")
+            self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
             return
         
         if not os.path.exists(self.__workingFolder+"bias_settings.tsv"):
-            self.show_error_dialog("Please save bias voltage settings (even if no SIPMs are connected).")
+            self.show_error_dialog("Please save the bias voltage settings, even if no SiPMs are connected.")
             return
 
         ask_cal = [True, True, True]
@@ -856,14 +855,14 @@ class GUI:
 
         for i,f in enumerate(["disc_calibration.tsv", "tdc_calibration.tsv", "qdc_calibration.tsv"]):
             if os.path.exists(self.__workingFolder+f) and ask_cal[i]:
-                do_cal[i] = self.show_confirmation_dialog("A calibration file '%s' already exists in the working folder. Overwrite?" % (f))
+                do_cal[i] = self.show_confirmation_dialog("A calibration file '%s' was found in the working folder. Overwrite the existing file?" % (f))
 
         if not any(do_cal):
             return
         
         confirm = True
         if do_cal[1] or do_cal[2]:
-            confirm = self.show_confirmation_dialog("Calibration procedure can take more than 40 minutes to complete. Are you sure you want to proceed?")
+            confirm = self.show_confirmation_dialog("Calibration may take some time to complete. Do you want to continue?")
         
         if not confirm:
             return True
@@ -873,7 +872,7 @@ class GUI:
         command = ""
         if do_cal[0]:
             command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder + "config.ini -o " + self.__workingFolder + "disc_calibration;"
-            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "disc_calibration -o " + self.__workingFolder+"disc_calibration.tsv --root-file "+self.__workingFolder+"/disc_calibration.root;"
+            command += "python3 -u ./process_threshold_calibration --config " + self.__workingFolder + "config.ini -i " + self.__workingFolder + "disc_calibration -o " + self.__workingFolder+"disc_calibration;"
             command += "python3 -u ./make_simple_disc_settings_table --config " + self.__workingFolder + "config.ini --vth_t1 20 --vth_t2 20 --vth_e 15 -o " + self.__workingFolder+"disc_settings.tsv;"
             
         if do_cal[1]:
@@ -886,7 +885,7 @@ class GUI:
             
         self.setPowerSwitchesStatus(True)
 
-        self.execute(command,"ASIC Calibration","Calibration finished", "Please check calibration summary plots.")
+        self.execute(command,"ASIC Calibration","Calibration finished", "See the summary tables and plots for details")
 
         #end = time()
         
@@ -897,11 +896,11 @@ class GUI:
                 
     def on_temperatureStartupButton_clicked(self, button):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return
         
         if not self.is_daqd_running():
-            self.show_error_dialog("daqd communication server is not running.")
+            self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
             return
            
         self.setPowerSwitchesStatus(True)
@@ -914,11 +913,11 @@ class GUI:
 
     def on_temperatureReadButton_clicked(self, button):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue")
             return
                      
         if not self.is_daqd_running():    
-            self.show_error_dialog("daqd communication server is not running.")
+            self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
             return
     
         if not self.__initialiseTempPlot:
@@ -1077,7 +1076,7 @@ class GUI:
     def on_femOnOffSwitch_state_set(self, switch, isOn):
         if not self.is_daqd_running():
             if not self.__fem_switch_handle_set: 
-                self.show_error_dialog("daqd communication server is not running.")
+                self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
                 self.__fem_switch_handle_set = True
                 self.builder.get_object("femOnOffSwitch").set_active(not isOn)
                 self.__fem_switch_handle_set = False
@@ -1111,7 +1110,7 @@ class GUI:
     def on_biasOnOffSwitch_state_set(self, button, isOn):
         if not self.is_daqd_running(): 
             if not self.__bias_switch_handle_set: 
-                self.show_error_dialog("daqd communication server is not running.")
+                self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
                 self.__bias_switch_handle_set = True
                 self.builder.get_object("biasOnOffSwitch").set_active(not isOn)
                 self.__bias_switch_handle_set = False
@@ -1164,7 +1163,7 @@ class GUI:
                 fileName, ext = os.path.splitext(fileName)
 
             if ' ' in fileName:
-                self.show_error_dialog("Please choose file name prefix without spaces")
+                self.show_error_dialog("File name prefix cannot contain spaces.")
                 fileChooser.hide()
                 return True
 
@@ -1199,7 +1198,7 @@ class GUI:
         fileName = entry.get_text()
 
         if ' ' in fileName:
-            self.show_error_dialog("Please choose file name prefix without spaces")
+            self.show_error_dialog("File name prefix cannot contain spaces.")
             return True
 
       
@@ -1257,23 +1256,23 @@ class GUI:
     def on_acqAcquireButton_clicked(self, acqFileChooseButton):   
 
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return
         
         if not self.is_daqd_running():   
-            self.show_error_dialog("daqd communication server is not running.")
+            self.show_error_dialog("The 'daqd' communication server is not running. Please start it to continue.")
             return
        
         if not os.path.exists(self.__workingFolder + "bias_settings.tsv"):
-            self.show_error_dialog("Please save bias voltage settings.")
+            self.show_error_dialog("Save bias voltage settings to continue.")
             return
             
         if not os.path.exists(self.__workingFolder + "disc_settings.tsv"):
-            self.show_error_dialog("Please save threshold settings.")
+            self.show_error_dialog("Save threshold settings to continue.")
             return
 
         if self.builder.get_object("acqFileEntry").get_text() == "":
-            self.show_error_dialog("Please choose an output file name.")
+            self.show_error_dialog("Please enter a name for the output file.")
             return
 
         outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
@@ -1282,14 +1281,14 @@ class GUI:
             fileName, ext = os.path.splitext(fileName)
 
         if ' ' in outFile:
-            self.show_error_dialog("Please choose file name prefix without spaces")
+            self.show_error_dialog("File name prefix cannot contain spaces.")
             return
     
 
         mode = self.builder.get_object("acqModeOptionsBox").get_active_text()
         time = self.builder.get_object("acqTimeSpinButton").get_value()
         if time == 0:
-            self.show_error_dialog("Acquision duration time set to 0. Please choose a valid acquisition duration time.")
+            self.show_error_dialog("Acquisition duration cannot be 0. Please enter a valid duration.")
             return
 
         useTrigger = self.builder.get_object("acqTrigger").get_active()
@@ -1643,19 +1642,19 @@ class GUI:
     
     def on_processButton_clicked(self, button):
         if self.__workingFolder == None:
-            self.show_error_dialog("Please choose a working folder.")
+            self.show_error_dialog("Choose a working directory to continue.")
             return True
 
         fileName = self.builder.get_object("processingFileChooseEntry").get_text()
         fileExists = os.path.exists(self.__workingFolder+fileName) or os.path.exists(self.__workingFolder+fileName+".rawf")
         if not fileExists:
-            self.show_error_dialog("Raw file doesn't exist. Please enter an existing file or use the Choose button.")
+            self.show_error_dialog("Raw file not found. Please select an existing file or use the ‘Choose’ button.")
             return True
 
         inFileName = self.builder.get_object("processingFileChooseEntry").get_text()
         
         if inFileName == "":
-            self.show_error_dialog("Please choose a file to process.")
+            self.show_error_dialog("Please select the file to process.")
             return True
         
         if inFileName.endswith('.rawf'):
@@ -1686,7 +1685,7 @@ class GUI:
         return True
 
     def show_error_dialog(self, string):
-        dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = string)
+        dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = "ERROR")
         dialog.format_secondary_text(string)
         dialog.run()
         dialog.destroy()
