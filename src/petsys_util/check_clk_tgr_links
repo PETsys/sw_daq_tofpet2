@@ -16,16 +16,18 @@ def get_link_info(conn, portID, slaveID, linkID):
 
 	locked = 'LOCKED' if locked else 'NOT LOCKED'
 	return locked, data, errors
-	
-	
+
+MAP = [  f"J{i%2+1}_F{i//2+1}" for i in range(16) ]
 
 def main(argv):
 	parser = argparse.ArgumentParser(description='Check link betwen CLK&TGR and FEB/Ds')
+	parser.add_argument("--time", default=10, type=float, help="Delay to gather statistics")
 	args = parser.parse_args()
 
 	conn = daqd.Connection()
 
-
+	tu = conn.getTriggerUnit()
+	conn.write_config_register(*tu, 64, 0x02D0, 0xFFFFFFFFFFFFFFFF)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b001)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b011)
 	for portID, slaveID in conn.getActiveUnits(): conn.write_config_register(portID, slaveID, 3, 0x0296, 0b111)
@@ -33,26 +35,44 @@ def main(argv):
 
 	# Get information for all links
 	febd_link_status_1 = {}
+	febd_sysclk_status_1 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
 		for linkID in range(3):
 			febd_link_status_1[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
-	
-	portID, slaveID = conn.getTriggerUnit()
+		pll_up = conn.read_config_register(portID, slaveID, 1, 0x0200) == 1
+		if pll_up:
+			pll_up_counter = conn.read_config_register(portID, slaveID, 64, 0x02E0) / conn.getSystemFrequency()
+		else:
+			pll_up_counter = -1
+
+		febd_sysclk_status_1[portID, slaveID] = (pll_up, pll_up_counter)
+
 	tgr_link_status_1 = {}
 	for linkID in range(128+16):
-		tgr_link_status_1[linkID] = get_link_info(conn, portID, slaveID, linkID)
+		tgr_link_status_1[linkID] = get_link_info(conn, *tu, linkID)
 
 	# Wait 1 seconds and get information again, mainly to be able to compute an error rate
-	time.sleep(2.0)
+	T = 10.0
+	print(f"Waiting for {args.time} seconds...")
+	time.sleep(args.time)
 	febd_link_status_2 = {}
+	febd_sysclk_status_2 = {}
 	for portID, slaveID in conn.getActiveFEBDs():
-	        for linkID in range(3):
-	                febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
+		for linkID in range(3):
+			febd_link_status_2[(portID, slaveID, linkID)] = get_link_info(conn, portID, slaveID, linkID)
 
-	portID, slaveID = conn.getTriggerUnit()
+		pll_up = conn.read_config_register(portID, slaveID, 1, 0x0200) == 1
+		if pll_up:
+			pll_up_counter = conn.read_config_register(portID, slaveID, 64, 0x02E0) / conn.getSystemFrequency()
+		else:
+			pll_up_counter = -1
+
+		febd_sysclk_status_2[portID, slaveID] = (pll_up, pll_up_counter)
+
+
 	tgr_link_status_2 = {}
 	for linkID in range(128+16):
-                tgr_link_status_2[linkID] = get_link_info(conn, portID, slaveID, linkID)
+                tgr_link_status_2[linkID] = get_link_info(conn, *tu, linkID)
 
 
 	for k in febd_link_status_1.keys():
@@ -60,40 +80,60 @@ def main(argv):
 		l2, d2, e2 = febd_link_status_2[k]
 
 		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e1
-		e /= 2
+		e /= args.time
 		febd_link_status_1[k] = (l1, d1, e)
+
+	for k in febd_sysclk_status_1.keys():
+		up1, uptime1 = febd_sysclk_status_1[k]
+		up2, uptime2 = febd_sysclk_status_2[k]
+
+		up = up1 and up2
+		delta = (uptime2 - uptime1) if up else 0
+		febd_sysclk_status_1[k] = (up, delta, uptime2)
 
 	for k in tgr_link_status_1.keys():
 		l1, d1, e1 = tgr_link_status_1[k]
 		l2, d2, e2 = tgr_link_status_2[k]
 
 		e = e2 - e1 if e2 >= e1 else 2**32 + e2 - e
-		e /= 2
+		e /= args.time
 		tgr_link_status_1[k] = (l1, d1, e)
 
+	retval = 0
 	for portID, slaveID in conn.getActiveFEBDs():
+		up, delta, uptime = febd_sysclk_status_1[portID, slaveID]
+		if not up:
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR SYSCLK NOT LOCKED")
+			continue
+		elif delta < args.time:
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR SYSCLK UNSTABLE LOCKED FOR {uptime:4.1f} seconds")
+
+
+
+
 		l, d, e = febd_link_status_1[(portID, slaveID, 2)]
 
 		if l != "LOCKED":
-			print(f"FEB/D ({portID:2d}, {slaveID:2d}) UNKNOWN CLK&TGR PORT")
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) ERROR UNKNOWN CLK&TGR PORT")
 			port = None
+			retval = 1
 		else:
 			port = d
-			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port:2d}")
+			port_str = MAP[port]
+			print(f"FEB/D ({portID:2d}, {slaveID:2d}) CLK&TGR PORT {port_str}")
 
 
+		print(f"               CLK", f"OK   LOCKED FOR {uptime:4.1f} seconds")
 		print(f"              SYNC", check_link(*febd_link_status_1[(portID, slaveID, 0)], 0x8000, 0x8000))
 		print(f"              GATE", check_link(*febd_link_status_1[(portID, slaveID, 1)], 0x8001, 0x8001))
-		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000A))
+		print(f"            TGR IN", check_link(*febd_link_status_1[(portID, slaveID, 2)], 0x0000, 0x000F))
 
 		if port is not None:
 			for lane in range(4):
 				print(f"     TRIGGER OUT {lane}", check_link(*tgr_link_status_1[4*port +  lane], 16*port + lane, 16*port+lane))
 			print(f"    TRIGGER STATUS", check_link(*tgr_link_status_1[128+port], port, port))
 
-
-			
-	return 0
+	return retval
 
 def check_link(l, d, e, dmin, dmax):
 	ok = l == "LOCKED"
@@ -106,3 +146,4 @@ def check_link(l, d, e, dmin, dmax):
 
 if __name__ == '__main__':
 	sys.exit(main(sys.argv))
+
