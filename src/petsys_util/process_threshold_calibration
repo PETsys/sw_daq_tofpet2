@@ -30,7 +30,7 @@ def format_chip_id(chip_tuple):
 def print_statistics_tables(chips_data):
     table_configs = {
         "baseline": {
-			"title": "BASELINE TRIM PARAMETER",
+	    "title": "BASELINE TRIM PARAMETER",
             "columns": ["t", "e"],
             "column_headers": ["t", "e"],
             "col_widths": [7, 7],
@@ -657,6 +657,7 @@ def main(argv):
 		thresholdValue = int(line[5])
 		v = float(line[6])
 		darkProfiles[ (portID, slaveID, chipID, channelID, thresholdName)].Fill(thresholdValue, v)
+                
 	inputFile.close()
 
 	color = ROOT.TColor.GetColor(60, 90, 140)
@@ -665,7 +666,8 @@ def main(argv):
 
 	for key, prof in darkProfiles.items():
 		if prof is None:
-			continue  # skip empty entries
+			continue
+		
 		nbins = prof.GetNbinsX()
 		xlow  = prof.GetXaxis().GetXmin()
 		xup   = prof.GetXaxis().GetXmax()
@@ -701,11 +703,18 @@ def main(argv):
 			content = prof.GetBinContent(i)
 			error   = prof.GetBinError(i)
 			entries = prof.GetBinEntries(i)
-
 			new_bin = nbins - i + 1
-			newProf.SetBinContent(new_bin, content)	
-			newProf.SetBinError(new_bin, error)
 			newProf.SetBinEntries(new_bin, entries)
+			newProf.SetBinContent(new_bin, content*entries)	
+			newProf.SetBinError(new_bin, error)
+			if entries > 0:
+				sumw2 = (error**2 * entries + content**2) * entries
+				newProf.SetBinEntries(new_bin, entries)
+				newProf.SetBinContent(new_bin, content * entries)
+				newProf.GetSumw2().SetAt(sumw2, new_bin)
+			else:
+				newProf.SetBinEntries(new_bin, 0)
+				newProf.SetBinContent(new_bin, 0)
 
 		newProf.SetStats(False)
 		newProf.GetXaxis().SetTitle("Threshold offset from baseline DC (DAC units)")
