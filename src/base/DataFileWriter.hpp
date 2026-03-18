@@ -94,6 +94,7 @@ private:
 	unsigned int	brChannelID;
 	float		brToT;
 	float		brEnergy;
+	float		brTotalEnergy;
 	unsigned short	brTacID;
 	int		brXi;
 	int		brYi;
@@ -109,6 +110,7 @@ private:
 	unsigned int	br1ChannelID,	br2ChannelID;
 	float		br1ToT,		br2ToT;
 	float		br1Energy, 	br2Energy;
+	float		br1TotalEnergy, br2TotalEnergy;
 	unsigned short	br1TacID,	br2TacID;
 	int		br1Xi,		br2Xi;
 	int		br1Yi,		br2Yi;

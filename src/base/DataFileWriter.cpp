@@ -55,6 +55,7 @@ void DataFileWriter::openFile() {
             hData->Branch("channelID", &brChannelID, bs);
             hData->Branch("tot", &brToT, bs);
             hData->Branch("energy", &brEnergy, bs);
+	    hData->Branch("totalEnergy", &brTotalEnergy, bs);
             hData->Branch("tacID", &brTacID, bs);
             hData->Branch("xi", &brXi, bs);
             hData->Branch("yi", &brYi, bs);
@@ -76,6 +77,7 @@ void DataFileWriter::openFile() {
             hData->Branch("time1", &br1Time, bs);
             hData->Branch("channelID1", &br1ChannelID, bs);
             hData->Branch("energy1", &br1Energy, bs);
+	    hData->Branch("totalEnergy1", &br1TotalEnergy, bs);
             hData->Branch("tacID1", &br1TacID, bs);
             hData->Branch("xi1", &br1Xi, bs);
             hData->Branch("yi1", &br1Yi, bs);
@@ -88,6 +90,7 @@ void DataFileWriter::openFile() {
             hData->Branch("channelID2", &br2ChannelID, bs);
             hData->Branch("tot2", &br2ToT, bs);
             hData->Branch("energy2", &br2Energy, bs);
+	    hData->Branch("totalEnergy2", &br2TotalEnergy, bs);
             hData->Branch("tacID2", &br2TacID, bs);
             hData->Branch("xi2", &br2Xi, bs);
             hData->Branch("yi2", &br2Yi, bs);
@@ -386,6 +389,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                 brChannelID = h.raw->channelID;
                 brToT = (h.timeEnd - h.time) * Tps;
                 brEnergy = h.energy * Eunit;
+		brTotalEnergy = p.energy * Eunit;
                 brTacID = h.raw->tacID;
                 brX = h.x;
                 brY = h.y;
@@ -521,6 +525,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                     br1ChannelID = h1.raw->channelID;
                     br1ToT = (h1.timeEnd - h1.time) * Tps;
                     br1Energy = h1.energy * Eunit1;
+		    br1TotalEnergy = p1.energy * Eunit1;
                     br1TacID = h1.raw->tacID;
                     br1X = h1.x;
                     br1Y = h1.y;
@@ -534,6 +539,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                     br2ChannelID = h2.raw->channelID;
                     br2ToT = (h2.timeEnd - h2.time) * Tps;
                     br2Energy = h2.energy * Eunit2;
+		    br2TotalEnergy = p2.energy * Eunit2;
                     br2TacID = h2.raw->tacID;
                     br2X = h2.x;
                     br2Y = h2.y;
