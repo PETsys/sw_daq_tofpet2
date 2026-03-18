@@ -1595,46 +1595,6 @@ class Connection:
 		# Set the read pointer to write pointer, in order to consume all available frames in buffer
 		wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
 		self.__setDataFrameReadPointer(wrPointer)
-
-		# WARNING
-		#: Don't actually remove code below until the new synchronization scheme has been better tested
-
-		frameLength = 1024 / self.__systemFrequency
-
-		# Check ASIC link status at start of acquisition
-		# but wait for  firmware has finshed sync'ing after config and locking
-		# - 8 frames for resync
-		# - 4 frames for lock
-		sleep(12 * frameLength)
-		self.checkAsicRx()
-
-		while True:	
-			targetFrameID = self.getCurrentTimeTag() // 1024
-			#print "Waiting for frame %1d" % targetFrameID
-			while True:
-				df = self.__getDecodedDataFrame()
-				assert df != None
-
-				if  df['id'] > targetFrameID:
-					#print("Found frame %d (%f)" % (df['id'], df['id'] * frameLength))
-					break
-
-				# Set the read pointer to write pointer, in order to consume all available frames in buffer
-				wrPointer, rdPointer = self.__getDataFrameWriteReadPointer();
-				self.__setDataFrameReadPointer(wrPointer);
-
-			# Do this until we took less than 100 ms to sync
-			currentFrameID = self.getCurrentTimeTag() // 1024
-			if (currentFrameID - targetFrameID) * frameLength < 0.100:
-				break
-
-		t0 = time()
-		# For 50 ms, dump all data
-		while (time() - t0) < 0.050:
-			# Set the read pointer to write pointer, in order to consume all available frames in buffer
-			wrPointer, rdPointer = self.__getDataFrameWriteReadPointer();
-			self.__setDataFrameReadPointer(wrPointer);
-
 		return
 
 	def getCurrentTimeTag(self):
