@@ -1254,12 +1254,19 @@ class Connection:
 		self.__writerPipe = None
 		self.__monitorPipe = None
 
+	def __stopAcquisitionRequest(self, fifo_fd):
+		try:
+			return bool(os.read(fifo_fd, 1))
+		except BlockingIOError:
+			return False 
+
 
 	## Acquires data and decodes it, while writting through the acquisition pipeline 
 	# @param step1 Tag to a given variable specific to this acquisition 
 	# @param step2 Tag to a given variable specific to this acquisition
 	# @param acquisitionTime Acquisition time in seconds 
-	def acquire(self, acquisitionTime, step1, step2, verbose=True):
+	def acquire(self, acquisitionTime, step1, step2, namedPipeForStop = None, verbose=True):
+
 		workers = []
 		if self.__monitorPipe is not None:
 			workers += [(self.__monitorPipe.stdin, self.__monitorPipe.stdout) ]
@@ -1295,8 +1302,15 @@ class Connection:
 		currentFrame = startFrame
 		nFrames = 0
 		lastUpdateFrame = currentFrame
-                
+
+		if namedPipeForStop is not None:
+			fifo_fd = os.open(namedPipeForStop, os.O_RDONLY | os.O_NONBLOCK)
+
 		while currentFrame < stopFrame:
+			if namedPipeForStop is not None:
+				if self.__stopAcquisitionRequest(fifo_fd):
+					break
+
 			try:
 				wrPointer, rdPointer = self.__getDataFrameWriteReadPointer()
 				while wrPointer == rdPointer:

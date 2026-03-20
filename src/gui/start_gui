@@ -47,6 +47,8 @@ class GUI:
        
         self.__daqdPid = None
         self.__process = None
+        self.__isProcessSipmAcquisition = False
+
         self.__temperatureProcess = None
   
         self.tempPlot = None
@@ -67,12 +69,23 @@ class GUI:
 
         self.hasSensorInfo = False
 
+
     def on_executeStopButton_clicked(self, button):
-        if self.__process is not None:
-            if self.show_confirmation_dialog("","Stop the process?",  self.processWindow):
-                self.__usedStopButton = True
+        if self.__process is None:
+            return True
+
+        message = "Stop data acquisition?" if self.__isProcessSipmAcquisition else "Stop the process?"
+
+        if self.show_confirmation_dialog("", message, self.processWindow):
+            if self.__isProcessSipmAcquisition:
+                with open("/tmp/aquisition_end_fifo", "w") as fifo:
+                    fifo.write("stop")
+            else:
                 os.killpg(os.getpgid(self.__process.pid), signal.SIGTERM)
+            self.__usedStopButton = True
+
         return True
+
 
     def on_scrollButton_toggled(self, button):
         isActive = self.builder.get_object("executeScrollButton").get_active()
@@ -99,7 +112,7 @@ class GUI:
                     widget.set_sensitive(True)
                 else:
                     widget.set_sensitive(False)
-        
+
         self.builder.get_object("executeScrollButton").set_sensitive(True)
         self.builder.get_object("executeStopButton").set_sensitive(True)
         self.processWindow.set_title("%s (running)" % processName)
@@ -230,7 +243,7 @@ class GUI:
 
     def write_to_textview(self, fd, condition):
         if condition == GLib.IO_IN: 
-            char = fd.read().decode() 
+            char = fd.read().decode('utf-8', errors='ignore')
             tview = self.builder.get_object("executeTextView")
             buf = self.builder.get_object("executeTextView").get_buffer()
         
@@ -1277,6 +1290,8 @@ class GUI:
 
         outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
 
+        self.__isProcessSipmAcquisition = True
+
         if outFile.endswith('.rawf'):
             fileName, ext = os.path.splitext(fileName)
 
@@ -1334,11 +1349,18 @@ class GUI:
         doDelayStart = self.builder.get_object("acqManualStart").get_active()
 
         if(doDelayStart):
-            if os.path.exists("/tmp/aquisition_starting_fifo"):
-                os.remove("/tmp/aquisition_starting_fifo")
-            fifo = os.mkfifo("/tmp/aquisition_starting_fifo")
-            flag += " --wait-on /tmp/aquisition_starting_fifo"   
+            if os.path.exists("/tmp/aquisition_start_fifo"):
+                os.remove("/tmp/aquisition_start_fifo")
+            fifoStart = os.mkfifo("/tmp/aquisition_start_fifo")
+            flag += " --wait-on /tmp/aquisition_start_fifo"   
+
             self.builder.get_object("execStartButton").set_sensitive(True)
+
+
+        if os.path.exists("/tmp/aquisition_end_fifo"):
+            os.remove("/tmp/aquisition_end_fifo")
+            fifoEnd = os.mkfifo("/tmp/aquisition_end_fifo")
+            flag += " --stop-on /tmp/aquisition_end_fifo" 
 
         command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
 
@@ -1393,11 +1415,11 @@ class GUI:
 
     def on_execStartButton_clicked(self, button):
         self.builder.get_object("execStartButton").set_sensitive(False)
-        with open("/tmp/aquisition_starting_fifo", "w") as fifo:
+        with open("/tmp/aquisition_start_fifo", "w") as fifo:
             fifo.write("start")
-
         return True
     
+
     def on_processingConvertBoxOptions_changed(self, comboBox):
 
         dataType =  self.builder.get_object("processingConvertBoxOptions").get_active_text()

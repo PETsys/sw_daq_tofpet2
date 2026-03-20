@@ -5,6 +5,7 @@ from petsys import daqd, config, fe_power
 from copy import deepcopy
 import pandas
 import os
+import stat
 import argparse
 import math
 import glob
@@ -21,6 +22,14 @@ def checkRequiredArgs(parser, required_args, conditional_args):
 				parser.error(f"--{arg} is not allowed when --enableOnlineProcessing is not set")
 
 
+def validateFifo(path):
+	if not os.path.exists(path):
+		print(f"Error: '{path}' does not exist. Create it with: mkfifo {path}")
+		exit(1)
+	if not stat.S_ISFIFO(os.stat(path).st_mode):
+		print(f"Error: '{path}' exists but is not a named pipe (FIFO). Create it with: mkfifo {path}")
+		exit(1)
+
 def main():
 	parser = argparse.ArgumentParser(description='Acquire SIPM data from the DAQ system')
 	parser.add_argument("--config", type=str, required=True, help="Configuration file")
@@ -36,7 +45,8 @@ def main():
 	parser.add_argument("--timeref", type=str, required=False, choices=["sync", "wall", "step", "user"], help="If --enableOnlineProcessing is set, this option selects the time reference for timestamps in processed data.\n")
 	parser.add_argument("--writeRawData", dest="writeRaw", action="store_true", help="If --enableOnlineProcessing is set, write a raw data file in addition to the output processed data file.\n")
 	parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
-	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait on named pipe before acquiring data")
+	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait for named pipe signal before starting the acquisition")
+	parser.add_argument("--stop-on", dest="stopOn", type=str, default=None, help="Stop acquisition on named pipe signal")
 	parser.add_argument("--portID",  type=int, required=False, help="Set target FEBD port ID")
 	parser.add_argument("--slaveID", type=int, required=False, help="Set target FEBD slave ID")
 	args = parser.parse_args()
@@ -100,9 +110,13 @@ def main():
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
 
 	if args.waitOn:
+		validateFifo(args.waitOn)
 		conn.waitOnNamedPipe(args.waitOn)
 
-	# if using online processing, perform a data transmission check before opening file for writing
+	if args.stopOn:
+		validateFifo(args.stopOn)
+
+# if using online processing, perform a data transmission check before opening file for writing
 	if not args.enableOnlineProcessing:
 		conn.openRawAcquisition(args.fileNamePrefix)
 	else:
@@ -128,7 +142,7 @@ def main():
 	asicsConfig = conn.getAsicsConfig()
 
 	if args.paramTable is None:
-		conn.acquire(args.time, 0, 0)
+		conn.acquire(args.time, 0, 0, args.stopOn)
 	else:
 		for step1 in step1Values:
 			step1 = float(step1)
@@ -181,7 +195,7 @@ def main():
 				else:
 					print("Python:: Acquiring data for: " + parNames[0] + " = " + str(step1) + " ; " + parNames[1] + " = " + str(step2))
 				conn.setAsicsConfig(asicsConfig)
-				conn.acquire(args.time, float(step1), float(step2))
+				conn.acquire(args.time, float(step1), float(step2), args.stopOn)
 
 
 
