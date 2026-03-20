@@ -257,8 +257,7 @@ def write_statistics_tables(chips_data, output_file):
             t2_stats = baseline_data.get("t2", [None, None, None, None])
             e_stats  = baseline_data.get("e",  [None, None, None, None])
 
-         
-            uncalibrated = chip_data.get("uncalibrated", "N/A")
+            uncalibrated = 64-len(chip_data.get("validChannels", []))
 
             def safe_int(stats):
                 try:
