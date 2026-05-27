@@ -5,14 +5,15 @@
 #include <TNtuple.h>
 #include <iostream>
 #include <math.h>
+#include <limits.h>
 
 using namespace PETSYS;
 
-DataFileWriter::DataFileWriter(char *fName, bool useAsyncWriting, double frequency = 200E6, EVENT_TYPE eventType = RAW, FILE_TYPE fileType = FILE_TEXT, double fileEpoch = 0.0, int hitLimitToWrite = 1, int eventFractionToWrite = 1024, float splitTime = 1.0){
+DataFileWriter::DataFileWriter(char *fName, bool useAsyncWriting, double frequency = 200E6, EVENT_TYPE eventType = RAW, FILE_TYPE fileType = FILE_TEXT, double userTimeRef = 0.0, int hitLimitToWrite = 1, int eventFractionToWrite = 1024, float splitTime = 1.0){
     this->fName = std::string(fName);
     this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
-    this->fileEpoch = fileEpoch;
-
+    this->userTimeRef = userTimeRef * frequency;
+    this->frequency = frequency;   
     this->eventType = eventType;
     this->eventFractionToWrite = eventFractionToWrite;
     this->eventCounter = 0;
@@ -284,8 +285,13 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
 void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
-    
-    long long tMin = (buffer->getTMin() + t0 - fileEpoch) * (long long)Tps;
+
+    long long tMin = (buffer->getTMin() + t0 - userTimeRef);
+    if (tMin > 0 && tMin > LLONG_MAX / 5000){
+        fprintf(stderr,"Error: User time reference exceeds available data precision for timestamps (tRef = %.0f s since UNIX epoch). Please choose a time reference within less than 100 days before data acquisition start\n", userTimeRef/frequency);
+        exit(1);
+    }
+    tMin *= (long long)Tps;
 
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
@@ -345,8 +351,13 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
 
-    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
-    
+    long long tMin = (buffer->getTMin() + t0 - userTimeRef);
+    if (tMin > 0 && tMin > LLONG_MAX / 5000){
+        fprintf(stderr,"Error: User time reference exceeds available data precision for timestamps (tRef = %.0f s since UNIX epoch). Please choose a time reference within less than 100 days before data acquisition start\n", userTimeRef/frequency);
+        exit(1);
+    }
+    tMin *= (long long)Tps;
+
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
@@ -449,9 +460,14 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
 void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0) {
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
-
-    long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
-
+     
+    long long tMin = (buffer->getTMin() + t0 - userTimeRef);
+    if (tMin > 0 && tMin > LLONG_MAX / 5000){
+        fprintf(stderr,"Error: User time reference exceeds available data precision for timestamps (tRef = %.0f s since UNIX epoch). Please choose a time reference within less than 100 days before data acquisition start\n", userTimeRef/frequency);
+        exit(1);
+    }
+    tMin *= (long long)Tps;
+    
     int N = buffer->getSize();
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;

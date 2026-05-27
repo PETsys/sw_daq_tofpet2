@@ -15,11 +15,11 @@ def checkRequiredArgs(parser, required_args, conditional_args):
 	if getattr(args, "enableOnlineProcessing"):
 		for arg in required_args:
 			if not getattr(args, arg):
-				parser.error(f"--{arg} is required when --enableOnlineProcessing is set")
+				parser.error(f"--{arg} is required when --enable-realtime-processing is set")
 	if not getattr(args, "enableOnlineProcessing"):
 		for arg in conditional_args:
 			if getattr(args, arg):
-				parser.error(f"--{arg} is not allowed when --enableOnlineProcessing is not set")
+				parser.error(f"--{arg} is not allowed when --enable-realtime-processing is not set")
 
 
 def validateFifo(path):
@@ -33,17 +33,18 @@ def validateFifo(path):
 def main():
 	parser = argparse.ArgumentParser(description='Acquire SIPM data from the DAQ system')
 	parser.add_argument("--config", type=str, required=True, help="Configuration file")
-	parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help = "Output data filename prefix. If --enableOnlineProcessing is set, a suffix identifying the output data type will be added for the processed data output file. ")
+	parser.add_argument("-o", type=str, dest="fileNamePrefix", required=True, help = "Output data filename prefix. If --enable-realtime-processing is set, a suffix identifying the output data type will be added for the processed data output file. ")
 	parser.add_argument("--time", type=float, required=True, help="Acquisition time (in seconds)")
 	parser.add_argument("--mode", type=str, required=True, choices=["tot", "qdc", "mixed"], help = "Acquisition mode (tot, qdc or mixed)")
 	parser.add_argument("--enable-hw-trigger", dest="hwTrigger", action="store_true", help="Enable the hardware coincidence filter")
 	parser.add_argument('--enable-realtime-processing', dest="enableOnlineProcessing", action='store_true', help='Enable online (real-time) data processing.')
-	parser.add_argument("--output-type", type=str, dest="outputType", required=False, choices=["raw","singles", "groups", "coincidences"], help="If --enableOnlineProcessing is set, this option selects the type output processed.\n")
-	parser.add_argument("--output-format", type=str, dest="outputFormat", required=False, choices=["text", "textCompact", "binary", "binaryCompact", "root"], help="If --enableOnlineProcessing is set, this option selects the format of the output processed data.\n")
-	parser.add_argument("--writeFraction", type=float, required=False, help="If --enableOnlineProcessing is set, this option selects the fraction of events (in percentage) to be written to the output file. If not set, all events are written.\n")
-	parser.add_argument("--writeMultipleHits", type=int, required=False, help="If --enableOnlineProcessing is set, and outputType is 'groups' or 'coincidences', this option selects the number of hits to be written in the output file. If not set, only 1 hit (with max amplitude) is written.\n")
-	parser.add_argument("--timeref", type=str, required=False, choices=["sync", "wall", "step", "user"], help="If --enableOnlineProcessing is set, this option selects the time reference for timestamps in processed data.\n")
-	parser.add_argument("--writeRawData", dest="writeRaw", action="store_true", help="If --enableOnlineProcessing is set, write a raw data file in addition to the output processed data file.\n")
+	parser.add_argument("--output-type", type=str, dest="outputType", required=False, choices=["raw","singles", "groups", "coincidences"], help="If --enable-realtime-processing is set, this option selects the type output processed.\n")
+	parser.add_argument("--output-format", type=str, dest="outputFormat", required=False, choices=["text", "textCompact", "binary", "binaryCompact", "root"], help="If --enable-realtime-processing is set, this option selects the format of the output processed data.\n")
+	parser.add_argument("--write-fraction", type=float, required=False, help="If --enable-realtime-processing is set, this option selects the fraction of events (0.0–100.0 %) to be written to the output file. If not set, all events are written.\n")
+	parser.add_argument("--write-multiple-hits", type=int, required=False, help="If --enable-realtime-processing is set, and output type is 'groups' or 'coincidences', this option selects the number of hits to be written in the output file. If not set, only 1 hit (with max amplitude) is written.\n")
+	parser.add_argument("--timeref", type=str, dest="timeRef", required=False, choices=["sync", "wall", "step", "manual"], help="If --enable-realtime-processing is set, this option selects the time reference for timestamps of the processed data.\n")
+	parser.add_argument("--user-timeref", type=float, dest="userTimeRef", required=False, help="If --timeref is set to 'wall', this variable defines the chosen user Wall time reference (in seconds since UNIX Epoch) for the timestamps of the processed data.\n")
+	parser.add_argument("--write-raw-data", dest="writeRaw", action="store_true", help="If --enable-realtime-processing is set, write a raw data file in addition to the output processed data file.\n")
 	parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
 	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait for named pipe signal before starting the acquisition")
 	parser.add_argument("--stop-on", dest="stopOn", type=str, default=None, help="Stop acquisition on named pipe signal")
@@ -56,11 +57,11 @@ def main():
 	if args.enableOnlineProcessing:
 		requiredArgs = ["outputType","outputFormat"]
 	else:
-		conditionalArgs = ["writeRaw", "outputType","outputFormat","writeFraction","writeMultipleHits","timeref"]
+		conditionalArgs = ["writeRaw", "outputType","outputFormat","writeFraction","writeMultipleHits","timeRef"]
 
 	checkRequiredArgs(parser, requiredArgs, conditionalArgs)
 
-	parser.set_defaults(writeFraction=100, writeMultipleHits=1, timeref="user", writeRaw=False)
+	parser.set_defaults(writeFraction=100, writeMultipleHits=1, timeRef="sync", userTimeRef=0, writeRaw=False)
 	
 	args = parser.parse_args()
 		
@@ -122,15 +123,15 @@ def main():
 	else:
 		testFileName = os.path.dirname(args.fileNamePrefix)+"/checkDataTransmissionFile"
 		if args.writeRaw:
-			conn.openRawAcquisitionWithProcessing(testFileName,args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeref, verbose=False)
+			conn.openRawAcquisitionWithProcessing(testFileName,args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeRef, args.userTimeRef, verbose=False)
 			if not conn.checkDataTransmission(args.time):
 				exit(1)
-			conn.openRawAcquisitionWithProcessing(args.fileNamePrefix,args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeref)
+			conn.openRawAcquisitionWithProcessing(args.fileNamePrefix,args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeRef, args.userTimeRef)
 		else:
-			conn.openAcquisitionWithProcessing(testFileName, args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeref, verbose=False)
+			conn.openAcquisitionWithProcessing(testFileName, args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeRef, args.userTimeRef, verbose=False)
 			if not conn.checkDataTransmission(args.time):
 				exit(1)
-			conn.openAcquisitionWithProcessing(args.fileNamePrefix, args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeref)
+			conn.openAcquisitionWithProcessing(args.fileNamePrefix, args.config, args.outputType, args.outputFormat, args.writeFraction, args.writeMultipleHits, args.timeRef, args.userTimeRef)
 		for file_path in glob.glob(testFileName + "*"):
 			if os.path.isfile(file_path):
 				os.remove(file_path)

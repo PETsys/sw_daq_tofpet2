@@ -34,8 +34,8 @@ void displayHelp(char * program)
 	fprintf(stderr,  "  --writeFraction N \t Fraction of events to write, in percentage\n");
 	fprintf(stderr,  "  --splitTime t \t Split output into different files every t seconds\n");
 	fprintf(stderr,  "  --simulateHwTrigger \t\t Set the program to filter raw events as in hw trigger, before processing them\n");
-	fprintf(stderr,  "  --timeref [sync|wall|step|user] \t\t Select timeref for written data\n");
-	fprintf(stderr,  "  --epoch \t\tEpoch for --timeref wall. 0 is UNIX epoch.\n");
+	fprintf(stderr,  "  --timeref [sync|wall|step|manual] \t\t Select timeref for written data\n");
+	fprintf(stderr,  "  --userTimeref \t\tEpoch for --timeref wall setting. 0 is UNIX epoch time.\n");
 	fprintf(stderr,  "  --help \t\t Show this help message and exit \n");
 };
 
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
 	bool simulateHwTrigger = false;
 	double fileSplitTime = 0;
 	RawReader::timeref_t tb = RawReader::SYNC;
-	double fileEpoch = 0;
+	double userTimeref = 0;
 
 	static struct option longOptions[] = {
 		{ "help", no_argument, 0, 0 },
@@ -70,7 +70,7 @@ int main(int argc, char *argv[])
 		{ "simulateHwTrigger", no_argument, 0, 0},
 		{ "splitTime", required_argument, 0, 0},
 		{ "timeref", required_argument, 0, 0},
-		{ "epoch", required_argument, 0, 0}
+		{ "userTimeref", required_argument, 0, 0}
     };
 
 	while(true) {
@@ -101,10 +101,10 @@ int main(int argc, char *argv[])
 				case 10:	if(strcmp(optarg, "sync") == 0) tb = RawReader::SYNC;
 							else if(strcmp(optarg, "wall") == 0) tb = RawReader::WALL;
 							else if(strcmp(optarg, "step") == 0) tb = RawReader::STEP;
-							else if(strcmp(optarg, "user") == 0) tb = RawReader::USER;
+							else if(strcmp(optarg, "manual") == 0) tb = RawReader::MANUAL;
 							else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 							break;
-			        case 11:	fileEpoch = boost::lexical_cast<double>(optarg); break;			
+			        case 11:	userTimeref = boost::lexical_cast<double>(optarg); break;			
 				default:	displayUsage(argv[0]); exit(1);
 
 			}
@@ -143,7 +143,7 @@ int main(int argc, char *argv[])
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), COINCIDENCE, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), COINCIDENCE, fileType, userTimeref, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

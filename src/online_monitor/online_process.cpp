@@ -43,7 +43,7 @@ static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 
 enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
 
-enum timeref_t {SYNC, WALL, STEP, USER};
+enum timeref_t {SYNC, WALL, STEP, MANUAL};
 
 static void normalizeLine(char *line) {
 	std::string s = std::string(line);
@@ -178,9 +178,23 @@ struct BlockHeader  {
 };
 
 
+double floorEpochToMidnight(double epoch) {
+    time_t epoch_sec = (time_t)epoch;
+
+    struct tm t;
+    gmtime_r(&epoch_sec, &t);
+
+    t.tm_hour = 0;
+    t.tm_min  = 0;
+    t.tm_sec  = 0;
+
+    return (double)timegm(&t);
+}
+
+
 int main(int argc, char *argv[])
 {
-	assert(argc == 15);
+	assert(argc == 16);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -189,12 +203,14 @@ int main(int argc, char *argv[])
 	char *configFileName = argv[6];
 	char *shmObjectPath = argv[7];
 	int triggerID = boost::lexical_cast<int>(argv[8]);
-	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[9]);
+	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[9]) * systemFrequency;
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[10]);
 	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
 	char *tref = argv[13];
-	bool verbose = (argv[14][0] == 'T');
+	double userTimeRef = boost::lexical_cast<double>(argv[14]);	
+	bool verbose = (argv[15][0] == 'T');
+	
 	bool useAsyncWriting = false;
 	
 	EVENT_TYPE eventType; 
@@ -236,12 +252,13 @@ int main(int argc, char *argv[])
 	}
 	else if(strcmp(tref, "wall") == 0){
 		tb = WALL;
+
 	}
 	else if(strcmp(tref, "step") == 0){
 		tb = STEP;
 	}
-	else if(strcmp(tref, "user") == 0){
-		tb = USER;
+	else if(strcmp(tref, "manual") == 0){
+		tb = MANUAL;
 	}
 
 	if(eventType == RAW && fileType != FILE_TEXT && fileType != FILE_ROOT){
@@ -314,7 +331,7 @@ int main(int argc, char *argv[])
 
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, 0);
+	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, userTimeRef, hitLimitToWrite, eventFractionToWrite, 0);
 
 	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
 
@@ -355,11 +372,12 @@ int main(int argc, char *argv[])
 			switch(tb) {
 				case SYNC:	t0 = 0;
 						break;
-				case WALL:	t0 = daqSynchronizationEpoch;
+				case WALL:	
+							t0 = daqSynchronizationEpoch;
 						break;
 				case STEP:	t0 = -double(stepFirstFrameID) * 1024;
 						break;
-				case USER:	t0 = -double(fileCreationDAQTime);
+				case MANUAL:	t0 = -double(fileCreationDAQTime);
 						break;
 				default:
 						t0 = 0;
