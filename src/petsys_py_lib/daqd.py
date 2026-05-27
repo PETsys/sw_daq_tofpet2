@@ -1105,9 +1105,9 @@ class Connection:
 		return None
 
 	def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None, verbose=verbose)
+		return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None,None, verbose=verbose)
 
-	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef=0, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
 		processedFileNamePrefix = fileNamePrefix
 		if event_type == "raw":
 			processedFileNamePrefix += "_raw"
@@ -1123,9 +1123,9 @@ class Connection:
 		elif output_format == "root":
 			processedFileNamePrefix += ".root"
 
-		return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
+		return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec=online_process_exec, verbose=verbose)
 	
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef=0, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
 		processedFileNamePrefix = fileNamePrefix
 		if event_type== "raw":
 			processedFileNamePrefix += "_raw"
@@ -1140,12 +1140,12 @@ class Connection:
 			processedFileNamePrefix += ".dat"
 		elif output_format == "root":
 			processedFileNamePrefix += ".root"
-		return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
+		return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec=online_process_exec, verbose=verbose)
 
 	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
+		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , None, secondary_exec=monitor_exec, verbose=verbose)
 
-	def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, secondary_exec, verbose=True):
+	def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec, verbose=True):
 		
 		asicsConfig = self.getAsicsConfig()
 		if rawFileNamePrefix != "/dev/null" and useWriteRaw:
@@ -1192,8 +1192,8 @@ class Connection:
 			self.__shmName, \
 			rawFileNamePrefix, \
 			str(int(self.__systemFrequency)), \
-			str(qdcMode), "%1.12f" %  daqSynchronizationEpoch,
-            str(fileCreationDAQTime), 
+			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
+            str(fileCreationDAQTime),
 			calMode and 'T' or 'N', 
 			str(triggerID),
 			verbose and 'T' or 'N']
@@ -1215,6 +1215,7 @@ class Connection:
 			str(fractionToWrite),
 			str(hitLimit),
 			tref,
+			"%1.12f" % userTimeRef,
 			verbose and 'T' or 'N'
 			]
 			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)

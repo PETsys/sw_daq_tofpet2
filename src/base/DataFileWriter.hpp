@@ -56,12 +56,12 @@ private:
 	std::string fName;
 	FILE_TYPE fileType;
 	EVENT_TYPE eventType;
-	double fileEpoch;
+	double userTimeRef;
 	int eventFractionToWrite;
 	long long eventCounter;
 	double fileSplitTime;
 	long long currentFilePartIndex;
-
+	double frequency;
 	int hitLimitToWrite;
 
 	float step1;

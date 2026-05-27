@@ -284,7 +284,7 @@ void RawReader::processStep(bool verbose, EventSink<RawHit> *sink)
 				break;
 		case STEP:	t0 = -double(stepFirstFrameID) * 1024;
 				break;
-		case USER:	t0 = -double(fileCreationDAQTime);
+		case MANUAL:	t0 = -double(fileCreationDAQTime);
 				break;
 		default:
 				t0 = 0;
