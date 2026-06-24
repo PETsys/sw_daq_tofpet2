@@ -17,9 +17,6 @@
 #include <shm_raw.hpp>
 #include <boost/python.hpp>
 #include <boost/lexical_cast.hpp>
-#include "Monitor.hpp"
-#include "SingleValue.hpp"
-#include "Histogram1D.hpp"
 #include <Event.hpp>
 #include <SystemConfig.hpp>
 #include <OrderedEventHandler.hpp>
@@ -37,7 +34,7 @@
 
 using namespace std;
 using namespace PETSYS;
-using namespace PETSYS::OnlineMonitor;
+
 
 static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 
@@ -82,6 +79,7 @@ struct UndecodedHit {
 		u_int64_t frameID;
 		u_int64_t eventWord;
 	};
+
 
 class Decoder : public UnorderedEventHandler<UndecodedHit, RawHit> {
 
@@ -180,7 +178,7 @@ struct BlockHeader  {
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 15);
+	assert(argc == 16);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -195,64 +193,71 @@ int main(int argc, char *argv[])
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
 	char *tref = argv[13];
 	bool verbose = (argv[14][0] == 'T');
+	char *target = argv[15];
 	bool useAsyncWriting = false;
-	
-	EVENT_TYPE eventType; 
+	 
+
+	EVENT_TYPE eventType;
 	if(strcmp(eType, "raw") == 0){
-		eventType = RAW;
-	}
-	else if(strcmp(eType, "singles") == 0){
-		eventType = SINGLE;
-	}	
-	else if(strcmp(eType, "groups") == 0){
-		eventType = GROUP;
-	}
-	else eventType = COINCIDENCE;
-	       
+			eventType = RAW;
+		}
+		else if(strcmp(eType, "singles") == 0){
+			eventType = SINGLE;
+		}	
+		else if(strcmp(eType, "groups") == 0){
+			eventType = GROUP;
+		}
+		else eventType = COINCIDENCE;
+
 	
 	FILE_TYPE fileType; 
-	if(strcmp(fType, "binary") == 0){
-		fileType = FILE_BINARY;
-		useAsyncWriting = true;
-	}
-	if(strcmp(fType, "binaryCompact") == 0){
-		fileType = FILE_BINARY_COMPACT;
-		useAsyncWriting = true;
-	}	
-	else if(strcmp(fType, "text") == 0){
-		fileType = FILE_TEXT;
-	}
-	else if(strcmp(fType, "textCompact") == 0){
-		fileType = FILE_TEXT_COMPACT;
-	}
-	else if(strcmp(fType, "root") == 0){
-		fileType = FILE_ROOT;
-	}
-
-		
 	timeref_t tb; 
-	if(strcmp(tref, "sync") == 0){
-		tb = SYNC;
-	}
-	else if(strcmp(tref, "wall") == 0){
-		tb = WALL;
-	}
-	else if(strcmp(tref, "step") == 0){
-		tb = STEP;
-	}
-	else if(strcmp(tref, "user") == 0){
-		tb = USER;
+	
+	if(strcmp(target, "monitor") != 0){
+			
+		if(strcmp(fType, "binary") == 0){
+			fileType = FILE_BINARY;
+			useAsyncWriting = true;
+		}
+		if(strcmp(fType, "binaryCompact") == 0){
+			fileType = FILE_BINARY_COMPACT;
+			useAsyncWriting = true;
+		}	
+		else if(strcmp(fType, "text") == 0){
+			fileType = FILE_TEXT;
+		}
+		else if(strcmp(fType, "textCompact") == 0){
+			fileType = FILE_TEXT_COMPACT;
+		}
+		else if(strcmp(fType, "root") == 0){
+			fileType = FILE_ROOT;
+		}
+
+		if(eventType == RAW && fileType != FILE_TEXT && fileType != FILE_ROOT){
+			fprintf(stderr, "ERROR: Raw output type can only be written to text or ROOT output format\n");
+			exit(1);
+		}
+
+		if(eventType == SINGLE && (fileType == FILE_BINARY_COMPACT || fileType == FILE_TEXT_COMPACT)){
+			fprintf(stderr, "ERROR: Singles output type can only be written to text, binary or ROOT output formats.\n");
+			exit(1);
+		}
+
+		if(strcmp(tref, "sync") == 0){
+			tb = SYNC;
+		}
+		else if(strcmp(tref, "wall") == 0){
+			tb = WALL;
+		}
+		else if(strcmp(tref, "step") == 0){
+			tb = STEP;
+		}
+		else if(strcmp(tref, "user") == 0){
+			tb = USER;
+		}
 	}
 
-	if(eventType == RAW && fileType != FILE_TEXT && fileType != FILE_ROOT){
-		fprintf(stderr, "ERROR: Raw output type can only be written to text or ROOT output format\n");
-		exit(1);
-	}
 
-	if(eventType == SINGLE && (fileType == FILE_BINARY_COMPACT || fileType == FILE_TEXT_COMPACT)){
-		fprintf(stderr, "ERROR: Singles output type can only be written to text, binary or ROOT output formats.\n");
-		exit(1);
-	}
 	bool totMode = (strcmp(mode, "tot") == 0);
        	
 	// If data was taken in full ToT mode, do not attempt to load these files
@@ -314,29 +319,52 @@ int main(int argc, char *argv[])
 
 	char outputFileName[1024];
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(fileNamePrefix, useAsyncWriting, eventStream->getFrequency(), eventType, fileType, 0, hitLimitToWrite, eventFractionToWrite, 0);
+	DataWriterConfig wCfg;
+	wCfg.fName              = std::string(fileNamePrefix);
+	wCfg.useAsyncWriting    = useAsyncWriting;
+	wCfg.frequency          = static_cast<double>(systemFrequency);
+	wCfg.eventType          = eventType;
+	wCfg.fileType           = fileType;
+	wCfg.hitLimitToWrite    = hitLimitToWrite;
+	wCfg.eventFractionToWrite = eventFractionToWrite;  
+	
+	if(strcmp(target, "both") == 0){
+		wCfg.writeTarget = TARGET_BOTH;
+	}
+	else if(strcmp(target, "disk") == 0){
+		wCfg.writeTarget = TARGET_FILE;
+	}	
+	else if(strcmp(target, "monitor") == 0){
+		wCfg.writeTarget = TARGET_SHM;
+	}
+	
+
+	DataFileWriter *dataFileWriter = new DataFileWriter(wCfg);
 
 	Decoder *pipeline = createProcessingPipeline(eventType, eventStream, config, dataFileWriter);
-
+	
+	
 	pipeline->pushT0(0.0);
 
 	bool isReadyToAcquire = true; 
+
 	fwrite(&isReadyToAcquire, sizeof(bool), 1, stdout);
-	//fprintf(stderr, "pos1\n"); 
+
 	fflush(stdout);
 	sleep(0.01);
-	//fprintf(stderr, "pos2\n");	
+	
 	EventBuffer<UndecodedHit> *outBuffer = NULL; 
 	size_t seqN = 0;
 	long long currentBufferFirstFrame = 0;	
 
 	while(fread(&blockHeader, sizeof(blockHeader), 1, stdin) == 1){
+		
 		dataFileWriter->setStepValues(blockHeader.step1, blockHeader.step2);
-
+		
 		unsigned bs = shm->getSizeInFrames();
 		unsigned rdPointer = blockHeader.rdPointer % (2*bs);
 		unsigned wrPointer = blockHeader.wrPointer % (2*bs);
-		//fprintf(stderr, "d\t%d\n", rdPointer, wrPointer);
+	
 
 		if(blockHeader.blockType == 0) {
 			// First block in a step
@@ -355,7 +383,8 @@ int main(int argc, char *argv[])
 			switch(tb) {
 				case SYNC:	t0 = 0;
 						break;
-				case WALL:	t0 = daqSynchronizationEpoch;
+				case WALL:	
+						t0 = daqSynchronizationEpoch;
 						break;
 				case STEP:	t0 = -double(stepFirstFrameID) * 1024;
 						break;
@@ -367,17 +396,15 @@ int main(int argc, char *argv[])
 		
 			pipeline->pushT0(t0);
 
-			//r = fprintf(tempFile, "%f\t%f\t%ld\t%ld\t", blockHeader.step1, blockHeader.step2, stepStartOffset, stepFirstFrameID);
+			//fprintf(stderr, "%f\t%f\t%ld\n", blockHeader.step1, blockHeader.step2, stepFirstFrameID);
 			//if(r < 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 			//r = fflush(tempFile);
 			//if(r != 0) { fprintf(stderr, "ERROR writing to %s: %d %s\n", fNameRaw, errno, strerror(errno)); exit(1); }
 		}
-		
-
 
 		while(rdPointer != wrPointer) {
 			unsigned index = rdPointer % bs;
-			
+
 			long long frameID = shm->getFrameID(index);
 			if(stepFirstFrameID == -1) stepFirstFrameID = frameID;
 			if(frameID <= lastFrameID && verbose==true) {
@@ -405,7 +432,7 @@ int main(int argc, char *argv[])
 			PETSYS::RawDataFrame *dataFrame = shm->getRawDataFrame(index);
 			// Increase the circular buffer pointer
 			rdPointer = (rdPointer+1) % (2*bs);
-			
+
 			int frameSize = shm->getFrameSize(index);
 			int nEvents = shm->getNEvents(index);
 			bool frameLost = shm->getFrameLost(index);
@@ -437,14 +464,14 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			lastFrameType = frameType;
-
+			//fprintf(stderr, "3:%d\n",index);
 			// Blocksize
 			// Best block size from profiling: 2048
 			// but handle larger frames correctly
 			size_t allocSize = max(nEvents, 4096);
-		
+
 			if(outBuffer == NULL) {
-				//fprintf(stderr,"Allocating first: %d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);
+				//fprintf(stderr,"Allocating first: %d %u %u %u %u\n", nEvents,bs,rdPointer, wrPointer, index);	
 				currentBufferFirstFrame = dataFrame->getFrameID();
 				outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
 				seqN += 1;
@@ -452,12 +479,12 @@ int main(int argc, char *argv[])
 			else if((outBuffer->getFree() < nEvents) || ((frameID - currentBufferFirstFrame) > (1LL << 32))) {
 				// Buffer is full or buffer is covering too much time
 				//fprintf(stderr,"Allocating new: %d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);
+				//fflush(stderr);
 				pool->queueTask(outBuffer, pipeline);
 				currentBufferFirstFrame = dataFrame->getFrameID();
 				outBuffer = new EventBuffer<UndecodedHit>(allocSize, seqN, currentBufferFirstFrame * 1024);
 				seqN += 1;
 			}
-			//else{fprintf(stderr,"%d %d %u %u %u %u\n",outBuffer->getFree(), nEvents,bs,rdPointer, wrPointer, index);}
 			
 			UndecodedHit *p = outBuffer->getPtr() + outBuffer->getUsed();
 			for(int i = 0; i < nEvents; i++) {
@@ -489,7 +516,7 @@ int main(int argc, char *argv[])
 			fflush(stderr);
 
 			pipeline->resetCounters();
-			dataFileWriter->closeStep();
+			//dataFileWriter->closeStep();
 			
 			
 		}

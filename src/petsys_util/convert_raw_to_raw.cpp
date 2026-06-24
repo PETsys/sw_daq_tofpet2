@@ -93,8 +93,16 @@ int main(int argc, char *argv[])
 	}
 	
 	RawReader *reader = RawReader::openFile(inputFilePrefix, RawReader::SYNC);
+
+	DataWriterConfig cfg;
+	cfg.fName = outputFileName;
+	cfg.useAsyncWriting = false;
+	cfg.eventType = RAW;
+	cfg.fileType = fileType;
+	cfg.eventFractionToWrite = eventFractionToWrite;
+	cfg.splitTime = fileSplitTime;
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, 0.0, RAW, fileType , 0.0, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(cfg);
 
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

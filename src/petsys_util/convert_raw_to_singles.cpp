@@ -129,8 +129,20 @@ int main(int argc, char *argv[])
 	}
 
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
+
+	DataWriterConfig cfg;
+	cfg.fName = outputFileName;
+	cfg.useAsyncWriting = false;
+	cfg.frequency = reader->getFrequency();
+	cfg.eventType = SINGLE;
+	cfg.fileType = fileType;
+	cfg.fileEpoch = fileEpoch;
+	cfg.eventFractionToWrite = eventFractionToWrite;
+	cfg.splitTime = fileSplitTime;
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(),  SINGLE, fileType, fileEpoch, 0, eventFractionToWrite, fileSplitTime);
+	DataFileWriter *dataFileWriter = new DataFileWriter(cfg);
+
+	
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

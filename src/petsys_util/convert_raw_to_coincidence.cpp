@@ -143,7 +143,18 @@ int main(int argc, char *argv[])
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), COINCIDENCE, fileType, fileEpoch, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
+	DataWriterConfig cfg;
+	cfg.fName = outputFileName;
+	cfg.useAsyncWriting = false;
+	cfg.frequency = reader->getFrequency();
+	cfg.eventType = COINCIDENCE;
+	cfg.fileType = fileType;
+	cfg.fileEpoch = fileEpoch;
+	cfg.hitLimitToWrite = hitLimitToWrite;
+	cfg.eventFractionToWrite = eventFractionToWrite;
+	cfg.splitTime = fileSplitTime;
+	
+	DataFileWriter *dataFileWriter = new DataFileWriter(cfg);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

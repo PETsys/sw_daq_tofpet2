@@ -93,6 +93,401 @@
       <action-widget response="-5">button8</action-widget>
     </action-widgets>
   </object>
+  <object class="GtkAdjustment" id="dataMonitorAdjustmentMax">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkAdjustment" id="dataMonitorAdjustmentMin">
+    <property name="upper">100</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">10</property>
+  </object>
+  <object class="GtkWindow" id="dataMonitoringWindow">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">Data Monitoring</property>
+    <property name="default_width">1200</property>
+    <property name="default_height">600</property>
+    <property name="gravity">north-east</property>
+    <signal name="delete-event" handler="on_dataMonitoringWindow_delete_event" swapped="no"/>
+    <child>
+      <placeholder/>
+    </child>
+    <child>
+      <object class="GtkGrid" id="dataMonitoringMainGrid">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <child>
+          <object class="GtkBox" id="dataMonitoringLeftBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="margin_left">8</property>
+            <property name="margin_right">8</property>
+            <property name="margin_top">8</property>
+            <property name="margin_bottom">8</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">17</property>
+            <child>
+              <object class="GtkScrolledWindow" id="dataMonitoringTextScrollWindow">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="shadow_type">in</property>
+                <property name="min_content_width">300</property>
+                <property name="min_content_height">186</property>
+                <property name="propagate_natural_width">True</property>
+                <child>
+                  <object class="GtkTextView" id="dataMonitoringTextView">
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="vexpand">False</property>
+                    <property name="editable">False</property>
+                    <property name="wrap_mode">char</property>
+                    <property name="cursor_visible">False</property>
+                    <property name="monospace">True</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkSpinner" id="dataMonitoringSpinner">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="halign">center</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="dataMonitoringIntervalBox">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="halign">center</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringIntervalLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">Reading interval (s)</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">False</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="dataMonitoringComboBoxTime">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="active_id">1</property>
+                    <items>
+                      <item id="0" translatable="yes">1</item>
+                      <item id="1" translatable="yes">2</item>
+                      <item id="3" translatable="yes">5</item>
+                      <item id="4" translatable="yes">10</item>
+                      <item id="5" translatable="yes">30</item>
+                    </items>
+                    <signal name="changed" handler="on_dataMonitoringComboBoxTime_changed" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="left_attach">0</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkSeparator">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="margin_top">8</property>
+            <property name="margin_bottom">8</property>
+            <property name="orientation">vertical</property>
+          </object>
+          <packing>
+            <property name="left_attach">1</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="dataMonitoringRightBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="margin_left">8</property>
+            <property name="margin_right">8</property>
+            <property name="margin_top">8</property>
+            <property name="margin_bottom">8</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkScrolledWindow" id="dataMonitoringPlotWindow">
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <property name="hscrollbar_policy">never</property>
+                <property name="vscrollbar_policy">never</property>
+                <property name="shadow_type">in</property>
+                <property name="min_content_width">700</property>
+                <property name="min_content_height">458</property>
+                <property name="propagate_natural_width">True</property>
+                <property name="propagate_natural_height">True</property>
+                <child>
+                  <placeholder/>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkGrid" id="dataMonitoringControlsGrid">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="halign">center</property>
+                <property name="margin_top">6</property>
+                <property name="row_spacing">6</property>
+                <property name="column_spacing">10</property>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringLabel1">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">end</property>
+                    <property name="label" translatable="yes">Data type</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="dataMonitoringComboBox1">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="margin_right">50</property>
+                    <property name="active">0</property>
+                    <property name="popup_fixed_width">False</property>
+                    <property name="active_id">0</property>
+                    <items>
+                      <item id="0" translatable="yes">Singles</item>
+                      <item id="1" translatable="yes">Groups</item>
+                      <item id="2" translatable="yes">Coincidences</item>
+                      <item id="3" translatable="yes">Raw</item>
+                    </items>
+                    <signal name="changed" handler="on_dataMonitoringComboBox1_changed" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringLabel2">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">end</property>
+                    <property name="label" translatable="yes">Plot type</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">0</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="dataMonitoringComboBox2">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="margin_right">50</property>
+                    <property name="active">0</property>
+                    <items>
+                      <item id="0" translatable="yes">Number of Events</item>
+                      <item id="1" translatable="yes">Spectra</item>
+                    </items>
+                    <signal name="changed" handler="on_dataMonitoringComboBox2_changed" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringLabel3">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">end</property>
+                    <property name="margin_left">50</property>
+                    <property name="label" translatable="yes">Min</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">3</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSpinButton" id="dataMonitoringSpinButtonMin">
+                    <property name="visible">True</property>
+                    <property name="sensitive">False</property>
+                    <property name="can_focus">True</property>
+                    <property name="max_width_chars">6</property>
+                    <property name="adjustment">dataMonitorAdjustmentMin</property>
+                    <property name="climb_rate">1</property>
+                    <property name="value">1</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">4</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringLabel4">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">end</property>
+                    <property name="label" translatable="yes">Max</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">5</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSpinButton" id="dataMonitoringSpinButtonMax">
+                    <property name="visible">True</property>
+                    <property name="sensitive">False</property>
+                    <property name="can_focus">True</property>
+                    <property name="halign">end</property>
+                    <property name="max_width_chars">6</property>
+                    <property name="adjustment">dataMonitorAdjustmentMax</property>
+                    <property name="climb_rate">1</property>
+                    <property name="numeric">True</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">6</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="dataMonitoringComboBox3">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="active">0</property>
+                    <property name="active_id">0</property>
+                    <items>
+                      <item id="0" translatable="yes">Channel ID</item>
+                      <item id="1" translatable="yes">Chip ID</item>
+                      <item id="2" translatable="yes">FEB/D</item>
+                    </items>
+                    <signal name="changed" handler="on_dataMonitoringComboBox3_changed" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">4</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="dataMonitoringLabel5">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="halign">end</property>
+                    <property name="margin_left">100</property>
+                    <property name="label" translatable="yes">Plot by</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">3</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="dataMonitoringCheckBox">
+                    <property name="label" translatable="yes">Full Range</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="active">True</property>
+                    <property name="draw_indicator">True</property>
+                    <signal name="toggled" handler="on_dataMonitoringCheckBox_toggled" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">7</property>
+                    <property name="top_attach">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="dataMonitoringCheckBoxLogY">
+                    <property name="label" translatable="yes">LogY Scale</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="draw_indicator">True</property>
+                    <signal name="toggled" handler="on_dataMonitoringCheckBoxLogY_toggled" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">6</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkCheckButton" id="dataMonitoringCheckBoxGrid">
+                    <property name="label" translatable="yes">Grid</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">False</property>
+                    <property name="draw_indicator">True</property>
+                    <signal name="toggled" handler="on_dataMonitoringCheckBoxGrid_toggled" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">7</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="pack_type">end</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="left_attach">2</property>
+            <property name="top_attach">0</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
   <object class="GtkWindow" id="executeWindow">
     <property name="can_focus">False</property>
     <property name="default_width">925</property>
@@ -135,7 +530,7 @@
             <property name="visible">True</property>
             <property name="can_focus">False</property>
             <property name="halign">center</property>
-            <property name="column_spacing">75</property>
+            <property name="column_spacing">100</property>
             <child>
               <object class="GtkToggleButton" id="executeScrollButton">
                 <property name="label" translatable="yes">Auto Scroll</property>
@@ -185,10 +580,25 @@
                     <property name="can_focus">True</property>
                     <property name="receives_default">True</property>
                     <property name="halign">center</property>
+                    <property name="margin_left">1</property>
                     <signal name="clicked" handler="on_executeStopButton_clicked" swapped="no"/>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
+                    <property name="top_attach">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkButton" id="executeMonitorButton">
+                    <property name="label" translatable="yes">Acquisition Monitor</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">True</property>
+                    <property name="receives_default">True</property>
+                    <property name="margin_left">20</property>
+                    <signal name="clicked" handler="on_executeMonitorButton_clicked" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="left_attach">2</property>
                     <property name="top_attach">0</property>
                   </packing>
                 </child>
@@ -1313,7 +1723,7 @@ Topology</property>
                                   </object>
                                   <packing>
                                     <property name="left_attach">0</property>
-                                    <property name="top_attach">5</property>
+                                    <property name="top_attach">6</property>
                                     <property name="width">2</property>
                                   </packing>
                                 </child>
@@ -1322,7 +1732,7 @@ Topology</property>
                                     <property name="visible">True</property>
                                     <property name="can_focus">False</property>
                                     <property name="tooltip_text" translatable="yes">If chosen (Yes), the data acquisition only starts when the user presses Start in the process window</property>
-                                    <property name="halign">end</property>
+                                    <property name="halign">center</property>
                                     <property name="margin_top">1</property>
                                     <property name="label" translatable="yes">Manual Start</property>
                                   </object>
@@ -1342,50 +1752,16 @@ Topology</property>
                                         <property name="can_focus">False</property>
                                         <property name="halign">center</property>
                                         <child>
-                                          <object class="GtkLabel" id="acqSaveRawLabel">
-                                            <property name="visible">True</property>
-                                            <property name="sensitive">False</property>
-                                            <property name="can_focus">False</property>
-                                            <property name="tooltip_text" translatable="yes">If using 'Real-time Processing', enable this option to store the raw data file in addition to the processed data file.</property>
-                                            <property name="halign">end</property>
-                                            <property name="margin_left">28</property>
-                                            <property name="margin_right">2</property>
-                                            <property name="margin_top">1</property>
-                                            <property name="label" translatable="yes">Save Raw Data</property>
-                                          </object>
-                                          <packing>
-                                            <property name="left_attach">2</property>
-                                            <property name="top_attach">0</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkCheckButton" id="acqSaveRawCheck">
-                                            <property name="visible">True</property>
-                                            <property name="sensitive">False</property>
-                                            <property name="can_focus">True</property>
-                                            <property name="receives_default">False</property>
-                                            <property name="margin_left">3</property>
-                                            <property name="draw_indicator">True</property>
-                                            <child>
-                                              <placeholder/>
-                                            </child>
-                                          </object>
-                                          <packing>
-                                            <property name="left_attach">3</property>
-                                            <property name="top_attach">0</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkLabel" id="acqProcessWhenFinishedLabel">
+                                          <object class="GtkLabel" id="acqEnableMonitoringLabel">
                                             <property name="visible">True</property>
                                             <property name="can_focus">False</property>
                                             <property name="tooltip_text" translatable="yes">When selected, the 'Acquire' button initiates raw data acquisition and, immediately upon completion, processes the data based on the settings in the 'Data Processing' section.
 </property>
                                             <property name="halign">end</property>
-                                            <property name="margin_left">28</property>
+                                            <property name="margin_left">190</property>
                                             <property name="margin_top">4</property>
                                             <property name="margin_bottom">2</property>
-                                            <property name="label" translatable="yes">Process when finished</property>
+                                            <property name="label" translatable="yes">Enable Monitoring</property>
                                           </object>
                                           <packing>
                                             <property name="left_attach">0</property>
@@ -1393,15 +1769,13 @@ Topology</property>
                                           </packing>
                                         </child>
                                         <child>
-                                          <object class="GtkCheckButton" id="acqProcessWhenFinishedCheck">
+                                          <object class="GtkCheckButton" id="acqEnableMonitoringLabelCheck">
                                             <property name="visible">True</property>
                                             <property name="can_focus">True</property>
                                             <property name="receives_default">False</property>
-                                            <property name="margin_left">5</property>
+                                            <property name="margin_left">17</property>
+                                            <property name="active">True</property>
                                             <property name="draw_indicator">True</property>
-                                            <child>
-                                              <placeholder/>
-                                            </child>
                                           </object>
                                           <packing>
                                             <property name="left_attach">1</property>
@@ -1521,6 +1895,94 @@ Topology</property>
                                   </packing>
                                 </child>
                                 <child>
+                                  <object class="GtkLabel" id="acqSaveRawLabel">
+                                    <property name="visible">True</property>
+                                    <property name="sensitive">False</property>
+                                    <property name="can_focus">False</property>
+                                    <property name="tooltip_text" translatable="yes">If using 'Real-time Processing', enable this option to store the raw data file in addition to the processed data file.</property>
+                                    <property name="halign">end</property>
+                                    <property name="margin_left">1</property>
+                                    <property name="margin_right">2</property>
+                                    <property name="margin_top">1</property>
+                                    <property name="label" translatable="yes">Save Raw Data</property>
+                                  </object>
+                                  <packing>
+                                    <property name="left_attach">0</property>
+                                    <property name="top_attach">5</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkGrid">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">False</property>
+                                    <child>
+                                      <object class="GtkCheckButton" id="acqSaveRawCheck">
+                                        <property name="visible">True</property>
+                                        <property name="sensitive">False</property>
+                                        <property name="can_focus">True</property>
+                                        <property name="receives_default">False</property>
+                                        <property name="margin_left">3</property>
+                                        <property name="draw_indicator">True</property>
+                                        <child>
+                                          <placeholder/>
+                                        </child>
+                                      </object>
+                                      <packing>
+                                        <property name="left_attach">0</property>
+                                        <property name="top_attach">0</property>
+                                      </packing>
+                                    </child>
+                                    <child>
+                                      <object class="GtkGrid">
+                                        <property name="visible">True</property>
+                                        <property name="can_focus">False</property>
+                                        <child>
+                                          <object class="GtkLabel" id="acqProcessWhenFinishedLabel">
+                                            <property name="visible">True</property>
+                                            <property name="can_focus">False</property>
+                                            <property name="tooltip_text" translatable="yes">When selected, the 'Acquire' button initiates raw data acquisition and, immediately upon completion, processes the data based on the settings in the 'Data Processing' section.
+</property>
+                                            <property name="halign">end</property>
+                                            <property name="margin_left">170</property>
+                                            <property name="margin_top">4</property>
+                                            <property name="margin_bottom">2</property>
+                                            <property name="label" translatable="yes">Process when finished</property>
+                                          </object>
+                                          <packing>
+                                            <property name="left_attach">0</property>
+                                            <property name="top_attach">0</property>
+                                          </packing>
+                                        </child>
+                                        <child>
+                                          <object class="GtkCheckButton" id="acqProcessWhenFinishedCheck">
+                                            <property name="visible">True</property>
+                                            <property name="can_focus">True</property>
+                                            <property name="receives_default">False</property>
+                                            <property name="halign">end</property>
+                                            <property name="margin_left">6</property>
+                                            <property name="draw_indicator">True</property>
+                                            <child>
+                                              <placeholder/>
+                                            </child>
+                                          </object>
+                                          <packing>
+                                            <property name="left_attach">1</property>
+                                            <property name="top_attach">0</property>
+                                          </packing>
+                                        </child>
+                                      </object>
+                                      <packing>
+                                        <property name="left_attach">1</property>
+                                        <property name="top_attach">0</property>
+                                      </packing>
+                                    </child>
+                                  </object>
+                                  <packing>
+                                    <property name="left_attach">1</property>
+                                    <property name="top_attach">5</property>
+                                  </packing>
+                                </child>
+                                <child>
                                   <placeholder/>
                                 </child>
                                 <child>
@@ -1581,7 +2043,7 @@ Topology</property>
                         <property name="margin_right">6</property>
                         <property name="margin_top">4</property>
                         <property name="margin_bottom">9</property>
-                        <property name="row_spacing">9</property>
+                        <property name="row_spacing">19</property>
                         <property name="column_spacing">20</property>
                         <child>
                           <object class="GtkLabel" id="processingLabel1">

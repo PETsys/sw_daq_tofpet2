@@ -8,11 +8,15 @@
 #include <TNtuple.h>
 #include <OrderedEventHandler.hpp>
 #include"AsyncWriter.hpp"
+
 namespace PETSYS {
 	
-enum FILE_TYPE { FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT};
+enum FILE_TYPE {FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT};
 
-enum EVENT_TYPE { RAW, SINGLE, GROUP, COINCIDENCE};
+enum EVENT_TYPE {RAW, SINGLE, GROUP, COINCIDENCE};
+
+enum WRITE_TARGET {TARGET_FILE, TARGET_SHM, TARGET_BOTH};
+
 
 struct Event {
 	long long time;
@@ -50,9 +54,39 @@ struct CoincidenceGroupHeader {
 
 typedef uint8_t GroupHeader;
 
+struct DataShm {
+    uint32_t nChannels;
+    uint32_t nEnergyBins;
+    double energyLow;
+    double energyHigh;
+    uint64_t counts[]; 
+};
+
+struct DataWriterConfig {
+    //Params for writting data to file
+	std::string fName;
+    bool useAsyncWriting;
+    double frequency = 200E6;
+    EVENT_TYPE eventType = RAW;
+    FILE_TYPE fileType = FILE_TEXT;
+    double fileEpoch = 0.0;
+    int hitLimitToWrite = 1;
+    int eventFractionToWrite = 1024;
+    float splitTime = 0;
+    WRITE_TARGET writeTarget = TARGET_FILE;
+
+    //Params for writting data to shm for monitoring
+	uint32_t nChannels = 131072;
+    uint32_t nEnergyBins = 500;
+    double energyLow = 0.0;
+    double energyHigh = 100.0;
+};
 
 class DataFileWriter{
 private:
+	
+	WRITE_TARGET writeTarget;
+
 	std::string fName;
 	FILE_TYPE fileType;
 	EVENT_TYPE eventType;
@@ -124,20 +158,34 @@ private:
 	unsigned short	brTFine;
 	unsigned short	brEFine;
 
+	//for online monitoring
+	std::string shmName;
+    uint32_t nChannels;
+    uint32_t nEnergyBins;
+    double binWidth;
+    size_t shmSize;
+    DataShm* shm = nullptr;
+
 public:
-	DataFileWriter(char *fName,  bool useAsyncWriting, double frequency, EVENT_TYPE eventType, FILE_TYPE fileType, double fileEpoch, int hitLimitToWrite, int eventFractionToWrite, float splitTime);
+	DataFileWriter(const DataWriterConfig& cfg);
 	~DataFileWriter(); 
 	
 	void openFile(); 
 	void closeFile();
 	void setStepValues(float step1, float step2);
 	void checkFilePartForSplit(long long filePartIndex);
+	
 	void closeStep();
-	void renameFile(); 
+	void renameFile();
+	
 	void writeRawEvents(EventBuffer<RawHit> *buffer, double t0);
 	void writeSingleEvents(EventBuffer<Hit> *buffer, double t0);
 	void writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0);
 	void writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0);
+
+	void openShm(uint32_t nChannels, uint32_t nEnergyBins, double energyLow, double energyHigh); 
+	void fillMonitoringData(uint32_t ch, double energy);
+	void resetMonitoringData();
 };
 
 
@@ -209,5 +257,6 @@ public:
 	};
 };        
 }
+
 
 #endif // __PETSYS__DATA_FILE_WRITER_HPP__DEFINED__

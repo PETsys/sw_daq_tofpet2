@@ -20,12 +20,20 @@ from collections import Counter
 from time import sleep, time
 import csv
 from petsys import daqd, info, bias, fe_power
+from petsys import shm_online_monitoring as shmMonitor
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
 from matplotlib.figure import Figure
 import warnings
 import numpy as np
+import matplotlib
+import ROOT
+import tempfile
+import threading
+import time
+
+print(matplotlib.__version__)
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -40,6 +48,22 @@ class GUI:
         
         self.readTempWindow = self.builder.get_object("readTempWindow")
         self.readTempPlotWindow = self.builder.get_object("readTempPlotWindow")
+
+        self.dataMonitorWindow = self.builder.get_object("dataMonitoringWindow")
+        self.dataMonitorPlotWindow = self.builder.get_object("dataMonitoringPlotWindow")
+        self.dataMonitorCanvas = None
+        self.__dataMonitorReader = None
+        self.__dataMonitorPlotType = 0
+        self.__dataMonitorDataType = None
+        self.__dataMonitorPlotBy = 0
+        self.__dataMonitorRefreshTime = 2
+        self.__dataMonitorSourceId = None
+        self.__dataMonitorMinSettable = None
+        self.__dataMonitorMaxSettable = None
+        self.__dataMonitorMinSelection = None
+        self.__dataMonitorMaxSelection = None
+        self.__dataMonitoringSetLogY = False
+        self.__dataMonitoringSetGrid = False
 
         self.builder.connect_signals(self)
         
@@ -66,6 +90,9 @@ class GUI:
         self.__usedTempStopButton = False
         self.__tempLogFileName = None
         self.__initialiseTempPlot = False
+        self.__initialiseMonitorPlot = False
+
+        self.__monitoringReader = None
 
         self.hasSensorInfo = False
 
@@ -108,7 +135,7 @@ class GUI:
         # turn off sensitive property of all widgets that are not on the execute process window
         for widget in self.builder.get_objects():
             if widget.find_property("sensitive") is not None:
-                if ("execute" in  Gtk.Buildable.get_name(widget)) or ("readTemp" in  Gtk.Buildable.get_name(widget)):
+                if ("execute" in  Gtk.Buildable.get_name(widget)) or ("readTemp" in  Gtk.Buildable.get_name(widget)) or ("dataMonitoring" in  Gtk.Buildable.get_name(widget)):
                     widget.set_sensitive(True)
                 else:
                     widget.set_sensitive(False)
@@ -144,7 +171,6 @@ class GUI:
         flags = fcntl(self.__temperatureProcess.stderr, F_GETFL) # get current p.stdout flags
         fcntl(self.__temperatureProcess.stderr, F_SETFL, flags | O_NONBLOCK)
 
-
         self.readTempWindow.set_title("Read Temperature Sensors (running)")
         #self.readTempWindow.show()
         self.builder.get_object("readTempSpinner").start()
@@ -156,7 +182,7 @@ class GUI:
         
         GLib.io_add_watch(self.__temperatureProcess.stderr, # file descriptor
                           GLib.IO_IN,  # condition
-                          self.write_to_textview_temp ) # callback
+                          self.write_to_textview_temp) # callback
 
         data = [processName, message1, message2]
 
@@ -328,6 +354,11 @@ class GUI:
         else:
             if self.show_confirmation_dialog("","Close window?", self.readTempWindow):
                 window.hide()
+        return True
+
+
+    def on_dataMonitoringWindow_delete_event(self, window, data): 
+        window.hide()
         return True
 
         # Main menu handler functions       
@@ -1308,6 +1339,8 @@ class GUI:
 
         useTrigger = self.builder.get_object("acqTrigger").get_active()
         onlineProcess = self.builder.get_object("acqRealTimeProcess").get_active()
+        onlineMonitoring = self.builder.get_object("acqEnableMonitoringLabelCheck").get_active()
+        
         
         if( not onlineProcess or (onlineProcess and self.builder.get_object("acqSaveRawCheck").get_active())):
             if os.path.exists(outFile+".rawf"):
@@ -1321,8 +1354,12 @@ class GUI:
         else:
             flag = ""
 
+        if onlineMonitoring:
+            flag += " --enable-realtime-monitoring"
+            flagType, flagFormat, flagFraction, flagHits, flagTimeRef = self.getProcessingOptions(outFile)
+            flag += " --output-type %s" % flagType
 
-        if(onlineProcess):
+        if onlineProcess:
             # outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
             # if outFileName.endswith('.ldat'):
             #     outFileName, ext = os.path.splitext(outFileName)
@@ -1345,7 +1382,9 @@ class GUI:
             if self.builder.get_object("acqSaveRawCheck").get_active(): 
                 flag += " --writeRawData"
     
-      
+            #activate shm reader
+            self.__monitoringReader = shmMonitor.shmReader("/online_data")
+
         doDelayStart = self.builder.get_object("acqManualStart").get_active()
 
         if(doDelayStart):
@@ -1363,7 +1402,7 @@ class GUI:
             flag += " --stop-on /tmp/aquisition_end_fifo" 
 
         command = "python3 -u ./acquire_sipm_data --config %sconfig.ini -o %s --mode %s --time %.2f %s;" % (self.__workingFolder, outFile, mode.lower(), time, flag)
-
+        print (command)
         if (not self.builder.get_object("acqProcessWhenFinishedCheck").get_active()):
             self.startAcquisition(command, onlineProcess)
         else:
@@ -1661,7 +1700,6 @@ class GUI:
         return flagType, flagFormat, flagFraction, flagHits, flagTimeRef
     
 
-    
     def on_processButton_clicked(self, button):
         if self.__workingFolder == None:
             self.show_error_dialog("Choose a working directory to continue.")
@@ -1705,6 +1743,388 @@ class GUI:
         self.execute(command, "Raw data Processing", "Finished Data Processing", "")
     
         return True
+
+    # Data monitoring related methods     
+    def on_dataMonitoringComboBox1_changed(self, entry):
+        self.__dataMonitorDataType = self.builder.get_object("dataMonitoringComboBox1").get_active_text() 
+        print(self.__dataMonitorDataType)
+        return True
+
+    def on_dataMonitoringComboBox2_changed(self, entry):
+        self.__dataMonitorPlotType = int(self.builder.get_object("dataMonitoringComboBox2").get_active_id()) 
+        print(self.__dataMonitorPlotType)
+        return True
+    
+    def on_dataMonitoringComboBox3_changed(self, entry):
+        prev_granularity = self.__dataMonitorPlotBy
+        self.__dataMonitorPlotBy = int(self.builder.get_object("dataMonitoringComboBox3").get_active_id()) 
+        self.set_new_granularity_limits(prev_granularity)
+        print(self.__dataMonitorPlotBy)
+        return True
+    
+    def on_dataMonitoringComboBoxTime_changed(self, entry):
+        self.__dataMonitorRefreshTime = int(self.builder.get_object("dataMonitoringComboBoxTime").get_active_text()) 
+        print(self.__dataMonitorRefreshTime)
+        self.start_data_monitoring()
+        return True
+    
+    def on_dataMonitoringCheckBox_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            settable_limits = {
+                0: ( self.__dataMonitorMinSettable, self.__dataMonitorMaxSettable ),
+                1: ( int(self.__dataMonitorMinSettable/64)   , int(self.__dataMonitorMaxSettable/64)  ),
+                2: ( int(self.__dataMonitorMinSettable/1024) , int(self.__dataMonitorMaxSettable/1024)),
+            }
+            min_limit, max_limit = settable_limits[self.__dataMonitorPlotBy]
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_value(min_limit)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_value(max_limit)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(False)
+        else:
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(True)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(True)
+
+    def on_dataMonitoringCheckBoxLogY_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            self.__dataMonitoringSetLogY = True
+        else:
+            self.__dataMonitoringSetLogY = False
+
+    def on_dataMonitoringCheckBoxGrid_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            self.__dataMonitoringSetGrid = True
+        else:
+            self.__dataMonitoringSetGrid = False
+
+    def set_new_granularity_limits(self, prev_granularity):
+        if prev_granularity == 0:
+            minChannel = self.__dataMonitorMinSelection
+            maxChannel = self.__dataMonitorMaxSelection
+        elif prev_granularity == 1:
+            minChannel = self.__dataMonitorMinSelection * 64 
+            maxChannel = self.__dataMonitorMaxSelection * 64 + 64
+        elif prev_granularity == 2:
+            minChannel = self.__dataMonitorMinSelection * 1024 
+            maxChannel = self.__dataMonitorMaxSelection * 1024 + 1024
+        
+        if maxChannel > self.__dataMonitorMaxSettable:
+            maxChannel = self.__dataMonitorMaxSettable
+        if minChannel < self.__dataMonitorMinSettable:
+            minChannel = self.__dataMonitorMinSettable        
+
+        if  self.__dataMonitorPlotBy == 0:
+            self.__dataMonitorMinSelection = minChannel
+            self.__dataMonitorMaxSelection = maxChannel
+        elif  self.__dataMonitorPlotBy == 1:
+            self.__dataMonitorMinSelection = int(minChannel / 64)
+            self.__dataMonitorMaxSelection = int(maxChannel / 64)
+        elif  self.__dataMonitorPlotBy == 2:
+            self.__dataMonitorMinSelection = int(minChannel / 1024)
+            self.__dataMonitorMaxSelection = int(maxChannel / 1024)
+        print(prev_granularity, self.__dataMonitorPlotBy, self.__dataMonitorMinSelection, self.__dataMonitorMaxSelection)
+        
+        self.builder.get_object("dataMonitoringSpinButtonMin").set_range(self.__dataMonitorMinSelection, self.__dataMonitorMaxSelection)
+        self.builder.get_object("dataMonitoringSpinButtonMin").set_value(self.__dataMonitorMinSelection)
+        self.builder.get_object("dataMonitoringSpinButtonMax").set_range(self.__dataMonitorMinSelection , self.__dataMonitorMaxSelection)
+        self.builder.get_object("dataMonitoringSpinButtonMax").set_value(self.__dataMonitorMaxSelection)
+
+
+    def on_executeMonitorButton_clicked(self, button):
+        if not self.__initialiseMonitorPlot:
+            ROOT.gROOT.SetBatch(True)
+            ROOT.gStyle.SetOptStat(0)
+
+            self.rootCanvas = ROOT.TCanvas("c1", "Monitor", 850, 550)
+
+            self.rootImage = Gtk.Image()
+            self.dataMonitorPlotWindow.add_with_viewport(self.rootImage)
+            self.rootImage.show() 
+
+            self.__initialiseMonitorPlot = True
+
+        self.dataMonitorWindow.show_all()
+        self.monitorData()
+        return True
+
+
+    def monitorData(self):
+        self.__dataMonitorReader = shmMonitor.MonitoringShmReader()
+
+        self.selected_channels = [0, 1]
+        self.log_scale = False
+        self.sum_all = True
+
+        nEnergyBins = self.__dataMonitorReader.nEnergyBins
+        edges = self.__dataMonitorReader.edges
+        self.rootHistEnergy = ROOT.TH1D(
+            "hEnergy", "Charge/Energy Spectrum;Energy (a.u.);Counts",
+            nEnergyBins, edges[0], edges[-1]
+        )
+        self.rootHistEnergy.SetFillColor(ROOT.TColor.GetColor("#2E86AB"))
+        self.rootHistEnergy.SetFillStyle(1001)
+
+        nChannels = self.__dataMonitorReader.nChannels
+        self.rootHistCounts = ROOT.TH1D(
+            "hCounts", "Channel Event Distribution;Global Channel ID;Counts",
+            nChannels, 0, nChannels
+        )
+        self.rootHistCounts.SetFillColor(ROOT.TColor.GetColor("#2E86AB"))
+        self.rootHistCounts.SetFillStyle(1001)
+
+        nChipBins = nChannels // 64
+        self.rootHistCountsChip = ROOT.TH1D(
+            "hCountsChip", "ASIC Event Distribution;Chip ID;Counts",
+            nChipBins, 0, nChipBins
+        )
+        self.rootHistCountsChip.SetFillColor(ROOT.TColor.GetColor("#2E86AB"))
+        self.rootHistCountsChip.SetFillStyle(1001)
+        
+        nFebdBins = nChannels // 1024 #### need to see if using FEB/D-1k or 8k
+        self.rootHistCountsFebd = ROOT.TH1D(
+            "hCountsFebd", "FEB/D Event Distribution;FEB/D ID;Counts",
+            nFebdBins, 0, nFebdBins
+        )
+        self.rootHistCountsFebd.SetFillColor(ROOT.TColor.GetColor("#2E86AB"))
+        self.rootHistCountsFebd.SetFillStyle(1001)
+
+        self.hist_map = {
+            0: self.rootHistCounts,
+            1: self.rootHistCountsChip,
+            2: self.rootHistCountsFebd,
+        }
+        self.update_data_monitoring_plot(True)
+        self.start_data_monitoring()
+
+
+    def start_data_monitoring(self):
+        if self.__dataMonitorSourceId is not None:
+            GLib.source_remove(self.__dataMonitorSourceId) 
+        
+        self.__dataMonitorSourceId = GLib.timeout_add(
+            self.__dataMonitorRefreshTime * 1000,
+            self.update_data_monitoring_plot
+        )
+
+
+    def _on_draw_root(self, widget, cr):
+        if self._rootPixbuf is None:
+            return
+        alloc = widget.get_allocation()
+        scaled = self._rootPixbuf.scale_simple(
+            alloc.width, alloc.height, GdkPixbuf.InterpType.BILINEAR
+        )
+        Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
+        cr.paint()
+
+    def _fill_energy_histogram_from_array(self, counts_array):
+        self.rootHistEnergy.Reset()
+        for i, c in enumerate(counts_array):
+            self.rootHistEnergy.SetBinContent(i + 1, float(c))
+    
+
+    def _fill_counts_histogram_from_array(self, granularity, counts_array):
+        hist = self.hist_map[granularity]
+        hist.Reset()
+        counts_for_fill = counts_array
+        if granularity == 1:
+            counts_for_fill = counts_array.reshape(-1, 64).sum(axis=1)
+        if granularity == 2:
+            counts_for_fill = counts_array.reshape(-1, 1024).sum(axis=1)
+        arr = counts_for_fill.astype(np.float64)
+        root_buf = np.frombuffer(hist.GetArray(), dtype=np.float64)
+        root_buf[1:len(arr)+1] = arr
+
+
+    # def _render_canvas_to_gtk(self):
+    #     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+    #         tmppath = f.name
+
+    #     # This is small hack to avoid printing root image creation info to screen, by redirecting stdout/stder to devnull temporarily
+    #     devnull = open(os.devnull, 'w')
+    #     old_stdout = os.dup(1)
+    #     old_stderr = os.dup(2)
+    #     os.dup2(devnull.fileno(), 1)
+    #     os.dup2(devnull.fileno(), 2)
+
+    #     self.rootCanvas.SaveAs(tmppath)
+
+    #     os.dup2(old_stdout, 1)
+    #     os.dup2(old_stderr, 2)
+    #     os.close(old_stdout)
+    #     os.close(old_stderr)
+    #     devnull.close()
+
+    #     pixbuf = GdkPixbuf.Pixbuf.new_from_file(tmppath)
+    #     self.rootImage.set_from_pixbuf(pixbuf)
+    #     self.rootImage.queue_draw()
+    #     os.unlink(tmppath)
+
+    def _render_thread_worker(self):
+        """Background thread: only the slow SaveAs PNG lives here."""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                tmppath = f.name
+
+            devnull = open(os.devnull, 'w')
+            old_stdout = os.dup(1)
+            old_stderr = os.dup(2)
+            os.dup2(devnull.fileno(), 1)
+            os.dup2(devnull.fileno(), 2)
+
+            self.rootCanvas.SaveAs(tmppath)
+
+            os.dup2(old_stdout, 1)
+            os.dup2(old_stderr, 2)
+            os.close(old_stdout)
+            os.close(old_stderr)
+            devnull.close()
+
+            GLib.idle_add(self._update_gtk_image, tmppath)
+        except Exception as e:
+            print(f"Render thread error: {e}")
+            self._render_thread_running = False
+
+
+    def _update_gtk_image(self, tmppath):
+        """GTK main thread: load pixbuf and refresh widget."""
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(tmppath)
+            self.rootImage.set_from_pixbuf(pixbuf)
+            self.rootImage.queue_draw()
+            os.unlink(tmppath)
+        except Exception as e:
+            print(f"GTK image update error: {e}")
+        finally:
+            self._render_thread_running = False
+        return False 
+    
+
+    def setup_plot_for_spectra(self, xMax):
+        self.rootHistEnergy.GetXaxis().SetRangeUser(0, xMax * 1.2)
+        self.rootHistEnergy.SetTitle("Charge/Energy Spectrum;Energy (a.u.);Counts")
+
+    def setup_plot_for_count_dist(self):
+        titles = {
+            0: ("Global Channel ID", "Channel Event Distribution"),
+            1: ("Chip ID",           "ASIC Event Distribution"),
+            2: ("FEB/D ID",          "FEB/D Event Distribution"),
+        }
+        limits = {
+             0: ( self.__dataMonitorMinSelection - 5, self.__dataMonitorMaxSelection + 5 ),
+             1: ( self.__dataMonitorMinSelection - 1, self.__dataMonitorMaxSelection + 2 ),
+             2: ( self.__dataMonitorMinSelection - 1, self.__dataMonitorMaxSelection + 1 ),
+         }
+        xLabel, title = titles.get(self.__dataMonitorPlotBy)
+        xMinLimit, xMaxLimit = limits.get(self.__dataMonitorPlotBy)    
+        self.hist_map[self.__dataMonitorPlotBy].SetTitle(f"{title};{xLabel};Counts")
+        self.hist_map[self.__dataMonitorPlotBy].GetXaxis().SetRangeUser(xMinLimit, xMaxLimit)
+
+    def update_data_monitoring_plot(self, isFirstCall = False):
+
+        t0 = time.time()
+      
+        self.__dataMonitorMinSettable, self.__dataMonitorMaxSettable, channel_data_array = self.__dataMonitorReader.read_counts_for_all_channels() 
+
+        if isFirstCall:
+            self.__dataMonitorMinSelection = self.__dataMonitorMinSettable
+            self.__dataMonitorMaxSelection = self.__dataMonitorMaxSettable
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_range(self.__dataMonitorMinSelection, self.__dataMonitorMaxSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_value(self.__dataMonitorMinSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_range(self.__dataMonitorMinSelection, self.__dataMonitorMaxSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_value(self.__dataMonitorMaxSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(False)
+
+        self.__dataMonitorMinSelection = int(self.builder.get_object("dataMonitoringSpinButtonMin").get_value()) 
+        self.__dataMonitorMaxSelection = int(self.builder.get_object("dataMonitoringSpinButtonMax").get_value()) 
+
+        
+        energy_data_array = self.__dataMonitorReader.read_energy_for_channel_range(self.__dataMonitorMinSelection, self.__dataMonitorMaxSelection)
+       
+        edges        = self.__dataMonitorReader.edges
+        centers      = self.__dataMonitorReader.bin_centers
+      
+        # --- Statistics ---
+        buf = self.builder.get_object("dataMonitoringTextView").get_buffer()
+        if energy_data_array.sum() > 0:
+            peak_bin    = int(energy_data_array.argmax())
+            peak_energy = centers[peak_bin]
+            peak_counts = int(energy_data_array[peak_bin])
+            weights     = energy_data_array.astype(np.float64)
+            mean_energy = float(np.average(centers, weights=weights))
+            variance    = float(np.average((centers - mean_energy)**2, weights=weights))
+            std_energy  = float(np.sqrt(variance))
+            nonzero     = np.where(energy_data_array > 0)[0]
+            emin        = edges[nonzero[0]]
+            emax        = edges[nonzero[-1] + 1]
+        else:
+            peak_energy = peak_counts = mean_energy = std_energy = 0.0
+            emin, emax  = edges[0], edges[-1]
+
+        sep  = "─" * 32 + "\n"
+        text = (
+            f"{'CHANNEL STATISTICS':^32}\n{sep}"
+            f"  Channel ID     : {self.selected_channels}\n"
+            f"  Total counts   : {energy_data_array.sum()}\n{sep}"
+            f"  Peak energy    : {peak_energy:.2f}\n"
+            f"  Peak counts    : {peak_counts:,}\n"
+            f"  Mean energy    : {mean_energy:.2f}\n"
+            f"  Std dev        : {std_energy:.2f}\n{sep}"
+            f"  Energy range   : [{emin:.2f}, {emax:.2f}]\n"
+            f"  Num bins       : {self.__dataMonitorReader.nEnergyBins}\n"
+            f"  Bin width      : {(edges[1]-edges[0]):.3f}\n{sep}"
+        )
+        buf.set_text(text)
+    
+        # --- Plot ---
+        self.rootCanvas.cd()
+       
+
+        if self.__dataMonitorPlotType == 1:
+            self._fill_energy_histogram_from_array(energy_data_array)
+            self.setup_plot_for_spectra(emax)
+            if self.__dataMonitoringSetLogY:
+                self.rootCanvas.SetLogy(1)
+                #self.rootHistEnergy.SetMinimum(0.5)
+            else:
+                self.rootCanvas.SetLogy(0)
+                #self.rootHistEnergy.SetMinimum(0)
+
+            if self.__dataMonitoringSetGrid:
+                self.rootCanvas.SetGrid(1, 1) 
+            else:
+                self.rootCanvas.SetGrid(0, 0) 
+            
+            self.rootHistEnergy.Draw("HIST")
+
+        elif self.__dataMonitorPlotType == 0:
+            self._fill_counts_histogram_from_array(self.__dataMonitorPlotBy, channel_data_array)   
+            self.setup_plot_for_count_dist()
+            if self.__dataMonitoringSetLogY:
+                self.rootCanvas.SetLogy(1)
+                #self.rootHistCounts.SetMinimum(0.5)
+            else:
+                self.rootCanvas.SetLogy(0)
+                #self.rootHistCounts.SetMinimum(0)
+
+            if self.__dataMonitoringSetGrid:
+                self.rootCanvas.SetGrid(1, 1) 
+            else:
+                self.rootCanvas.SetGrid(0, 0) 
+            
+            self.hist_map[self.__dataMonitorPlotBy].Draw("HIST")    
+        self.rootCanvas.Update()
+        if not getattr(self, '_render_thread_running', False):
+            self._render_thread_running = True
+            threading.Thread(target=self._render_thread_worker, daemon=True).start()
+
+        #self._render_canvas_to_gtk()
+        print(f"block 1 free gtk loop took  took {(time.time() - t0)*1000:.1f} ms")
+        return True    
+
+
+
+    # Dialogs
 
     def show_error_dialog(self, string):
         dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = "ERROR")

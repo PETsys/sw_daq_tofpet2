@@ -5,33 +5,42 @@
 #include <TNtuple.h>
 #include <iostream>
 #include <math.h>
-
+#include <fcntl.h>      
+#include <sys/mman.h>   
+#include <sys/stat.h>   
+#include <unistd.h>     
+#include <cstring>     
+#include <atomic>    
 using namespace PETSYS;
 
-DataFileWriter::DataFileWriter(char *fName, bool useAsyncWriting, double frequency = 200E6, EVENT_TYPE eventType = RAW, FILE_TYPE fileType = FILE_TEXT, double fileEpoch = 0.0, int hitLimitToWrite = 1, int eventFractionToWrite = 1024, float splitTime = 1.0){
-    this->fName = std::string(fName);
-    this->fileType = (strcmp(fName, "/dev/null") != 0) ? fileType : FILE_NULL;
-    this->fileEpoch = fileEpoch;
-
-    this->eventType = eventType;
-    this->eventFractionToWrite = eventFractionToWrite;
+DataFileWriter::DataFileWriter(const DataWriterConfig& cfg){
+    this->fName = cfg.fName;
+    this->fileType = (cfg.fName != "/dev/null") ? cfg.fileType : FILE_NULL;
+    this->fileEpoch = cfg.fileEpoch;
+    this->eventType = cfg.eventType;
+    this->eventFractionToWrite = cfg.eventFractionToWrite;
     this->eventCounter = 0;
-
-    this->fileSplitTime = splitTime * frequency; // Convert from seconds to clock cycles
+    this->fileSplitTime = cfg.splitTime * cfg.frequency;
     this->currentFilePartIndex = 0;
-
-    this->hitLimitToWrite = hitLimitToWrite;
-
-    this->Tps = 1E12/frequency;
+    this->hitLimitToWrite = cfg.hitLimitToWrite;
+    this->Tps = 1E12 / cfg.frequency;
     this->Tns = Tps / 1000.;
+    this->useAsyncWriting = cfg.useAsyncWriting;
+    this->writeTarget = cfg.writeTarget;
+    this->shm = nullptr;   
+    
+    if (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH){
+        openFile();  
+    }
 
-    this->useAsyncWriting = useAsyncWriting;   
-    openFile();
+    if (writeTarget == TARGET_SHM || writeTarget == TARGET_BOTH){
+        openShm(cfg.nChannels, cfg.nEnergyBins, cfg.energyLow, cfg.energyHigh);
+    }
 };
 
 void DataFileWriter::openFile() {
     stepBegin = 0;
-    
+  
     if (fileType == FILE_ROOT){
         hFile = new TFile(fName.c_str(), "RECREATE");
         int bs = 512*1024;
@@ -55,7 +64,7 @@ void DataFileWriter::openFile() {
             hData->Branch("channelID", &brChannelID, bs);
             hData->Branch("tot", &brToT, bs);
             hData->Branch("energy", &brEnergy, bs);
-	    hData->Branch("totalEnergy", &brTotalEnergy, bs);
+	        hData->Branch("totalEnergy", &brTotalEnergy, bs);
             hData->Branch("tacID", &brTacID, bs);
             hData->Branch("xi", &brXi, bs);
             hData->Branch("yi", &brYi, bs);
@@ -127,11 +136,49 @@ void DataFileWriter::openFile() {
         }
         else{
             dataFile = fopen(fName.c_str(), "w");
-             assert(dataFile != NULL);
+            assert(dataFile != NULL);
         }
         indexFile = NULL;
     }
 };
+
+void DataFileWriter::openShm(uint32_t nChannels, uint32_t nEnergyBins, double energyLow, double energyHigh) {
+    shmName = "/online_data";
+    shmSize = sizeof(DataShm) + nChannels * nEnergyBins * sizeof(uint64_t);
+    binWidth = (energyHigh - energyLow)/ nEnergyBins;                                
+    int fd = shm_open(shmName.c_str(), O_CREAT | O_EXCL | O_RDWR,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    if (fd < 0 && errno == EEXIST) {
+        shm_unlink(shmName.c_str());
+        fd = shm_open(shmName.c_str(), O_CREAT | O_EXCL | O_RDWR,
+                      S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
+    }
+    if (fd < 0)
+        throw std::runtime_error("shm_open failed: " + shmName);
+
+    if (ftruncate(fd, shmSize) < 0) {
+        close(fd);
+        shm_unlink(shmName.c_str());
+        throw std::runtime_error("ftruncate failed");
+    }
+
+    shm = static_cast<DataShm*>(
+        mmap(nullptr, shmSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
+    close(fd);
+
+    if (shm == MAP_FAILED) {
+        shm = nullptr;
+        shm_unlink(shmName.c_str());
+        throw std::runtime_error("mmap failed");
+    }
+
+    shm->nChannels = nChannels;
+    shm->nEnergyBins = nEnergyBins;
+    shm->energyLow = energyLow;
+    shm->energyHigh = energyHigh;
+    std::memset(shm->counts, 0, nChannels * nEnergyBins * sizeof(uint64_t));
+}
+
 	
 DataFileWriter::~DataFileWriter() {
     if(useAsyncWriting){
@@ -140,6 +187,11 @@ DataFileWriter::~DataFileWriter() {
     else closeFile();
     if(fileSplitTime > 0) {
         renameFile();
+    }
+    if (shm) {
+        munmap(shm, shmSize);
+        shm_unlink(shmName.c_str()); 
+        shm = nullptr;
     }
 };
 
@@ -250,13 +302,19 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
 
     long long bufferMinFrameID = buffer->getTMin() / 1024;
 
+
+    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
+    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+    bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
+
+
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
         eventCounter += 1;
         if((tmpCounter % 1024) >= eventFractionToWrite) continue;
 
         RawHit &hit = buffer->get(i);
-        if (fileType == FILE_ROOT){
+        if (writeToRoot) {
             brStep1 = step1;
             brStep2 = step2;
             
@@ -269,13 +327,16 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
             brEFine = hit.efine;
             hData->Fill();
         }
-        else {
+        else if(writeToFile) {
             fprintf(dataFile, "%lu\t%u\t%hu\t%hu\t%hu\t%hu\t%hu\n",
                 hit.frameID,
                 hit.channelID, hit.tacID,
                 hit.tcoarse, hit.ecoarse,
                 hit.tfine, hit.efine
             );
+        }
+        if(writeToShm){
+            fillMonitoringData(hit.channelID, hit.efine);
         }
     }	
 }
@@ -286,8 +347,16 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
     checkFilePartForSplit(filePartIndex);
     
     long long tMin = (buffer->getTMin() + t0 - fileEpoch) * (long long)Tps;
-
+    
     int N = buffer->getSize();
+
+    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
+    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+
+    bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
+    bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
+    bool writeToText = writeToFile && (fileType == FILE_TEXT);
+    
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
         eventCounter += 1;
@@ -298,7 +367,7 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
 
         float Eunit = hit.raw->qdcMode ? 1.0 : Tns;
         
-        if (fileType == FILE_ROOT){
+        if (writeToRoot){
             brStep1 = step1;
             brStep2 = step2;
             
@@ -317,7 +386,7 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
             
             hData->Fill();
         }
-        else if(fileType == FILE_BINARY) {
+        else if(writeToBinary) {
             Event eo = {
                 ((long long)(hit.time * Tps)) + tMin,
                 hit.energy * Eunit,
@@ -330,12 +399,15 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
                 fwrite(&eo, sizeof(eo), 1, dataFile);
             }
         }
-        else if (fileType == FILE_TEXT) {
+        else if (writeToText) {
             fprintf(dataFile, "%lld\t%f\t%d\n",
                 ((long long)(hit.time * Tps)) + tMin,
                 hit.energy * Eunit,
                 (int)hit.raw->channelID
                 );
+        }
+        if(writeToShm){
+            fillMonitoringData((int)hit.raw->channelID, hit.energy * Eunit);
         }
     }	
 }
@@ -348,6 +420,16 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
     long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
     
     int N = buffer->getSize();
+
+    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
+    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+
+    bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
+    bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
+    bool writeToBinaryCompact = writeToFile && (fileType == FILE_BINARY_COMPACT);
+    bool writeToText = writeToFile && (fileType == FILE_TEXT);
+    bool writeToTextCompact = writeToFile && (fileType == FILE_TEXT_COMPACT);
+
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
         eventCounter += 1;
@@ -360,10 +442,10 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
         Hit &h0 = *p.hits[0];
         int limit = (hitLimitToWrite < p.nHits) ? hitLimitToWrite : p.nHits;
 
-        if(fileType == FILE_TEXT_COMPACT) {
+        if(writeToTextCompact) {
             fprintf(dataFile, "%d\n", limit);
         }
-        else if(fileType == FILE_BINARY_COMPACT) {
+        else if(writeToBinaryCompact) {
             GroupHeader header = {(uint8_t)limit};
             if(useAsyncWriting){
                 dataWriter->appendData(static_cast<void*>(&header) ,sizeof(header));
@@ -378,7 +460,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
             float Eunit = h.raw->qdcMode ? 1.0 : Tns;
 
 
-            if (fileType == FILE_ROOT){
+            if (writeToRoot){
                 brStep1 = step1;
                 brStep2 = step2;
 
@@ -389,7 +471,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                 brChannelID = h.raw->channelID;
                 brToT = (h.timeEnd - h.time) * Tps;
                 brEnergy = h.energy * Eunit;
-		brTotalEnergy = p.energy * Eunit;
+		        brTotalEnergy = p.energy * Eunit;
                 brTacID = h.raw->tacID;
                 brX = h.x;
                 brY = h.y;
@@ -399,7 +481,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                 
                 hData->Fill();
             }
-            else if(fileType == FILE_BINARY) {
+            else if(writeToBinary) {
                 GroupEvent eo = { 
                     (uint8_t)p.nHits, (uint8_t)m,
                     ((long long)(h.time * Tps)) + tMin,
@@ -413,7 +495,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     fwrite(&eo, sizeof(eo), 1, dataFile);
                 }
             }
-            else if(fileType == FILE_BINARY_COMPACT) {
+            else if(writeToBinaryCompact) {
                 Event eo = {
                     ((long long)(h.time * Tps)) + tMin,
                     h.energy * Eunit,
@@ -426,7 +508,7 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     fwrite(&eo, sizeof(eo), 1, dataFile);
                 }
             }
-            else if (fileType == FILE_TEXT) {
+            else if (writeToText) {
                 fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\n",
                     p.nHits, m,
                     ((long long)(h.time * Tps)) + tMin,
@@ -434,12 +516,15 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     h.raw->channelID
                 );
             }
-            else if (fileType == FILE_TEXT_COMPACT) {
+            else if (writeToTextCompact) {
                 fprintf(dataFile, "%lld\t%f\t%d\n",
                     ((long long)(h.time * Tps)) + tMin,
                     h.energy * Eunit,
                     h.raw->channelID
                 );
+            }
+            if(writeToShm){
+                fillMonitoringData(h.raw->channelID, h.energy * Eunit);
             }
         }
     }	   
@@ -452,7 +537,17 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
 
     long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
 
+    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
+    bool writeToShm = (writeTarget == TARGET_SHM || writeTarget == TARGET_BOTH);
+
+    bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
+    bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
+    bool writeToBinaryCompact = writeToFile && (fileType == FILE_BINARY_COMPACT);
+    bool writeToText = writeToFile && (fileType == FILE_TEXT);
+    bool writeToTextCompact = writeToFile && (fileType == FILE_TEXT_COMPACT);
+
     int N = buffer->getSize();
+
     for (int i = 0; i < N; i++) {
         long long tmpCounter = eventCounter;
         eventCounter += 1;
@@ -469,8 +564,15 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
         int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
 
         int coincHitIndex = 0;
+        if(writeToShm) {	        
+            for(int i = 0; i < limit1 + limit2; i++) {
+                Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
+                float Eunit = h.raw->qdcMode ? 1.0 : Tns;
+                fillMonitoringData(h.raw->channelID, h.energy * Eunit);
+            }
+        }
         
-        if(fileType == FILE_TEXT_COMPACT) {	
+        if(writeToTextCompact) {	
             fprintf(dataFile, "%d\t%d\n", limit1, limit2);
             for(int i = 0; i < limit1 + limit2; i++) {
                 Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
@@ -481,7 +583,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                 h.raw->channelID);
             }
         }
-        else if(fileType == FILE_BINARY_COMPACT) {
+        else if(writeToBinaryCompact) {
             CoincidenceGroupHeader header = {(uint8_t)limit1, (uint8_t)limit2};
             if(useAsyncWriting){
                 dataWriter->appendData(static_cast<void*>(&header) ,sizeof(header));
@@ -515,7 +617,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                 float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
                 float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
 
-                if (fileType == FILE_ROOT){
+                if (writeToRoot){
                     brStep1 = this->step1;
                     brStep2 = this->step2;
 
@@ -525,7 +627,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                     br1ChannelID = h1.raw->channelID;
                     br1ToT = (h1.timeEnd - h1.time) * Tps;
                     br1Energy = h1.energy * Eunit1;
-		    br1TotalEnergy = p1.energy * Eunit1;
+		            br1TotalEnergy = p1.energy * Eunit1;
                     br1TacID = h1.raw->tacID;
                     br1X = h1.x;
                     br1Y = h1.y;
@@ -539,7 +641,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                     br2ChannelID = h2.raw->channelID;
                     br2ToT = (h2.timeEnd - h2.time) * Tps;
                     br2Energy = h2.energy * Eunit2;
-		    br2TotalEnergy = p2.energy * Eunit2;
+		            br2TotalEnergy = p2.energy * Eunit2;
                     br2TacID = h2.raw->tacID;
                     br2X = h2.x;
                     br2Y = h2.y;
@@ -549,7 +651,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
 
                     hData->Fill();
                 }
-                else if(fileType == FILE_BINARY) {
+                else if(writeToBinary) {
                     CoincidenceEvent eo = { 
                         (uint8_t)p1.nHits, (uint8_t)m,
                         ((long long)(h1.time * Tps)) + tMin,
@@ -567,7 +669,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                         fwrite(&eo, sizeof(eo), 1, dataFile);
                     }
                 }
-                else if(fileType == FILE_TEXT) {
+                else if(writeToText) {
                     fprintf(dataFile, "%d\t%d\t%lld\t%f\t%d\t%d\t%d\t%lld\t%f\t%d\n",
                         p1.nHits, m,
                         ((long long)(h1.time * Tps)) + tMin,
@@ -585,3 +687,13 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
     }	
 }
 
+void DataFileWriter::fillMonitoringData(uint32_t ch, double energy) {
+    double binWidth = (shm->energyHigh - shm->energyLow) / shm->nEnergyBins;
+    int e = static_cast<int>((energy - shm->energyLow) / binWidth);
+    if (e >= 0 && e < static_cast<int>(shm->nEnergyBins) && ch < shm->nChannels)
+        shm->counts[ch * shm->nEnergyBins + e]++;
+}
+
+void DataFileWriter::resetMonitoringData() {
+        std::memset(shm->counts, 0, nChannels * nEnergyBins * sizeof(uint64_t));
+}

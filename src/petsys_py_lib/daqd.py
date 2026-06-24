@@ -29,6 +29,35 @@ MAX_CHIPS = 64
 
 PROTOCOL_VERSION = 0x104
 
+
+_HERE = os.path.dirname(__file__)
+DEFAULT_PROCESS_EXEC = os.path.join(_HERE, '..', 'online_process')
+DEFAULT_MONITOR_EXEC = os.path.join(_HERE, '..', 'online_monitor')
+ 
+ 
+
+class ProcessedDataFileConfig:
+    def __init__(self, eventType= "", outputFormat="", fractionToWrite=100, hitLimit=1, tRef="", filePrefix=""):
+        self.eventType = eventType
+        self.outputFormat = outputFormat
+        self.fractionToWrite = fractionToWrite
+        self.hitLimit = hitLimit
+        self.tRef = tRef
+        self.filePrefix = filePrefix
+
+class AcquisitionOptions:
+    def __init__(self):
+        self.eventType = None	
+        self.calMode = False
+        self.config = None
+        self.useWriteRaw = True
+        self.processedDataFileConfig = ProcessedDataFileConfig()
+        self.secondaryExec = DEFAULT_PROCESS_EXEC
+        self.monitorToc = None
+        self.processingTarget = None
+        self.minChannel = None
+        self.maxChannel = None
+
 # Handles interaction with the system via daqd
 class Connection:
 	## Constructor
@@ -1104,137 +1133,291 @@ class Connection:
 		f.close()
 		return None
 
-	def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None, verbose=verbose)
 
-	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		processedFileNamePrefix = fileNamePrefix
-		if event_type == "raw":
-			processedFileNamePrefix += "_raw"
-		elif event_type == "singles":
-			processedFileNamePrefix += "_single"
-		elif event_type == "groups":
-			processedFileNamePrefix += "_group"
-		elif event_type == "coincidences":
-			processedFileNamePrefix += "_coinc"
+	def openRawAcquisition(self, fileNamePrefix, calMode=False, verbose=True):
+		opts = AcquisitionOptions()
+		opts.calMode = calMode
+		return self.__openRawAcquisition(fileNamePrefix, opts, verbose = verbose)
 
-		if output_format in ["text","textCompact"]:
-			processedFileNamePrefix += ".dat"
-		elif output_format == "root":
-			processedFileNamePrefix += ".root"
 
-		return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
-	
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		processedFileNamePrefix = fileNamePrefix
-		if event_type== "raw":
-			processedFileNamePrefix += "_raw"
-		elif event_type == "singles":
-			processedFileNamePrefix += "_single"
-		elif event_type == "groups":
-			processedFileNamePrefix += "_group"
-		elif event_type == "coincidences":
-			processedFileNamePrefix += "_coinc"
+	def openAcquisitionWithProcessing(self, fileNamePrefix, opts, verbose=True):
+		opts.useWriteRaw = False
+		processedFilePrefix = self._buildProcessedPrefix(fileNamePrefix, 
+			opts.processedDataFileConfig.eventType, 
+			opts.processedDataFileConfig.outputFormat)
+		opts.processedDataFileConfig.filePrefix = processedFilePrefix
+		return self.__openRawAcquisition(None, opts, verbose = verbose)
 
-		if output_format in ["text","textCompact"]:
-			processedFileNamePrefix += ".dat"
-		elif output_format == "root":
-			processedFileNamePrefix += ".root"
-		return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, opts, verbose=True):
+		opts.useWriteRaw = True
+		processedFilePrefix = self._buildProcessedPrefix(fileNamePrefix,
+			opts.processedDataFileConfig.eventType,
+			opts.processedDataFileConfig.outputFormat)
+		opts.processedDataFileConfig.filePrefix = processedFilePrefix
+		return self.__openRawAcquisition(fileNamePrefix, opts, verbose = verbose)
+ 
 
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
+	# Here for legacy reasons, since some users might be seill using old monitor implementation
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=DEFAULT_MONITOR_EXEC, verbose=True):
+		opts = AcquisitionOptions()
+		opts.useWriteRaw = True
+		opts.secondaryExec = DEFAULT_MONITOR_EXEC
+		opts.monitorToc = monitor_toc
+		return self.__openRawAcquisition(fileNamePrefix, opts, verbose = verbose)
 
-	def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, secondary_exec, verbose=True):
-		
+
+	def __openRawAcquisition(self, rawFileNamePrefix, opts, verbose=True):
 		asicsConfig = self.getAsicsConfig()
-		if rawFileNamePrefix != "/dev/null" and useWriteRaw:
-			modeFileName = rawFileNamePrefix + ".modf"
-			modeFile = open(modeFileName, "w")
-		else:
-			modeFile = open("/dev/null","w")
 
-		modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
-		modeList = [] 
-		for portID, slaveID, chipID in list(asicsConfig.keys()):
-			ac = asicsConfig[(portID, slaveID, chipID)]
-			for channelID in range(64):
-				cc = ac.channelConfig[channelID]
-				mode = cc.getValue("qdc_mode") and "qdc" or "tot"
-				modeList.append(mode)
-				modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
-				
-		if(len(set(modeList))!=1):
-			qdcMode = "mixed"
-		elif(modeList[0] == "tot"):
-			qdcMode = "tot"
-		else:
-			qdcMode = "qdc"
-                        
-		modeFile.close() 	
-		triggerID = -1
+		write_mode_to_disk = rawFileNamePrefix not in (None, "/dev/null") and opts.useWriteRaw
+		mode_file_path = (rawFileNamePrefix + ".modf") if write_mode_to_disk else "/dev/null"
+
+		with open(mode_file_path, "w") as modeFile:
+			modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
+			modeList = []
+			for portID, slaveID, chipID in list(asicsConfig.keys()):
+				ac = asicsConfig[(portID, slaveID, chipID)]
+				for channelID in range(64):
+					cc = ac.channelConfig[channelID]
+					mode = "qdc" if cc.getValue("qdc_mode") else "tot"
+					modeList.append(mode)
+					modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
+
+		qdcMode = self._defineQdcMode(modeList)
+		triggerID = self._defineTriggerID()
+
+		fileCreationDAQTime = self.getCurrentTimeTag()
+		daqSynchronizationEpoch = time() - fileCreationDAQTime / self.__systemFrequency
+
+		if opts.useWriteRaw:
+			self.__writerPipe = subprocess.Popen(
+				self._buildWriteRawCmd(rawFileNamePrefix, opts, qdcMode, triggerID, daqSynchronizationEpoch, fileCreationDAQTime, verbose),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+		if opts.secondaryExec == DEFAULT_PROCESS_EXEC and opts.processingTarget is not None:
+			self.__monitorPipe = subprocess.Popen(
+				self._buildOnlineProcessCmd(opts, qdcMode, triggerID, daqSynchronizationEpoch, fileCreationDAQTime, verbose),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+			n = struct.calcsize("@?")
+			self.__monitorPipe.stdout.read(n)
+
+		elif opts.secondaryExec == DEFAULT_MONITOR_EXEC and opts.monitor_toc is not None:
+			self.__monitorPipe = subprocess.Popen(
+				self._buildOnlineMonitorCmd(opts, qdcMode, opts.monitor_toc, triggerID),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+			n = struct.calcsize("@?")
+			self.__monitorPipe.stdout.read(n)
+
+
+	def _buildWriteRawCmd(self, rawFileNamePrefix, opts, qdcMode, triggerID, daqSyncEpoch, fileCreationDAQTime, verbose):
+		return [
+			os.path.join(os.path.dirname(__file__), '..', 'write_raw'),
+			self.__shmName,
+			rawFileNamePrefix,
+			str(int(self.__systemFrequency)),
+			str(qdcMode),
+			"%1.12f" % daqSyncEpoch,
+			str(fileCreationDAQTime),
+			'T' if opts.calMode else 'N',
+			str(triggerID),
+			'T' if verbose else 'N',
+		]
+
+	def _buildOnlineProcessCmd(self, opts, qdcMode, triggerID, daqSyncEpoch, fileCreationDAQTime, verbose):
+		return [
+			DEFAULT_PROCESS_EXEC,
+			str(int(self.__systemFrequency)),
+			opts.processedDataFileConfig.filePrefix,
+			opts.eventType,
+			opts.processedDataFileConfig.outputFormat,
+			qdcMode,
+			opts.config,
+			self.__shmName,
+			str(triggerID),
+			"%1.12f" % daqSyncEpoch,
+			str(fileCreationDAQTime),
+			str(opts.processedDataFileConfig.fractionToWrite),
+			str(opts.processedDataFileConfig.hitLimit),
+			opts.processedDataFileConfig.tRef,
+			'T' if verbose else 'N',
+			opts.processingTarget
+		]
+
+
+	def _buildOnlineMonitorCmd(self, monitor_exec, qdcMode, monitor_toc, triggerID):
+		return [
+			monitor_exec,
+			str(int(self.__systemFrequency)),
+			"tot" if qdcMode == "tot" else "qdc",
+			self.__shmName,
+			monitor_toc,
+			str(triggerID),
+			"%1.12f" % self.getAcquisitionStartTime(),
+		]
+
+	def _buildProcessedPrefix(self, base, event_type, output_format):
+		suffix_map = {
+			"raw": "_raw",
+			"singles": "_single",
+			"groups": "_group",
+			"coincidences": "_coinc",
+		}
+		prefix = base + suffix_map.get(event_type, "")
+		if output_format in ("text", "textCompact"):
+			prefix += ".dat"
+		elif output_format == "root":
+			prefix += ".root"
+		return prefix
+
+	def _defineQdcMode(self, modeList):
+		if len(set(modeList)) != 1:
+			return "mixed"
+		return modeList[0]
+
+	def _defineTriggerID(self):
 		trigger = self.getTriggerUnit()
 		if trigger is None:
-			triggerID = -1
-		elif [ trigger ] == self.getActiveFEBDs():
-			triggerID = 1
-		else:
-			portID, slaveID = trigger
-			triggerID = 32 * portID + slaveID
-  		
-		# Determine current time and and estimate acquisition wallclock start time
-		fileCreationDAQTime = self.getCurrentTimeTag()
-		currentTime = time()
-		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
+			return -1
+		if [trigger] == self.getActiveFEBDs():
+			return 1
+		portID, slaveID = trigger
+		return 32 * portID + slaveID
 
-		if useWriteRaw:
-			cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"),      
-			self.__shmName, \
-			rawFileNamePrefix, \
-			str(int(self.__systemFrequency)), \
-			str(qdcMode), "%1.12f" %  daqSynchronizationEpoch,
-            str(fileCreationDAQTime), 
-			calMode and 'T' or 'N', 
-			str(triggerID),
-			verbose and 'T' or 'N']
 	
-			self.__writerPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-		if secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_process'):
-			cmd = [
-			secondary_exec,
-			str(int(self.__systemFrequency)),
-			processedFileNamePrefix,
-			eventType,
-			output_format,
-			qdcMode,
-			config,
-			self.__shmName,
-			str(triggerID), 
-			"%1.12f" % daqSynchronizationEpoch,
-            str(fileCreationDAQTime),
-			str(fractionToWrite),
-			str(hitLimit),
-			tref,
-			verbose and 'T' or 'N'
-			]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
 
-			template = "@?"
-			n = struct.calcsize(template)
-			data = self.__monitorPipe.stdout.read(n)
-		elif secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_monitor'):
-			cmd = [
-				secondary_exec,
-				str(int(self.__systemFrequency)),
-				(qdcMode == "tot") and "tot" or "qdc",
-				config,
-				self.__shmName,
-				monitor_toc,
-				str(triggerID), 
-				"%1.12f" % self.getAcquisitionStartTime()
-				]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-			data = self.__monitorPipe.stdout.read(n)
+	# def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
+	# 	return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None, verbose=verbose)
+
+	# def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+	# 	processedFileNamePrefix = fileNamePrefix
+	# 	if event_type == "raw":
+	# 		processedFileNamePrefix += "_raw"
+	# 	elif event_type == "singles":
+	# 		processedFileNamePrefix += "_single"
+	# 	elif event_type == "groups":
+	# 		processedFileNamePrefix += "_group"
+	# 	elif event_type == "coincidences":
+	# 		processedFileNamePrefix += "_coinc"
+
+	# 	if output_format in ["text","textCompact"]:
+	# 		processedFileNamePrefix += ".dat"
+	# 	elif output_format == "root":
+	# 		processedFileNamePrefix += ".root"
+
+	# 	return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
+	
+	# def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
+	# 	processedFileNamePrefix = fileNamePrefix
+	# 	if event_type== "raw":
+	# 		processedFileNamePrefix += "_raw"
+	# 	elif event_type == "singles":
+	# 		processedFileNamePrefix += "_single"
+	# 	elif event_type == "groups":
+	# 		processedFileNamePrefix += "_group"
+	# 	elif event_type == "coincidences":
+	# 		processedFileNamePrefix += "_coinc"
+
+	# 	if output_format in ["text","textCompact"]:
+	# 		processedFileNamePrefix += ".dat"
+	# 	elif output_format == "root":
+	# 		processedFileNamePrefix += ".root"
+	# 	return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, secondary_exec=online_process_exec, verbose=verbose)
+
+	# def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
+	# 	return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , secondary_exec=monitor_exec, verbose=verbose)
+
+	# def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, secondary_exec, verbose=True):
+		
+	# 	asicsConfig = self.getAsicsConfig()
+	# 	if rawFileNamePrefix != "/dev/null" and useWriteRaw:
+	# 		modeFileName = rawFileNamePrefix + ".modf"
+	# 		modeFile = open(modeFileName, "w")
+	# 	else:
+	# 		modeFile = open("/dev/null","w")
+
+	# 	modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
+	# 	modeList = [] 
+	# 	for portID, slaveID, chipID in list(asicsConfig.keys()):
+	# 		ac = asicsConfig[(portID, slaveID, chipID)]
+	# 		for channelID in range(64):
+	# 			cc = ac.channelConfig[channelID]
+	# 			mode = cc.getValue("qdc_mode") and "qdc" or "tot"
+	# 			modeList.append(mode)
+	# 			modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
+				
+	# 	if(len(set(modeList))!=1):
+	# 		qdcMode = "mixed"
+	# 	elif(modeList[0] == "tot"):
+	# 		qdcMode = "tot"
+	# 	else:
+	# 		qdcMode = "qdc"
+                        
+	# 	modeFile.close() 	
+	# 	triggerID = -1
+	# 	trigger = self.getTriggerUnit()
+	# 	if trigger is None:
+	# 		triggerID = -1
+	# 	elif [ trigger ] == self.getActiveFEBDs():
+	# 		triggerID = 1
+	# 	else:
+	# 		portID, slaveID = trigger
+	# 		triggerID = 32 * portID + slaveID
+  		
+	# 	# Determine current time and and estimate acquisition wallclock start time
+	# 	fileCreationDAQTime = self.getCurrentTimeTag()
+	# 	currentTime = time()
+	# 	daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
+
+	# 	if useWriteRaw:
+	# 		cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"),      
+	# 		self.__shmName, \
+	# 		rawFileNamePrefix, \
+	# 		str(int(self.__systemFrequency)), \
+	# 		str(qdcMode), "%1.12f" %  daqSynchronizationEpoch,
+    #         str(fileCreationDAQTime), 
+	# 		calMode and 'T' or 'N', 
+	# 		str(triggerID),
+	# 		verbose and 'T' or 'N']
+	
+	# 		self.__writerPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+	# 	if secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_process'):
+	# 		cmd = [
+	# 		secondary_exec,
+	# 		str(int(self.__systemFrequency)),
+	# 		processedFileNamePrefix,
+	# 		eventType,
+	# 		output_format,
+	# 		qdcMode,
+	# 		config,
+	# 		self.__shmName,
+	# 		str(triggerID), 
+	# 		"%1.12f" % daqSynchronizationEpoch,
+    #         str(fileCreationDAQTime),
+	# 		str(fractionToWrite),
+	# 		str(hitLimit),
+	# 		tref,
+	# 		verbose and 'T' or 'N'
+	# 		]
+	# 		self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+
+	# 		template = "@?"
+	# 		n = struct.calcsize(template)
+	# 		data = self.__monitorPipe.stdout.read(n)
+	# 	elif secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_monitor'):
+	# 		cmd = [
+	# 			secondary_exec,
+	# 			str(int(self.__systemFrequency)),
+	# 			(qdcMode == "tot") and "tot" or "qdc",
+	# 			config,
+	# 			self.__shmName,
+	# 			monitor_toc,
+	# 			str(triggerID), 
+	# 			"%1.12f" % self.getAcquisitionStartTime()
+	# 			]
+	# 		self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+	# 		data = self.__monitorPipe.stdout.read(n)
 			
 
 	## Closes the current acquisition file
@@ -1354,6 +1537,8 @@ class Connection:
 			for pin, pout in workers:
 				data = pout.read(n3)
 
+			stepFrames, stepFramesLost, stepEvents = struct.unpack(template3, data)
+                        
 			index = (rdPointer + bs - 1) % bs
 			currentFrame = self.__shm.getFrameID(index)
 
@@ -1361,16 +1546,16 @@ class Connection:
 
 			nFrames = currentFrame - startFrame + 1
 			nBlocks += 1
-			if (currentFrame - lastUpdateFrame) * frameLength > 0.1:
+			if (currentFrame - lastUpdateFrame) * frameLength > 0.2:
 				t1 = time()
 				if(verbose):
-					stdout.write("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)\r" % (nFrames, t1-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+					stdout.write("Python:: Acquired %d frames in %4.1f seconds (delay = %4.1f); Number of events = %d; Average rate = %4.1f events/s\r" % (nFrames, t1-t0, (t1-t0) - nFrames * frameLength, stepEvents, stepEvents/(nFrames * frameLength)))
 				stdout.flush()
 				lastUpdateFrame = currentFrame
 		t1 = time()
 		if(verbose):
-			print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
-
+                        print("Python:: Acquired %d frames in %4.1f seconds (delay = %4.1f); Number of events = %d; Average rate = %4.1f events/s\r" % (nFrames, time()-t0, (t1-t0) - nFrames * frameLength, stepEvents, stepEvents/(nFrames * frameLength)))
+                       
 		# Send end of step block (with wrPointer = rdPointer)
 		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 2)
 		for pin, pout in workers:
