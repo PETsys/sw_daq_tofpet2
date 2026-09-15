@@ -18,6 +18,7 @@ private:
 	u_int64_t nReceivedInvalid;
 	u_int64_t nTDCCalibrationMissing;
 	u_int64_t nQDCCalibrationMissing;
+	u_int64_t nEnergyOutsideQDCDynamicRange;
 	u_int64_t nEnergyCalibrationMissing;
 	u_int64_t nXYZMissing;
 	u_int64_t nSent;
