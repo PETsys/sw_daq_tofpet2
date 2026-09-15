@@ -10,7 +10,8 @@
 #include <sys/stat.h>   
 #include <unistd.h>     
 #include <cstring>     
-#include <atomic>    
+#include <atomic>  
+#include <Instrumentation.hpp>
 using namespace PETSYS;
 
 DataFileWriter::DataFileWriter(const DataWriterConfig& cfg){
@@ -27,6 +28,7 @@ DataFileWriter::DataFileWriter(const DataWriterConfig& cfg){
     this->Tns = Tps / 1000.;
     this->useAsyncWriting = cfg.useAsyncWriting;
     this->writeTarget = cfg.writeTarget;
+    this->monitorBufferMask = cfg.monitorBufferMask;   
     this->shm = nullptr;   
     
     if (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH){
@@ -34,7 +36,12 @@ DataFileWriter::DataFileWriter(const DataWriterConfig& cfg){
     }
 
     if (writeTarget == TARGET_SHM || writeTarget == TARGET_BOTH){
-        openShm(cfg.nChannels, cfg.nEnergyBins, cfg.energyLow, cfg.energyHigh);
+        if(cfg.isDataTransmissionCheck){
+            openShm(cfg.nChannels, cfg.nEnergyBins, 4, cfg.energyLow, cfg.energyHigh, "/online_data_for_test");
+        }
+        else{
+            openShm(cfg.nChannels, cfg.nEnergyBins, 4, cfg.energyLow, cfg.energyHigh);
+        }
     }
 };
 
@@ -142,57 +149,75 @@ void DataFileWriter::openFile() {
     }
 };
 
-void DataFileWriter::openShm(uint32_t nChannels, uint32_t nEnergyBins, double energyLow, double energyHigh) {
-    shmName = "/online_data";
-    shmSize = sizeof(DataShm) + nChannels * nEnergyBins * sizeof(uint64_t);
-    binWidth = (energyHigh - energyLow)/ nEnergyBins;                                
-    int fd = shm_open(shmName.c_str(), O_CREAT | O_EXCL | O_RDWR,
+void DataFileWriter::openShm(uint32_t nChannels, uint32_t nEnergyBins, uint16_t nTypes, double energyLow, double energyHigh , const char* shmName) {
+    this->shmName = shmName;
+    size_t shmSize = sizeof(DataShm) + static_cast<size_t>(nTypes) * nChannels * nEnergyBins * sizeof(uint32_t);
+
+    monitorInvBinWidth = nEnergyBins / (energyHigh - energyLow);
+
+    int fd = shm_open(shmName, O_CREAT | O_EXCL | O_RDWR,
                       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     if (fd < 0 && errno == EEXIST) {
-        shm_unlink(shmName.c_str());
-        fd = shm_open(shmName.c_str(), O_CREAT | O_EXCL | O_RDWR,
+        shm_unlink(shmName);
+        fd = shm_open(shmName, O_CREAT | O_EXCL | O_RDWR,
                       S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     }
     if (fd < 0)
-        throw std::runtime_error("shm_open failed: " + shmName);
+        throw std::runtime_error(std::string("shm_open failed: ") + shmName);
 
     if (ftruncate(fd, shmSize) < 0) {
         close(fd);
-        shm_unlink(shmName.c_str());
+        shm_unlink(shmName);
         throw std::runtime_error("ftruncate failed");
     }
 
     shm = static_cast<DataShm*>(
         mmap(nullptr, shmSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0));
     close(fd);
-
     if (shm == MAP_FAILED) {
         shm = nullptr;
-        shm_unlink(shmName.c_str());
+        shm_unlink(shmName);
         throw std::runtime_error("mmap failed");
     }
 
-    shm->nChannels = nChannels;
+    shm->nChannels   = nChannels;
     shm->nEnergyBins = nEnergyBins;
-    shm->energyLow = energyLow;
-    shm->energyHigh = energyHigh;
-    std::memset(shm->counts, 0, nChannels * nEnergyBins * sizeof(uint64_t));
+    shm->nTypes      = nTypes;
+    shm->_reserved1  = 0;
+    shm->_reserved2 = monitorBufferMask + 1;
+    shm->energyLow   = energyLow;
+    shm->energyHigh  = energyHigh;
+
+    for (int t = 0; t < 4; t++) {
+        shm->hitsSeen[t]    = 0;
+        shm->hitsSampled[t] = 0;
+    }
+    
+    this->monitorChannels   = nChannels;
+    this->monitorEnergyBins = nEnergyBins;
+    this->monitorTypes      = nTypes;
+    this->monitorEnergyLow  = energyLow;
+    this->monitorInvBinWidth  = nEnergyBins / (energyHigh - energyLow);
+
+    //std::memset(shm->counts, 0, static_cast<size_t>(nTypes) * nChannels * nEnergyBins * sizeof(uint32_t));
+}
+
+bool DataFileWriter::processForMonitoring(){
+    if (writeTarget == TARGET_SHM || writeTarget == TARGET_BOTH) return true;
+    else return false;
 }
 
 	
 DataFileWriter::~DataFileWriter() {
-    if(useAsyncWriting){
-        delete dataWriter;
-    }
-    else closeFile();
-    if(fileSplitTime > 0) {
-        renameFile();
-    }
-    if (shm) {
-        munmap(shm, shmSize);
-        shm_unlink(shmName.c_str()); 
-        shm = nullptr;
-    }
+    if (writeTarget != TARGET_SHM){
+        if(useAsyncWriting){
+            delete dataWriter;
+        }
+        else closeFile();
+        if(fileSplitTime >   0) {
+            renameFile();
+        }
+    }      
 };
 
 void DataFileWriter::setStepValues(float step1, float step2){
@@ -254,7 +279,6 @@ void DataFileWriter::renameFile() {
     char *fName2 = new char[1024];
     if(fileType == FILE_BINARY || fileType == FILE_BINARY_COMPACT) {
         // Binary output consists of two files and fName is their common prefix
-
         sprintf(fName1, "%s.ldat", fName.c_str());
         sprintf(fName2, "%s_%08lld.ldat", fName.c_str(), currentFilePartIndex);
         int r = rename(fName1, fName2);
@@ -278,7 +302,6 @@ void DataFileWriter::renameFile() {
             assert(r == 0);
         }
         else {
-            // Insert the file part number before the extension
             char tmp = *p;
             *p = '\0';
             sprintf(fName2, "%s_%08lld.%s", fName1, currentFilePartIndex, p+1);
@@ -294,7 +317,7 @@ void DataFileWriter::renameFile() {
 
 
 void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
-    
+
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
@@ -302,22 +325,29 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
 
     long long bufferMinFrameID = buffer->getTMin() / 1024;
 
-
-    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
+    bool writeToFile = ((writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH) && getEventType()== RAW);
     bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+
+    if (!(writeToFile) && !(writeToShm)) return;
+
     bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
 
+    static thread_local uint64_t nMonBuffers = 0;
+    bool doMonitor = writeToShm && ((++nMonBuffers & monitorBufferMask) == 0);
+    uint64_t nSeen = 0, nFilled = 0;
 
     for (int i = 0; i < N; i++) {
-        long long tmpCounter = eventCounter;
-        eventCounter += 1;
-        if((tmpCounter % 1024) >= eventFractionToWrite) continue;
 
+        static thread_local long long localCounter = 0;
+        long long tmpCounter = localCounter++;
+        if ((tmpCounter % 1024) >= eventFractionToWrite) continue;
+       
+        nSeen++;   
+      
         RawHit &hit = buffer->get(i);
         if (writeToRoot) {
             brStep1 = step1;
             brStep2 = step2;
-            
             brFrameID = hit.frameID + bufferMinFrameID;
             brChannelID = hit.channelID;
             brTacID = hit.tacID;
@@ -335,14 +365,19 @@ void DataFileWriter::writeRawEvents(EventBuffer<RawHit> *buffer, double t0) {
                 hit.tfine, hit.efine
             );
         }
-        if(writeToShm){
-            fillMonitoringData(hit.channelID, hit.efine);
+        if(doMonitor){
+            if(fillMonitoringData(0, hit.channelID, hit.efine)) nFilled++;
         }
-    }	
+    }
+    
+    if (writeToShm) addMonitorCounters(0, nSeen, nFilled);  
 }
 
 
+
+
 void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
+
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
     
@@ -350,22 +385,33 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
     
     int N = buffer->getSize();
 
-    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
-    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+    bool writeToFile = ((writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH) && getEventType() == SINGLE);
+    bool writeToShm  = (writeTarget == TARGET_SHM   || writeTarget == TARGET_BOTH);
+
+    if (!(writeToShm) && !(writeToFile)) return;
+    if (!(writeToShm) && getEventType() == RAW) buffer->setUsed(0); 
 
     bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
     bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
     bool writeToText = writeToFile && (fileType == FILE_TEXT);
-    
+
+    static thread_local uint64_t nMonBuffers = 0;
+    bool doMonitor = writeToShm && ((++nMonBuffers & monitorBufferMask) == 0);
+    uint64_t nSeen = 0, nFilled = 0;
+
+
     for (int i = 0; i < N; i++) {
-        long long tmpCounter = eventCounter;
-        eventCounter += 1;
-        if((tmpCounter % 1024) >= eventFractionToWrite) continue;
+
+        static thread_local long long localCounter = 0;
+        long long tmpCounter = localCounter++;
+        if ((tmpCounter % 1024) >= eventFractionToWrite) continue;
 
         Hit &hit = buffer->get(i);
         if(!hit.valid) continue;
 
         float Eunit = hit.raw->qdcMode ? 1.0 : Tns;
+        
+        nSeen++;
         
         if (writeToRoot){
             brStep1 = step1;
@@ -406,14 +452,25 @@ void DataFileWriter::writeSingleEvents(EventBuffer<Hit> *buffer, double t0) {
                 (int)hit.raw->channelID
                 );
         }
-        if(writeToShm){
-            fillMonitoringData((int)hit.raw->channelID, hit.energy * Eunit);
+        if(doMonitor){
+            if(fillMonitoringData(1, (int)hit.raw->channelID, hit.energy * Eunit)) nFilled++;
         }
-    }	
+    }
+
+    if (writeToShm) {
+        addMonitorCounters(1, nSeen, nFilled);
+    }
 }
 
 
 void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0) {
+    
+    bool writeToFile = ((writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH) && getEventType()== GROUP);
+    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+
+    if (!(writeToShm) && !(writeToFile)) return;
+    if (!(writeToShm) && (getEventType() == SINGLE || getEventType() == RAW)) buffer->setUsed(0); 
+
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
 
@@ -421,19 +478,21 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
     
     int N = buffer->getSize();
 
-    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
-    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
-
     bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
     bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
     bool writeToBinaryCompact = writeToFile && (fileType == FILE_BINARY_COMPACT);
     bool writeToText = writeToFile && (fileType == FILE_TEXT);
     bool writeToTextCompact = writeToFile && (fileType == FILE_TEXT_COMPACT);
 
+    static thread_local uint64_t nMonBuffers = 0;
+    bool doMonitor = writeToShm && ((++nMonBuffers & monitorBufferMask) == 0);
+    uint64_t nSeen = 0, nFilled = 0;
+  
     for (int i = 0; i < N; i++) {
-        long long tmpCounter = eventCounter;
-        eventCounter += 1;
-        if((tmpCounter % 1024) >= eventFractionToWrite) continue;
+
+        static thread_local long long localCounter = 0;
+        long long tmpCounter = localCounter++;
+        if ((tmpCounter % 1024) >= eventFractionToWrite) continue;
 
         GammaPhoton &p = buffer->get(i);
         
@@ -454,11 +513,14 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                 fwrite(&header, sizeof(header), 1, dataFile);
             }
         }
-
+        nSeen++;
         for(int m = 0; m < limit; m++) {
             Hit &h = *p.hits[m];
             float Eunit = h.raw->qdcMode ? 1.0 : Tns;
-
+            
+            if(doMonitor && m == 0){
+                if(fillMonitoringData(2, h.raw->channelID, p.energy * Eunit)) nFilled++;
+            }    
 
             if (writeToRoot){
                 brStep1 = step1;
@@ -523,22 +585,26 @@ void DataFileWriter::writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t
                     h.raw->channelID
                 );
             }
-            if(writeToShm){
-                fillMonitoringData(h.raw->channelID, h.energy * Eunit);
-            }
         }
+    }
+
+    if (writeToShm) {
+        addMonitorCounters(2, nSeen, nFilled);
     }	   
 }
 
 
 void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0) {
+
     long long filePartIndex = (int)floor(buffer->getTMin() / fileSplitTime);
     checkFilePartForSplit(filePartIndex);
 
     long long tMin = (buffer->getTMin() + t0) * (long long)Tps;
 
-    bool writeToFile = (writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH);
-    bool writeToShm = (writeTarget == TARGET_SHM || writeTarget == TARGET_BOTH);
+    bool writeToFile = ((writeTarget == TARGET_FILE || writeTarget == TARGET_BOTH) && getEventType()== COINCIDENCE);
+    bool writeToShm  = (writeTarget == TARGET_SHM  || writeTarget == TARGET_BOTH);
+
+    if (!(writeToFile) && !(writeToShm)) return;
 
     bool writeToRoot = writeToFile && (fileType == FILE_ROOT);
     bool writeToBinary = writeToFile && (fileType == FILE_BINARY);
@@ -546,12 +612,18 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
     bool writeToText = writeToFile && (fileType == FILE_TEXT);
     bool writeToTextCompact = writeToFile && (fileType == FILE_TEXT_COMPACT);
 
+    static thread_local uint64_t nMonBuffers = 0;
+    bool doMonitor = writeToShm && ((++nMonBuffers & monitorBufferMask) == 0);
+    uint64_t nSeen = 0, nFilled = 0; 
+
     int N = buffer->getSize();
 
     for (int i = 0; i < N; i++) {
-        long long tmpCounter = eventCounter;
-        eventCounter += 1;
-        if((tmpCounter % 1024) >= eventFractionToWrite) continue;
+
+        static thread_local long long localCounter = 0;
+        long long tmpCounter = localCounter++;
+        if ((tmpCounter % 1024) >= eventFractionToWrite) continue;
+        nSeen+=1;
 
         Coincidence &e = buffer->get(i);
         if(!e.valid) continue;
@@ -564,12 +636,13 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
         int limit2 = (hitLimitToWrite < p2.nHits) ? hitLimitToWrite : p2.nHits;
 
         int coincHitIndex = 0;
-        if(writeToShm) {	        
-            for(int i = 0; i < limit1 + limit2; i++) {
-                Hit &h = i < limit1 ? *p1.hits[i] : *p2.hits[i-limit1];
-                float Eunit = h.raw->qdcMode ? 1.0 : Tns;
-                fillMonitoringData(h.raw->channelID, h.energy * Eunit);
-            }
+        if(doMonitor) {	
+            Hit &h1 = *p1.hits[0];
+            Hit &h2 = *p2.hits[0];
+            float Eunit1 = h1.raw->qdcMode ? 1.0 : Tns;
+            if(fillMonitoringData(3, h1.raw->channelID, p1.energy * Eunit1)) nFilled++;
+            float Eunit2 = h2.raw->qdcMode ? 1.0 : Tns;
+            fillMonitoringData(3, h2.raw->channelID, p2.energy * Eunit2);
         }
         
         if(writeToTextCompact) {	
@@ -660,7 +733,7 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                         (uint8_t)p2.nHits, (uint8_t)n,
                         ((long long)(h2.time * Tps)) + tMin,
                         h2.energy * Eunit2,
-                        (int)h2.raw->channelID		
+                        (int)h2.raw->channelID	
                     };
                     if(useAsyncWriting){
                         dataWriter->appendData(static_cast<void*>(&eo) ,sizeof(eo));
@@ -684,16 +757,33 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
                 }
             }
         }
-    }	
+    }
+    if (writeToShm) {
+        addMonitorCounters(3, nSeen, nFilled);
+    }
 }
 
-void DataFileWriter::fillMonitoringData(uint32_t ch, double energy) {
-    double binWidth = (shm->energyHigh - shm->energyLow) / shm->nEnergyBins;
-    int e = static_cast<int>((energy - shm->energyLow) / binWidth);
-    if (e >= 0 && e < static_cast<int>(shm->nEnergyBins) && ch < shm->nChannels)
-        shm->counts[ch * shm->nEnergyBins + e]++;
+bool DataFileWriter::fillMonitoringData(uint16_t type, uint32_t ch, double energy) {
+		if (type >= monitorTypes || ch >= monitorChannels) return false;
+		int e = static_cast<int>((energy - monitorEnergyLow) * monitorInvBinWidth);
+		if (e < 0 || e >= static_cast<int>(monitorEnergyBins)) return false;
+		shm->counts[(static_cast<uint64_t>(type) * monitorChannels + ch) * monitorEnergyBins + e]++;
+		return true;
+	}
+
+
+void DataFileWriter::addMonitorCounters(uint16_t type, uint64_t nSeen, uint64_t nFilled) {
+		__atomic_fetch_add(&shm->hitsSeen[type],    nSeen,   __ATOMIC_RELAXED);
+		__atomic_fetch_add(&shm->hitsSampled[type], nFilled, __ATOMIC_RELAXED);
 }
+
+void DataFileWriter::fillElapsedTime(double time) {
+        shm->elapsedTime = time;
+}
+
 
 void DataFileWriter::resetMonitoringData() {
-        std::memset(shm->counts, 0, nChannels * nEnergyBins * sizeof(uint64_t));
+    std::memset(shm->counts, 0,
+                static_cast<size_t>(shm->nTypes) * shm->nChannels
+                * shm->nEnergyBins * sizeof(uint32_t));
 }

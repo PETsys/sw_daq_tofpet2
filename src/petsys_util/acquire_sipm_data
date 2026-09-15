@@ -8,7 +8,11 @@ import os
 import stat
 import argparse
 import math
-import glob
+
+
+def maxChannelFromActiveFEBDs(febdList):
+    return max(131072 * portID + 4096 * slaveID + 4096 for portID, slaveID in febdList)
+
 
 def checkRequiredArgs(parser, required_args_for_processing, conditional_args_for_processing, required_args_for_monitoring):
 	args, _ = parser.parse_known_args()
@@ -48,7 +52,7 @@ def main():
 	parser.add_argument("--writeFraction", type=float, required=False, help="If --enable-realtime-processing is set, this option selects the fraction of events (in percentage) to be written to the output file. If not set, all events are written.\n")
 	parser.add_argument("--writeMultipleHits", type=int, required=False, help="If --enable-realtime-processing is set, and outputType is 'groups' or 'coincidences', this option selects the number of hits to be written in the output file. If not set, only 1 hit (with max amplitude) is written.\n")
 	parser.add_argument("--timeref", type=str, required=False, choices=["sync", "wall", "step", "user"], help="If --enable-realtime-processing is set, this option selects the time reference for timestamps in processed data.\n")
-	parser.add_argument("--writeRawData", dest="writeRaw", action="store_true", help="If -- enable-realtime-processingis set, write a raw data file in addition to the output processed data file.\n")
+	parser.add_argument("--writeRawData", dest="writeRaw", action="store_true", help="If -- enable-realtime-processing is set, write a raw data file in addition to the output processed data file.\n")
 	parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
 	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait for named pipe signal before starting the acquisition")
 	parser.add_argument("--stop-on", dest="stopOn", type=str, default=None, help="Stop acquisition on named pipe signal")
@@ -68,8 +72,6 @@ def main():
 	else:
 		conditionalArgsProc = ["writeRaw","outputType","outputFormat","writeFraction","writeMultipleHits","timeref"]
 
-	if args.enableOnlineMonitoring:
-		requiredArgsMonitor = ["outputType"]
 
 
 	checkRequiredArgs(parser, requiredArgsProc, conditionalArgsProc, requiredArgsMonitor)
@@ -79,8 +81,6 @@ def main():
 	args = parser.parse_args()
 		
 	validParams = ["OV","vth_t1","vth_t2","vth_e","disc_lsb_t1"]
-
-
 
 	if args.paramTable is not None:
 		if not os.path.exists(args.paramTable):
@@ -118,9 +118,9 @@ def main():
 	if (args.portID != None and args.slaveID != None):
 		for p, s in conn.getActiveFEBDs():
 			fe_power.set_fem_power(conn,p,s,"off")  
-		conn.initializeSystem(power_lst = [(args.portID,args.slaveID)])
+		activeFEBDs = conn.initializeSystem(power_lst = [(args.portID,args.slaveID)])
 	else:
-		conn.initializeSystem()
+		activeFEBDs = conn.initializeSystem()
 	
 
 	systemConfig.loadToHardware(conn, bias_enable=config.APPLY_BIAS_ON, hw_trigger_enable=args.hwTrigger, qdc_mode = args.mode)
@@ -131,7 +131,8 @@ def main():
 
 	if args.stopOn:
 		validateFifo(args.stopOn)
-		
+
+	verbose = True	
 	if not args.enableOnlineProcessing and not args.enableOnlineMonitoring:
 		conn.openRawAcquisition(args.fileNamePrefix)
 	else:
@@ -145,9 +146,7 @@ def main():
 			opts.processingTarget = "disk"
 		elif args.enableOnlineMonitoring:
 			opts.processingTarget = "monitor"
-
-		if args.enableOnlineProcessing or args.enableOnlineMonitoring:
-			opts.eventType = args.outputType		
+					
 	
 		if args.enableOnlineProcessing:
 			opts.processedDataFileConfig = daqd.ProcessedDataFileConfig(
@@ -160,26 +159,27 @@ def main():
 
 		if args.enableOnlineMonitoring:
 			opts.processedDataFileConfig
+			opts.maxChannel = maxChannelFromActiveFEBDs(activeFEBDs)
 
+		useWriteRaw = args.writeRaw or (args.enableOnlineMonitoring and not args.enableOnlineProcessing)
 
-		testFileName = os.path.dirname(args.fileNamePrefix) + "/checkDataTransmissionFile"
+		# Check data transmission before opening the file for writing.
+		# Whenever monitoring is on, also pick the monitoring rate that keeps the
+		# loss acceptable, since filling the histograms costs throughput.
+		opts.verbose = False
+		opts.useWriteRaw = useWriteRaw
 
-		if args.writeRaw:
-			conn.openRawAcquisitionWithProcessing(testFileName, opts, verbose = False)
-			# if using online processing, perform a data transmission check before opening file for writing
-			if not conn.checkDataTransmission(args.time):
+		if args.enableOnlineMonitoring:
+			if not conn.tuneMonitorBufferMask(args.fileNamePrefix, opts):
 				exit(1)
-			conn.openRawAcquisitionWithProcessing(args.fileNamePrefix, opts)
 		else:
-	                # if using online processing, perform a data transmission check before opening file for writing
-	                #conn.openAcquisitionWithProcessing(testFileName, opts, verbose=False)
-			#if not conn.checkDataTransmission(args.time):
-			#	exit(1)
-			conn.openAcquisitionWithProcessing(args.fileNamePrefix, opts)
+			conn._openWithProcessing(args.fileNamePrefix, opts, useWriteRaw, True)
+			if not conn.checkDataTransmission(args.time, args.fileNamePrefix):
+				exit(1)
 
-		for file_path in glob.glob(testFileName + "*"):
-			if os.path.isfile(file_path):
-				os.remove(file_path)
+		opts.verbose = verbose
+		conn._openWithProcessing(args.fileNamePrefix, opts, useWriteRaw, False)
+		
 		
 
 	activeAsics = conn.getActiveAsics()

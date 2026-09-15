@@ -131,39 +131,21 @@ protected:
 
 Decoder *createProcessingPipeline(EVENT_TYPE eventType, OnlineEventStream *eventStream, SystemConfig *config, DataFileWriter *dataFileWriter){
 	Decoder *pipeline;
-	if(eventType == RAW){
-		pipeline = new Decoder(eventStream, 
-			new WriteRawHelper(dataFileWriter,
-			new NullSink<RawHit>()
-			));
-	}
-	else if(eventType == SINGLE){
-		pipeline = new Decoder(eventStream, 
-			new CoarseSorter(
-			new ProcessHit(config, eventStream,
-			new WriteSinglesHelper(dataFileWriter, 
-			new NullSink<Hit>()
-			))));
-	}
-	else if(eventType == GROUP){
-		pipeline = new Decoder(eventStream, 
-			new CoarseSorter(
-			new ProcessHit(config, eventStream,
-			new SimpleGrouper(config,		
-			new WriteGroupsHelper(dataFileWriter, 
-			new NullSink<GammaPhoton>()
-			)))));
-	}
-	else if(eventType == COINCIDENCE){
-		pipeline = new Decoder(eventStream, 
-			new CoarseSorter(
-			new ProcessHit(config, eventStream,
-			new SimpleGrouper(config,
-			new CoincidenceGrouper(config,
-			new WriteCoincidencesHelper(dataFileWriter, 
-			new NullSink<Coincidence>()
-			))))));
-	}
+	
+
+	pipeline = new Decoder(eventStream,
+		new WriteRawHelper(dataFileWriter,
+		new CoarseSorter(
+		new ProcessHit(config, eventStream,
+		new WriteSinglesHelper(dataFileWriter,
+		new SimpleGrouper(config,
+		new WriteGroupsHelper(dataFileWriter, 	
+		new CoincidenceGrouper(config,
+		new WriteCoincidencesHelper(dataFileWriter, 
+		new NullSink<Coincidence>()
+	)))))))));
+
+
 	return pipeline;
 }
 
@@ -178,7 +160,7 @@ struct BlockHeader  {
 
 int main(int argc, char *argv[])
 {
-	assert(argc == 16);
+	assert(argc == 19);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -192,12 +174,18 @@ int main(int argc, char *argv[])
 	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
 	char *tref = argv[13];
-	bool verbose = (argv[14][0] == 'T');
-	char *target = argv[15];
+	bool isDataTransmissionCheck = (argv[14][0] == 'T');
+	bool verbose = (argv[15][0] == 'T');
+	char *target = argv[16];
+	int maxChannel = boost::lexical_cast<int>(argv[17]);
+
+	uint64_t monitorBufferMask = boost::lexical_cast<uint64_t>(argv[18]);
+
 	bool useAsyncWriting = false;
 	 
 
 	EVENT_TYPE eventType;
+	
 	if(strcmp(eType, "raw") == 0){
 			eventType = RAW;
 		}
@@ -327,7 +315,12 @@ int main(int argc, char *argv[])
 	wCfg.fileType           = fileType;
 	wCfg.hitLimitToWrite    = hitLimitToWrite;
 	wCfg.eventFractionToWrite = eventFractionToWrite;  
-	
+	wCfg.nChannels = maxChannel;
+	wCfg.monitorBufferMask = monitorBufferMask;
+
+	if (isDataTransmissionCheck)
+		wCfg.isDataTransmissionCheck = true;
+
 	if(strcmp(target, "both") == 0){
 		wCfg.writeTarget = TARGET_BOTH;
 	}
@@ -336,6 +329,7 @@ int main(int argc, char *argv[])
 	}	
 	else if(strcmp(target, "monitor") == 0){
 		wCfg.writeTarget = TARGET_SHM;
+		verbose = false;
 	}
 	
 
@@ -501,7 +495,7 @@ int main(int argc, char *argv[])
 		pool->completeQueue();
 		
 		if(blockHeader.blockType == 2){
-			if(verbose == true){
+			if(verbose){
 				fprintf(stderr, "onlineProcessing:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
@@ -511,7 +505,7 @@ int main(int argc, char *argv[])
 					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
 					); 
 			
-			pipeline->report();
+				pipeline->report();
 			}
 			fflush(stderr);
 

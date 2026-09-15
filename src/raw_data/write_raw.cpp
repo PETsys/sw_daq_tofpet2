@@ -74,7 +74,6 @@ int main(int argc, char *argv[])
 	char *shmObjectPath = argv[1];
 	char *outputFilePrefix = argv[2];
 	long systemFrequency = boost::lexical_cast<long>(argv[3]);
-	bool qdcMode = (strcmp(argv[4], "qdc") == 0);
 	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[5]);
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[6]);
 	bool acqStdMode = (argv[7][0] == 'N');
@@ -268,11 +267,11 @@ int main(int argc, char *argv[])
 			}	
 
 			if(verbose==true){
-				fprintf(stderr, "writeRaw:: Step had %lld frames with %lld events; %f events/frame avg, %lld event/frame max\n", 
+				fprintf(stderr, "INFO: Registered %lld frames with %lld events; %5.1f events/frame avg, %lld event/frame max\n", 
 					stepAllFrames, stepEvents, 
 					float(stepEvents)/stepAllFrames,
 					stepMaxFrame); fflush(stderr);
-				fprintf(stderr, "writeRaw:: some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
+				fprintf(stderr, "INFO: Some events were lost for %lld (%5.1f%%) frames; all events were lost for %lld (%5.1f%%) frames\n", 
 					stepLostFramesN, 100.0 * stepLostFramesN / stepAllFrames,
 					stepLostFrames0, 100.0 * stepLostFrames0 / stepAllFrames
 					); 

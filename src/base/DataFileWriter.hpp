@@ -10,13 +10,16 @@
 #include"AsyncWriter.hpp"
 
 namespace PETSYS {
+
+static const size_t MONITOR_STAGING_SIZE = 8192/2;	
+//static const uint64_t MONITOR_PRESCALE_MASK = 0x3F;
+static const uint64_t MONITOR_BUFFER_MASK = 0xFF;
 	
 enum FILE_TYPE {FILE_TEXT, FILE_BINARY, FILE_ROOT, FILE_NULL, FILE_TEXT_COMPACT, FILE_BINARY_COMPACT};
 
 enum EVENT_TYPE {RAW, SINGLE, GROUP, COINCIDENCE};
 
 enum WRITE_TARGET {TARGET_FILE, TARGET_SHM, TARGET_BOTH};
-
 
 struct Event {
 	long long time;
@@ -54,33 +57,49 @@ struct CoincidenceGroupHeader {
 
 typedef uint8_t GroupHeader;
 
+
 struct DataShm {
     uint32_t nChannels;
     uint32_t nEnergyBins;
-    double energyLow;
-    double energyHigh;
-    uint64_t counts[]; 
+    uint16_t nTypes;
+    uint16_t _reserved1;
+    uint32_t _reserved2;
+    double   energyLow;
+    double   energyHigh;
+	double   elapsedTime;
+	uint64_t hitsSeen[4];     
+    uint64_t hitsSampled[4];   
+    uint32_t counts[];      
 };
+
 
 struct DataWriterConfig {
     //Params for writting data to file
 	std::string fName;
     bool useAsyncWriting;
     double frequency = 200E6;
-    EVENT_TYPE eventType = RAW;
+    EVENT_TYPE eventType = COINCIDENCE;
     FILE_TYPE fileType = FILE_TEXT;
     double fileEpoch = 0.0;
     int hitLimitToWrite = 1;
     int eventFractionToWrite = 1024;
     float splitTime = 0;
     WRITE_TARGET writeTarget = TARGET_FILE;
+	bool isDataTransmissionCheck = false;
 
     //Params for writting data to shm for monitoring
+	uint64_t monitorBufferMask = MONITOR_BUFFER_MASK;
 	uint32_t nChannels = 131072;
-    uint32_t nEnergyBins = 500;
+    uint32_t nEnergyBins = 1500;
     double energyLow = 0.0;
-    double energyHigh = 100.0;
+    double energyHigh = 500;
 };
+
+struct MonitorStaging {
+    uint64_t keys[MONITOR_STAGING_SIZE];
+    size_t used;
+};
+
 
 class DataFileWriter{
 private:
@@ -160,12 +179,22 @@ private:
 
 	//for online monitoring
 	std::string shmName;
-    uint32_t nChannels;
-    uint32_t nEnergyBins;
-    double binWidth;
-    size_t shmSize;
-    DataShm* shm = nullptr;
 
+    uint32_t monitorChannels;
+    uint32_t monitorEnergyBins;
+    uint16_t monitorTypes;
+    double   monitorEnergyLow;
+    double   monitorInvBinWidth;
+
+	uint64_t monitorBufferMask;
+
+	std::atomic<uint64_t> monitorHitsSeen[4];
+	std::atomic<uint64_t> monitorHitsSampled[4];
+
+	u_int64_t nHitsReceived =0;
+
+    DataShm* shm = nullptr;
+	
 public:
 	DataFileWriter(const DataWriterConfig& cfg);
 	~DataFileWriter(); 
@@ -183,9 +212,19 @@ public:
 	void writeGroupEvents(EventBuffer<GammaPhoton> *buffer, double t0);
 	void writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, double t0);
 
-	void openShm(uint32_t nChannels, uint32_t nEnergyBins, double energyLow, double energyHigh); 
-	void fillMonitoringData(uint32_t ch, double energy);
+	void openShm(uint32_t nChannels, uint32_t nEnergyBins, uint16_t nTypes, double energyLow, double energyHigh, const char* shmName = "/online_data");
+
+    bool fillMonitoringData(uint16_t type, uint32_t ch, double energy);
+	void addMonitorCounters(uint16_t type, uint64_t nSeen, uint64_t nFilled);
+	
+	void fillElapsedTime(double time);
+	
 	void resetMonitoringData();
+	bool processForMonitoring();
+
+	EVENT_TYPE getEventType(){
+		return this->eventType;
+	}
 };
 
 
@@ -201,7 +240,16 @@ public:
 	
 	EventBuffer<RawHit> * handleEvents(EventBuffer<RawHit> *buffer) {
 		dataFileWriter->writeRawEvents(buffer, getT0());
+		if(dataFileWriter->getEventType() == RAW){
+			buffer->setUsed(0);
+		}
 		return buffer;
+	};
+
+	void report() {
+		if (dataFileWriter->getEventType() != RAW) {
+			this->sink->report();
+		}
 	};
 };
 
@@ -218,7 +266,17 @@ public:
 
 	EventBuffer<Hit> * handleEvents(EventBuffer<Hit> *buffer) {
 		dataFileWriter->writeSingleEvents(buffer, getT0());
+		if (dataFileWriter->getEventType() == SINGLE) {
+			buffer->setUsed(0);
+		}
+
 		return buffer;
+	};
+
+	void report() {
+		if (dataFileWriter->getEventType() == GROUP || dataFileWriter->getEventType() == COINCIDENCE) {
+			this->sink->report();
+		}
 	};
 };
 
@@ -235,8 +293,17 @@ public:
 	
 	EventBuffer<GammaPhoton> * handleEvents(EventBuffer<GammaPhoton> *buffer) {
 		dataFileWriter->writeGroupEvents(buffer, getT0());
+		if (dataFileWriter->getEventType() == GROUP) {
+			buffer->setUsed(0);
+		}
 		return buffer;
 	};
+	void report() {
+		if (dataFileWriter->getEventType() == COINCIDENCE) {
+			this->sink->report();
+		}
+	};
+
 };
 
 
@@ -252,6 +319,7 @@ public:
 	};
 
 	EventBuffer<Coincidence> * handleEvents(EventBuffer<Coincidence> *buffer) {
+
 		dataFileWriter->writeCoincidenceEvents(buffer, getT0());
 		return buffer;
 	};
