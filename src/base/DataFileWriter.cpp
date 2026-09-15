@@ -634,7 +634,6 @@ void DataFileWriter::writeCoincidenceEvents(EventBuffer<Coincidence> *buffer, do
     bool doMonitor = writeToShm && ((++nMonBuffers & monitorBufferMask) == 0);
     uint64_t nSeen = 0, nFilled = 0; 
 
-
     int N = buffer->getSize();
 
     for (int i = 0; i < N; i++) {
