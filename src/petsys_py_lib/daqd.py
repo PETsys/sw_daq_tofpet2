@@ -38,12 +38,13 @@ DEFAULT_MONITOR_EXEC = os.path.join(_HERE, '..', 'online_monitor')
  
 
 class ProcessedDataFileConfig:
-	def __init__(self, eventType= "coincidence", outputFormat="", fractionToWrite=100, hitLimit=1, tRef="", filePrefix=""):
+	def __init__(self, eventType= "coincidence", outputFormat="", fractionToWrite=100, hitLimit=1, tRef="", userTimeRef= 0.0, filePrefix=""):
 		self.eventType = eventType
 		self.outputFormat = outputFormat
 		self.fractionToWrite = fractionToWrite
 		self.hitLimit = hitLimit
 		self.tRef = tRef
+		self.userTimeRef = userTimeRef
 		self.filePrefix = filePrefix
 
 class AcquisitionOptions:
@@ -1260,7 +1261,8 @@ class Connection:
 			'T' if opts.verbose else 'N',
 			opts.processingTarget,
 			str(opts.maxChannel),
-			str(opts.monitorBufferMask)
+			str(opts.monitorBufferMask),
+			"%1.12f" % opts.processedDataFileConfig.userTimeRef
 		]
 
 

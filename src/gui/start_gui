@@ -1480,7 +1480,7 @@ class GUI:
 
             flag += " --output-type %s --output-format %s %s %s %s" % (flagType, format, flagFraction, flagHits, flagTimeRef) 
             if self.builder.get_object("acqSaveRawCheck").get_active(): 
-                flag += " --writeRawData"
+                flag += " --write-raw-data"
     
 
         doDelayStart = self.builder.get_object("acqManualStart").get_active()
@@ -1778,11 +1778,11 @@ class GUI:
         else:
             flagFormat = ""
         
-        flagFraction = "--writeFraction %d" % (fraction)
+        flagFraction = "--write-fraction %d" % (fraction)
 
         if dataType in ("Groups","Coincidences"):
             nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
-            flagHits = "--writeMultipleHits %d" % (nHits)
+            flagHits = "--write-multiple-hits %d" % (nHits)
         else:
             flagHits = ""
        

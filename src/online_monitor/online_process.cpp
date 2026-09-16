@@ -40,7 +40,7 @@ static const unsigned MAX_NUMBER_CHANNELS = 4194304;
 
 enum FrameType { FRAME_TYPE_UNKNOWN, FRAME_TYPE_SOME_DATA, FRAME_TYPE_ZERO_DATA, FRAME_TYPE_SOME_LOST, FRAME_TYPE_ALL_LOST };
 
-enum timeref_t {SYNC, WALL, STEP, USER};
+enum timeref_t {SYNC, WALL, STEP, MANUAL};
 
 static void normalizeLine(char *line) {
 	std::string s = std::string(line);
@@ -158,9 +158,10 @@ struct BlockHeader  {
 };
 
 
+
 int main(int argc, char *argv[])
 {
-	assert(argc == 19);
+	assert(argc == 20);
 	long systemFrequency = boost::lexical_cast<long>(argv[1]);
 	char *fileNamePrefix = argv[2];
 	char *eType = argv[3];
@@ -169,7 +170,7 @@ int main(int argc, char *argv[])
 	char *configFileName = argv[6];
 	char *shmObjectPath = argv[7];
 	int triggerID = boost::lexical_cast<int>(argv[8]);
-	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[9]);
+	double daqSynchronizationEpoch = boost::lexical_cast<double>(argv[9]) * systemFrequency;
 	unsigned long long fileCreationDAQTime = boost::lexical_cast<unsigned long long>(argv[10]);
 	int eventFractionToWrite = round(1024*boost::lexical_cast<float>(argv[11])/ 100.0);
 	int hitLimitToWrite = boost::lexical_cast<int>(argv[12]);
@@ -178,9 +179,8 @@ int main(int argc, char *argv[])
 	bool verbose = (argv[15][0] == 'T');
 	char *target = argv[16];
 	int maxChannel = boost::lexical_cast<int>(argv[17]);
-
 	uint64_t monitorBufferMask = boost::lexical_cast<uint64_t>(argv[18]);
-
+	double userTimeRef = boost::lexical_cast<double>(argv[19]);	
 	bool useAsyncWriting = false;
 	 
 
@@ -240,8 +240,8 @@ int main(int argc, char *argv[])
 		else if(strcmp(tref, "step") == 0){
 			tb = STEP;
 		}
-		else if(strcmp(tref, "user") == 0){
-			tb = USER;
+		else if(strcmp(tref, "manual") == 0){
+			tb = MANUAL;
 		}
 	}
 
@@ -314,7 +314,8 @@ int main(int argc, char *argv[])
 	wCfg.eventType          = eventType;
 	wCfg.fileType           = fileType;
 	wCfg.hitLimitToWrite    = hitLimitToWrite;
-	wCfg.eventFractionToWrite = eventFractionToWrite;  
+	wCfg.eventFractionToWrite = eventFractionToWrite; 
+	wCfg.userTimeRef = userTimeRef;  
 	wCfg.nChannels = maxChannel;
 	wCfg.monitorBufferMask = monitorBufferMask;
 
@@ -375,14 +376,17 @@ int main(int argc, char *argv[])
 			lastFrameType = FRAME_TYPE_UNKNOWN;
 			double t0 = 0;
 			switch(tb) {
-				case SYNC:	t0 = 0;
+				case SYNC:	
+						t0 = 0;
 						break;
 				case WALL:	
 						t0 = daqSynchronizationEpoch;
 						break;
-				case STEP:	t0 = -double(stepFirstFrameID) * 1024;
+				case STEP:	
+						t0 = -double(stepFirstFrameID) * 1024;
 						break;
-				case USER:	t0 = -double(fileCreationDAQTime);
+				case MANUAL:
+						t0 = -double(fileCreationDAQTime);
 						break;
 				default:
 						t0 = 0;

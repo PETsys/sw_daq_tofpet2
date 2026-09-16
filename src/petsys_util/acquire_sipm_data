@@ -49,10 +49,11 @@ def main():
 	parser.add_argument('--enable-realtime-monitoring', dest="enableOnlineMonitoring", action='store_true', help='Enable online (real-time) data monitoring.')
 	parser.add_argument("--output-type", type=str, dest="outputType", required=False, choices=["raw","singles", "groups", "coincidences"], help="If --enable-realtime-processing is set, this option selects the type output processed.\n")
 	parser.add_argument("--output-format", type=str, dest="outputFormat", required=False, choices=["text", "textCompact", "binary", "binaryCompact", "root"], help="If --enable-realtime-processing is set, this option selects the format of the output processed data.\n")
-	parser.add_argument("--writeFraction", type=float, required=False, help="If --enable-realtime-processing is set, this option selects the fraction of events (in percentage) to be written to the output file. If not set, all events are written.\n")
-	parser.add_argument("--writeMultipleHits", type=int, required=False, help="If --enable-realtime-processing is set, and outputType is 'groups' or 'coincidences', this option selects the number of hits to be written in the output file. If not set, only 1 hit (with max amplitude) is written.\n")
-	parser.add_argument("--timeref", type=str, required=False, choices=["sync", "wall", "step", "user"], help="If --enable-realtime-processing is set, this option selects the time reference for timestamps in processed data.\n")
-	parser.add_argument("--writeRawData", dest="writeRaw", action="store_true", help="If -- enable-realtime-processing is set, write a raw data file in addition to the output processed data file.\n")
+	parser.add_argument("--write-fraction", type=float,  dest="writeFraction", required=False, help="If --enable-realtime-processing is set, this option selects the fraction of events (0.0–100.0 %) to be written to the output file. If not set, all events are written.\n")
+	parser.add_argument("--write-multiple-hits", type=int,  dest="writeMultipleHits", required=False, help="If --enable-realtime-processing is set, and output type is 'groups' or 'coincidences', this option selects the number of hits to be written in the output file. If not set, only 1 hit (with max amplitude) is written.\n")
+	parser.add_argument("--timeref", type=str, dest="timeRef", required=False, choices=["sync", "wall", "step", "manual"], help="If --enable-realtime-processing is set, this option selects the time reference for timestamps of the processed data.\n")
+	parser.add_argument("--user-timeref", type=float, dest="userTimeRef", required=False, help="If --timeref is set to 'wall', this variable defines the chosen user Wall time reference (in seconds since UNIX Epoch) for the timestamps of the processed data.\n")
+	parser.add_argument("--write-raw-data", dest="writeRaw", action="store_true", help="If --enable-realtime-processing is set, write a raw data file in addition to the output processed data file.\n")
 	parser.add_argument("--param-table", type=str, dest="paramTable", help="Table containing the name and values of 1 or 2 parameters to be scanned during data acquisition. Allowed parameters are: OV (SIPM Overvoltage), vth_t1 (t1 discriminator threshold, in DAC units relative to the channel baseline), vth_t2 (t2 discriminator threshold, in DAC units relative to the channel baseline), vth_e (e discriminator threshold, in DAC units relative to the channel baseline), disc_lsb_t1 (t1 discriminator DAC LSB)")
 	parser.add_argument("--wait-on", dest="waitOn", type=str, help="Wait for named pipe signal before starting the acquisition")
 	parser.add_argument("--stop-on", dest="stopOn", type=str, default=None, help="Stop acquisition on named pipe signal")
@@ -66,17 +67,18 @@ def main():
 
 	if args.enableOnlineProcessing:
 		requiredArgsProc = ["outputType","outputFormat"]
-		conditionalArgsProc = ["writeRaw","outputType","outputFormat","writeFraction","writeMultipleHits","timeref"]
+		conditionalArgsProc = ["writeRaw","outputType","outputFormat","writeFraction","writeMultipleHits","timeRef"]
+
 	elif args.enableOnlineMonitoring:
-		conditionalArgsProc = ["writeRaw","outputFormat","writeFraction","writeMultipleHits","timeref"]
+		conditionalArgsProc = ["writeRaw","outputFormat","writeFraction","writeMultipleHits","timeRef"]
 	else:
-		conditionalArgsProc = ["writeRaw","outputType","outputFormat","writeFraction","writeMultipleHits","timeref"]
+		conditionalArgsProc = ["writeRaw","outputType","outputFormat","writeFraction","writeMultipleHits","timeRef"]
 
 
 
 	checkRequiredArgs(parser, requiredArgsProc, conditionalArgsProc, requiredArgsMonitor)
 
-	parser.set_defaults(writeFraction=100, writeMultipleHits=1, timeref="user", writeRaw=False)
+	parser.set_defaults(writeFraction=100, writeMultipleHits=1, timeRef="sync", userTimeRef=0, writeRaw=False)
 	
 	args = parser.parse_args()
 		
@@ -154,7 +156,8 @@ def main():
 				outputFormat    = args.outputFormat,
 				fractionToWrite = args.writeFraction,
 				hitLimit        = args.writeMultipleHits,
-				tRef            = args.timeref,
+				tRef            = args.timeRef,
+				userTimeRef     = args.userTimeRef,
 			)
 
 		if args.enableOnlineMonitoring:

@@ -975,8 +975,8 @@ void printCalibrationSummary(CalibrationEntry *calibrationTable, const char *out
             stats.rmsMean,
             stats.rmsMax,
             stats.rmsMin,
-            stats.qdcMinIntegTime,
-            stats.qdcMaxIntegTime
+            stats.qdcMinIntegTime * Tns,
+            stats.qdcMaxIntegTime * Tns
         );
     }
 

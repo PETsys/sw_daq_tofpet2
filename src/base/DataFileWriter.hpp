@@ -80,8 +80,8 @@ struct DataWriterConfig {
     double frequency = 200E6;
     EVENT_TYPE eventType = COINCIDENCE;
     FILE_TYPE fileType = FILE_TEXT;
-    double fileEpoch = 0.0;
-    int hitLimitToWrite = 1;
+	int hitLimitToWrite = 1;
+	double userTimeRef = 0.0;
     int eventFractionToWrite = 1024;
     float splitTime = 0;
     WRITE_TARGET writeTarget = TARGET_FILE;
@@ -109,12 +109,12 @@ private:
 	std::string fName;
 	FILE_TYPE fileType;
 	EVENT_TYPE eventType;
-	double fileEpoch;
+	double userTimeRef;
 	int eventFractionToWrite;
 	long long eventCounter;
 	double fileSplitTime;
 	long long currentFilePartIndex;
-
+	double frequency;
 	int hitLimitToWrite;
 
 	float step1;

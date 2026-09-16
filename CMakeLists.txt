@@ -6,25 +6,51 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
 	endif()
 endif()
 
+if(EXISTS "/etc/os-release")
+	file(STRINGS "/etc/os-release" OS_RELEASE)
+	foreach(LINE ${OS_RELEASE})
+		if(LINE MATCHES "^ID=\"?([^\"]+)\"?$")
+			set(LSB_ID_SHORT ${CMAKE_MATCH_1})
+		endif()
+		if(LINE MATCHES "^VERSION_ID=\"?([^\"]+)\"?$")
+			set(LSB_RELEASE_SHORT ${CMAKE_MATCH_1})
+		endif()
+	endforeach()
+else()
+	message(FATAL_ERROR "Cannot detect OS: /etc/os-release not found")
+endif()
 
-find_program(LSB_RELEASE_EXEC lsb_release REQUIRED)
-execute_process(COMMAND ${LSB_RELEASE_EXEC} -is
-	OUTPUT_VARIABLE LSB_ID_SHORT
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(COMMAND ${LSB_RELEASE_EXEC} -rs
-	OUTPUT_VARIABLE LSB_RELEASE_SHORT
-	OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+
+if(LSB_ID_SHORT STREQUAL "almalinux" OR LSB_ID_SHORT STREQUAL "centos")
+	set(LSB_ID_SHORT "rhel")
+endif()
+
+if(LSB_ID_SHORT STREQUAL "rhel")
+	string(REGEX REPLACE "\\..*" "" LSB_RELEASE_SHORT ${LSB_RELEASE_SHORT})
+endif()
+
+message(STATUS "Detected OS: ${LSB_ID_SHORT} ${LSB_RELEASE_SHORT}")
+
 
 find_package(PythonLibs 3.6 REQUIRED)
-if((${LSB_ID_SHORT} STREQUAL "Ubuntu") AND (${LSB_RELEASE_SHORT} VERSION_LESS_EQUAL "20.04"))
+if((LSB_ID_SHORT STREQUAL "ubuntu") AND (LSB_RELEASE_SHORT VERSION_LESS_EQUAL "20.04"))
 	find_package(Boost REQUIRED python regex)
-elseif((EXISTS "/etc/redhat-release") AND (${LSB_RELEASE_SHORT} VERSION_GREATER_EQUAL "9"))
+elseif((LSB_ID_SHORT STREQUAL "rhel") AND (LSB_RELEASE_SHORT VERSION_GREATER_EQUAL "10"))
+	find_package(Boost REQUIRED python312 regex)
+elseif((LSB_ID_SHORT STREQUAL "rhel") AND (LSB_RELEASE_SHORT VERSION_GREATER_EQUAL "9"))
 	find_package(Boost REQUIRED python39 regex)
 else()
 	find_package(Boost REQUIRED python3 regex)
+      endif()
+
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.27")
+    cmake_policy(SET CMP0148 OLD)
 endif()
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
+    cmake_policy(SET CMP0167 OLD)
+endif()
+      
+add_definitions(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
 include(CheckIncludeFiles)
 
@@ -41,18 +67,30 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 set( CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX -march=native -O3" )
 set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLINUX  -march=native -O3" )
 endif()
-
 set (DAQD_SOURCES "src/daqd/daqd.cpp" "src/daqd/Client.cpp" "src/daqd/FrameServer.cpp" "src/daqd/UDPFrameServer.cpp" "src/daqd/DAQFrameServer.cpp" "src/daqd/PFP_KX7.cpp"  "src/raw_data/shm_raw.cpp" )
-
 add_executable("daqd" ${DAQD_SOURCES})
 add_executable("write_raw" "src/raw_data/write_raw.cpp" "src/raw_data/shm_raw.cpp" "src/raw_data/AsyncWriter.cpp")
 
-execute_process(COMMAND root-config --incdir OUTPUT_VARIABLE ROOT_INCDIR)
-string(STRIP ${ROOT_INCDIR} ROOT_INCDIR)
-execute_process(COMMAND root-config --libs OUTPUT_VARIABLE ROOT_LIBS)
-string(STRIP ${ROOT_LIBS} ROOT_LIBS)
-execute_process(COMMAND root-config --cflags OUTPUT_VARIABLE ROOT_CXX_FLAGS)
-string(STRIP ${ROOT_CXX_FLAGS} ROOT_CXX_FLAGS)
+find_program(ROOT_CONFIG_EXEC root-config
+    PATHS
+        /usr/local/bin
+        /usr/bin
+        $ENV{ROOTSYS}/bin
+    REQUIRED
+)
+execute_process(COMMAND ${ROOT_CONFIG_EXEC} --incdir
+    OUTPUT_VARIABLE ROOT_INCDIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(COMMAND ${ROOT_CONFIG_EXEC} --libs
+    OUTPUT_VARIABLE ROOT_LIBS
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(COMMAND ${ROOT_CONFIG_EXEC} --cflags
+    OUTPUT_VARIABLE ROOT_CXX_FLAGS
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 
 link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser" "-laio")
 add_library(shm_raw_py MODULE "src/raw_data/shm_raw.cpp" "src/raw_data/shm_raw_py.cpp")
@@ -61,7 +99,6 @@ set_target_properties(shm_raw_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_B
 link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser" "-laio")
 add_library(monitor_py MODULE "src/online_monitor/Monitor.cpp" "src/online_monitor/SingleValue.cpp" "src/online_monitor/Histogram1D.cpp" "src/online_monitor/monitor_py.cpp")
 set_target_properties(monitor_py PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/petsys OUTPUT_NAME monitor PREFIX "")
-
 
 configure_file("src/petsys_py_lib/__init__.py" "petsys/__init__.py" COPYONLY)
 configure_file("src/petsys_py_lib/tofpet2b.py" "petsys/tofpet2b.py" COPYONLY)

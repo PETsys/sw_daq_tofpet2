@@ -18,7 +18,7 @@ namespace PETSYS {
 			SYNC,
 			WALL,
 			STEP,
-			USER
+			MANUAL
 		};
 
 	private:
