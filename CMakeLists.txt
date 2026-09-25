@@ -90,9 +90,7 @@ execute_process(COMMAND ${ROOT_CONFIG_EXEC} --cflags
     OUTPUT_VARIABLE ROOT_CXX_FLAGS
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-message(STATUS "ROOT incdir : ${ROOT_INCDIR}")
-message(STATUS "ROOT libs   : ${ROOT_LIBS}")
-message(STATUS "ROOT cflags : ${ROOT_CXX_FLAGS}")
+
 
 link_libraries(${Boost_LIBRARIES} ${PYTHON_LIBRARIES} "-liniparser" "-laio")
 add_library(shm_raw_py MODULE "src/raw_data/shm_raw.cpp" "src/raw_data/shm_raw_py.cpp")
@@ -117,6 +115,7 @@ configure_file("src/petsys_py_lib/fe_temperature.py" "petsys/fe_temperature.py" 
 configure_file("src/petsys_py_lib/fe_eeprom.py" "petsys/fe_eeprom.py" COPYONLY)
 configure_file("src/petsys_py_lib/fe_power.py" "petsys/fe_power.py" COPYONLY)
 configure_file("src/petsys_py_lib/fe_power_8k.py" "petsys/fe_power_8k.py" COPYONLY)
+configure_file("src/petsys_py_lib/shm_online_monitoring.py" "petsys/shm_online_monitoring.py" COPYONLY)
 configure_file("src/petsys_util/setSI53xx.py" "setSI53xx.py" COPYONLY)
 configure_file("src/petsys_util/SI5326_config.txt" "SI5326_config.txt" COPYONLY)
 configure_file("src/petsys_util/acquire_tdc_calibration" "acquire_tdc_calibration" COPYONLY)

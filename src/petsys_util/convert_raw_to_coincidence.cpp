@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
 							else if(strcmp(optarg, "manual") == 0) tb = RawReader::MANUAL;
 							else { fprintf(stderr, "ERROR: unkown timeref '%s'\n", optarg); exit(1); }
 							break;
-			        case 11:	userTimeref = boost::lexical_cast<double>(optarg); break;			
+			    case 11:	userTimeref = boost::lexical_cast<double>(optarg); break;			
 				default:	displayUsage(argv[0]); exit(1);
 
 			}
@@ -143,7 +143,17 @@ int main(int argc, char *argv[])
 	
 	SystemConfig *config = SystemConfig::fromFile(configFileName, mask);
 	
-	DataFileWriter *dataFileWriter = new DataFileWriter(outputFileName, false, reader->getFrequency(), COINCIDENCE, fileType, userTimeref, hitLimitToWrite, eventFractionToWrite, fileSplitTime);
+	DataWriterConfig cfg;
+	cfg.fName = outputFileName;
+	cfg.useAsyncWriting = false;
+	cfg.frequency = reader->getFrequency();
+	cfg.eventType = COINCIDENCE;
+	cfg.fileType = fileType;
+	cfg.hitLimitToWrite = hitLimitToWrite;
+	cfg.eventFractionToWrite = eventFractionToWrite;
+	cfg.splitTime = fileSplitTime;
+	
+	DataFileWriter *dataFileWriter = new DataFileWriter(cfg);
 	
 	int stepIndex = 0;
 	while(reader->getNextStep()) {

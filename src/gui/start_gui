@@ -4,12 +4,15 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
+gi.require_version('Pango', '1.0')
+gi.require_version('PangoCairo', '1.0')
 from gi.repository import Gtk
 from gi.repository import GdkPixbuf
 from gi.repository import Gdk
 from gi.repository import Gio
 from gi.repository import GLib
 from gi.repository import GObject
+from gi.repository import Pango, PangoCairo
 import sys
 import os
 import subprocess
@@ -20,12 +23,27 @@ from collections import Counter
 from time import sleep, time
 import csv
 from petsys import daqd, info, bias, fe_power
+from petsys import shm_online_monitoring as shmMonitor
 from fcntl import fcntl, F_GETFL, F_SETFL
 from os import O_NONBLOCK, read
 from matplotlib.backends.backend_gtk3agg import (FigureCanvasGTK3Agg as FigureCanvas)
 from matplotlib.figure import Figure
 import warnings
 import numpy as np
+import ROOT
+import tempfile
+import threading
+import time
+import cairo
+
+
+# constants shared with print_global_stats/print_user_stats
+SUMMARY_LABEL_W = 21
+VALUE_W = 16
+LABEL_W  = 15
+EVENTS_W = 12
+RATE_W   = 10
+
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -41,8 +59,64 @@ class GUI:
         self.readTempWindow = self.builder.get_object("readTempWindow")
         self.readTempPlotWindow = self.builder.get_object("readTempPlotWindow")
 
+        self.dataMonitorWindow = self.builder.get_object("dataMonitoringWindow")
+        self.dataMonitorPlotWindow = self.builder.get_object("dataMonitoringPlotWindow")
+
+        #self.dataMonitorPlotWindow.connect("size-allocate", lambda w, a: print(f"Plot window: {a.width}x{a.height}"))
+        #self.dataMonitorWindow.connect("size-allocate", lambda w, a: print(f"Monitor window: {a.width}x{a.height}"))
+        #self.builder.get_object("dataMonitoringTextScrollWindow").connect("size-allocate", lambda w, a: print(f"Text scroll window: {a.width}x{a.height}"))
+        #self.builder.get_object("dataMonitoringTextView").connect("size-allocate", lambda w, a: print(f"Text window: {a.width}x{a.height}"))
+
+        self.builder.get_object("dataMonitoringTextView").connect("size-allocate", self.on_dataMonitoringTextView_size_allocate)
+
         self.builder.connect_signals(self)
+        self.builder.get_object("dataMonitoringTextView").set_name("dataMonitoringTextView")   
         
+
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(b"""
+            frame border {
+                border-radius: 10px;
+            }  
+        """)
+
+
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+
+        self.__spinHandlerIdMin = self.builder.get_object("dataMonitoringSpinButtonMin").connect("value-changed", self.on_dataMonitoringSpinButtonMin_value_changed)
+        self.__spinHandlerIdMax = self.builder.get_object("dataMonitoringSpinButtonMax").connect("value-changed", self.on_dataMonitoringSpinButtonMax_value_changed)
+        
+        self.__globalStatsToggleHandlerId = self.builder.get_object("dataMonitoringToggleButton1").connect("toggled", self.on_dataMonitoringToggleButton1_toggled)
+        self.__userStatsToggleHandlerId = self.builder.get_object("dataMonitoringToggleButton2").connect("toggled", self.on_dataMonitoringToggleButton2_toggled)
+
+        self.__spinHandlerIdMin1 = self.builder.get_object("dataMonitoringSpinButtonMin1").connect("value-changed", self.on_dataMonitoringSpinButtonMin1_value_changed)
+        self.__spinHandlerIdMax1 = self.builder.get_object("dataMonitoringSpinButtonMax1").connect("value-changed", self.on_dataMonitoringSpinButtonMax1_value_changed)
+
+        self.__dataMonitorReader = None
+        self.__dataMonitorPlotType = 0 # Event count is the default
+        self.__dataMonitorDataType = 1 # Singles is the default monitoring type
+        self.__dataMonitorPlotBy = 0 # Channels is the default granularity in plots
+        self.__dataMonitorRefreshTime = 2 # 2 seconds in default
+        self.__dataMonitorSourceId = None
+        self.__dataMonitorMinSettableID = None
+        self.__dataMonitorMaxSettableID = None
+        self.__dataMonitorMinSettableEnergy = None
+        self.__dataMonitorMaxSettableEnergy = None
+        self.__dataMonitorMinIDSelection = None
+        self.__dataMonitorMaxIDSelection = None
+        self.__dataMonitoringSetLogY = False
+        self.__dataMonitoringSetGrid = False
+        self.__dataMonitoringShowGlobalStats = True # Setting to False will show user selection stats 
+       
+        self.__is_acquiring = False
+        self.__is_shm_monitor_on = False
+        self.__dataAcquistionTime0 = None
+
         self.__daqd_switch_handle_set = False
        
         self.__daqdPid = None
@@ -66,9 +140,9 @@ class GUI:
         self.__usedTempStopButton = False
         self.__tempLogFileName = None
         self.__initialiseTempPlot = False
+        self.__initialiseMonitorPlot = False
 
         self.hasSensorInfo = False
-
 
     def on_executeStopButton_clicked(self, button):
         if self.__process is None:
@@ -108,16 +182,18 @@ class GUI:
         # turn off sensitive property of all widgets that are not on the execute process window
         for widget in self.builder.get_objects():
             if widget.find_property("sensitive") is not None:
-                if ("execute" in  Gtk.Buildable.get_name(widget)) or ("readTemp" in  Gtk.Buildable.get_name(widget)):
+                if ("execute" in  Gtk.Buildable.get_name(widget)) or ("readTemp" in  Gtk.Buildable.get_name(widget)) or ("dataMonitoring" in  Gtk.Buildable.get_name(widget)):
                     widget.set_sensitive(True)
                 else:
                     widget.set_sensitive(False)
 
+        self.builder.get_object("executeMonitorButton").set_sensitive(False)  
+        self.builder.get_object("executeStopButton").set_sensitive(False)           
         self.builder.get_object("executeScrollButton").set_sensitive(True)
-        self.builder.get_object("executeStopButton").set_sensitive(True)
+    
         self.processWindow.set_title("%s (running)" % processName)
         self.processWindow.show()
-        self.builder.get_object("executeSpinner").start()
+        #self.builder.get_object("executeSpinner").start()
 
         GLib.io_add_watch(self.__process.stdout, # file descriptor
                           GLib.IO_IN,  # condition
@@ -131,7 +207,7 @@ class GUI:
         data = [processName, message1, message2]
 
         self.timeout_id = GLib.timeout_add(1000, self.check_if_finished, data)
-
+        self.timeout_id2 = GLib.timeout_add(1000, self._poll_shm_status)
 
     def read_temperature(self,command, processName ="", message1="", message2=""):
         
@@ -144,7 +220,6 @@ class GUI:
         flags = fcntl(self.__temperatureProcess.stderr, F_GETFL) # get current p.stdout flags
         fcntl(self.__temperatureProcess.stderr, F_SETFL, flags | O_NONBLOCK)
 
-
         self.readTempWindow.set_title("Read Temperature Sensors (running)")
         #self.readTempWindow.show()
         self.builder.get_object("readTempSpinner").start()
@@ -156,25 +231,29 @@ class GUI:
         
         GLib.io_add_watch(self.__temperatureProcess.stderr, # file descriptor
                           GLib.IO_IN,  # condition
-                          self.write_to_textview_temp ) # callback
+                          self.write_to_textview_temp) # callback
 
         data = [processName, message1, message2]
 
         self.timeout_id = GLib.timeout_add(1000, self.check_if_temp_finished, data)
-    
+
+
     def check_if_finished(self, data):
         message1 = data[1]
         message2 = data[2]
 
         if self.__process.poll() is None:
+            if self.__is_acquiring:
+                self.builder.get_object("executeStopButton").set_sensitive(True)
             return True
         if self.__process.poll() is not None:
-            self.builder.get_object("executeSpinner").stop()
+            self.__is_acquiring = False        
+            self.__dataAcquistionTime0 = None
+            #self.builder.get_object("executeSpinner").stop()
             GLib.source_remove(self.timeout_id)
             # Make all widgets sensitive again...
 
-
-            for widget in self.builder.get_objects():
+            for widget in self.builder.get_objects():   
                 if widget.find_property("sensitive") is not None:
                     widget.set_sensitive(True)
             if self.builder.get_object("acqRealTimeProcess").get_active():
@@ -190,7 +269,16 @@ class GUI:
                 self.builder.get_object("acqProcessWhenFinishedLabel").set_sensitive(True)
                 self.builder.get_object("acqProcessWhenFinishedCheck").set_sensitive(True)
 
+            if self.builder.get_object("dataMonitoringCheckBox").get_active(): 
+                self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(False)
+                self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(False)
+            
+            if self.builder.get_object("dataMonitoringCheckBox1").get_active(): 
+                self.builder.get_object("dataMonitoringSpinButtonMin1").set_sensitive(False)
+                self.builder.get_object("dataMonitoringSpinButtonMax1").set_sensitive(False)
 
+            if not self.builder.get_object("acqRealTimeMonitor").get_active():
+                self.builder.get_object("executeMonitorButton").set_sensitive(False)
 
             self.builder.get_object("executeScrollButton").set_sensitive(False)
             self.builder.get_object("executeStopButton").set_sensitive(False)
@@ -244,10 +332,18 @@ class GUI:
     def write_to_textview(self, fd, condition):
         if condition == GLib.IO_IN: 
             char = fd.read().decode('utf-8', errors='ignore')
-            tview = self.builder.get_object("executeTextView")
             buf = self.builder.get_object("executeTextView").get_buffer()
-        
-            if "Python:: Acquired" in char:
+
+            if "INFO: Acquired" in char:
+                self.__is_acquiring = True
+
+                if self.__dataAcquistionTime0 is None:
+                    self.__dataAcquistionTime0 = self.get_start_time(char)
+                    
+                self.__dataAcquisitonDuration =  self.get_time(char)
+               
+                self.__dataAcquisitonDataLoss =  self.get_data_loss_percentage(char)
+
                 if "\r" in char:
                     char = char[:-1]
                 nLines =  buf.get_line_count()
@@ -269,14 +365,45 @@ class GUI:
             return True 
         else:
             return False 
+   
+    def get_start_time(self, char):
+        t = re.search(r'(\d{1,6}\.\d) seconds', char)
+        if t is not None and t.group(1) == "0.2":
+            return time.time()
+        return None
     
+    def get_time(self, char):
+        t = re.search(r'(\d{1,6}\.\d) seconds', char)
+        if t is not None:
+            return float(t.group(1))
+        
+    def get_data_loss_percentage(self, char):
+        t = re.search(r'Data Loss:\s*([\d.]+)%', char)
+        if t is not None:
+            return float(t.group(1))
+        return None
+    
+    def get_time_from_buffer(self, n_lines=150):
+        buf = self.builder.get_object("executeTextView").get_buffer()
+
+        text = buf.get_text(buf.get_start_iter(), buf.get_end_iter(), False)
+        lines = text.splitlines()
+
+        for line in reversed(lines[-n_lines:]):
+            t = re.search(r'(\d{1,6}\.\d) seconds', line)
+            if t is not None:
+                return float(t.group(1))
+        return None
+
+
+   
     def write_to_textview_temp(self, fd, condition):
         if condition == GLib.IO_IN: 
             char = fd.read().decode() 
             tview = self.builder.get_object("readTempTextView")
             buf = self.builder.get_object("readTempTextView").get_buffer()
         
-            if "Python:: Acquired" in char:
+            if "INFO: Acquired" in char:
                 if "\r" in char:
                     char = char[:-1]
                 nLines =  buf.get_line_count()
@@ -330,7 +457,10 @@ class GUI:
                 window.hide()
         return True
 
-        # Main menu handler functions       
+
+    def on_dataMonitoringWindow_delete_event(self, window, data): 
+        window.hide()
+        return True
 
     def on_menuFileQuit_activate(self, menuFileQuit): # quit with Quit button
         if self.show_confirmation_dialog("This will close any running processes","Exit?"):
@@ -880,8 +1010,6 @@ class GUI:
         if not confirm:
             return True
 
-        start = time()
-
         command = ""
         if do_cal[0]:
             command += "python3 -u ./acquire_threshold_calibration --config " + self.__workingFolder + "config.ini -o " + self.__workingFolder + "disc_calibration;"
@@ -1288,6 +1416,7 @@ class GUI:
             self.show_error_dialog("Please enter a name for the output file.")
             return
 
+
         outFile = self.__workingFolder+self.builder.get_object("acqFileEntry").get_text()
 
         self.__isProcessSipmAcquisition = True
@@ -1308,6 +1437,8 @@ class GUI:
 
         useTrigger = self.builder.get_object("acqTrigger").get_active()
         onlineProcess = self.builder.get_object("acqRealTimeProcess").get_active()
+        onlineMonitoring = self.builder.get_object("acqRealTimeMonitor").get_active()
+        
         
         if( not onlineProcess or (onlineProcess and self.builder.get_object("acqSaveRawCheck").get_active())):
             if os.path.exists(outFile+".rawf"):
@@ -1321,8 +1452,14 @@ class GUI:
         else:
             flag = ""
 
+        if onlineMonitoring:
+            flag += " --enable-realtime-monitoring"
+            flagType, flagFormat, flagFraction, flagHits, flagTimeRef = self.getProcessingOptions(outFile)
+            flag += " --output-type %s" % flagType
+            self.delete_monitoring_shm()
+            self.builder.get_object("dataMonitoringWindow").hide()
 
-        if(onlineProcess):
+        if onlineProcess:
             # outFileName = self.builder.get_object("processingFileChooseEntry1").get_text()
             # if outFileName.endswith('.ldat'):
             #     outFileName, ext = os.path.splitext(outFileName)
@@ -1343,9 +1480,9 @@ class GUI:
 
             flag += " --output-type %s --output-format %s %s %s %s" % (flagType, format, flagFraction, flagHits, flagTimeRef) 
             if self.builder.get_object("acqSaveRawCheck").get_active(): 
-                flag += " --writeRawData"
+                flag += " --write-raw-data"
     
-      
+
         doDelayStart = self.builder.get_object("acqManualStart").get_active()
 
         if(doDelayStart):
@@ -1399,7 +1536,6 @@ class GUI:
 
         if(doDelayStart):
             self.builder.get_object("execStartButton").set_sensitive(True)
-
             
         return True
         
@@ -1642,11 +1778,11 @@ class GUI:
         else:
             flagFormat = ""
         
-        flagFraction = "--writeFraction %d" % (fraction)
+        flagFraction = "--write-fraction %d" % (fraction)
 
         if dataType in ("Groups","Coincidences"):
             nHits = self.builder.get_object("processingHitsSpinButton").get_value_as_int()
-            flagHits = "--writeMultipleHits %d" % (nHits)
+            flagHits = "--write-multiple-hits %d" % (nHits)
         else:
             flagHits = ""
        
@@ -1661,7 +1797,6 @@ class GUI:
         return flagType, flagFormat, flagFraction, flagHits, flagTimeRef
     
 
-    
     def on_processButton_clicked(self, button):
         if self.__workingFolder == None:
             self.show_error_dialog("Choose a working directory to continue.")
@@ -1706,6 +1841,797 @@ class GUI:
     
         return True
 
+    # Data monitoring related methods     
+    def on_dataMonitoringComboBox1_changed(self, entry):
+        self.__dataMonitorDataType = int(self.builder.get_object("dataMonitoringComboBox1").get_active_id()) 
+        self.update_data_monitoring()
+        return True
+
+    def on_dataMonitoringComboBox2_changed(self, entry):
+        self.__dataMonitorPlotType = int(self.builder.get_object("dataMonitoringComboBox2").get_active_id()) 
+        self.update_data_monitoring()
+        return True
+    
+    def on_dataMonitoringComboBox3_changed(self, entry):
+        prev_granularity = self.__dataMonitorPlotBy
+        self.__dataMonitorPlotBy = int(self.builder.get_object("dataMonitoringComboBox3").get_active_id()) 
+        self.set_new_granularity_limits(prev_granularity)
+        self.update_data_monitoring()
+        return True
+    
+    def on_dataMonitoringComboBoxTime_changed(self, entry):
+        self.__dataMonitorRefreshTime = int(self.builder.get_object("dataMonitoringComboBoxTime").get_active_text()) 
+        self.start_data_monitoring()
+        return True
+    
+    def on_dataMonitoringSpinButtonMin_value_changed(self, button):
+        if not self.__is_acquiring:
+            self.update_data_monitoring()
+        return False
+    
+    def on_dataMonitoringSpinButtonMax_value_changed(self, button):
+        if not self.__is_acquiring:
+            self.update_data_monitoring()
+        return False
+
+    def on_dataMonitoringSpinButtonMin1_value_changed(self, button):
+        value = button.get_value();
+        value2 = round(value * 5.0) / 5.0;
+        button.set_value(value2);
+        if not self.__is_acquiring:
+            self.update_data_monitoring()
+        return False
+
+
+    def on_dataMonitoringSpinButtonMax1_value_changed(self, button):
+        value = button.get_value();
+        value2 = round(value * 5.0) / 5.0;
+        button.set_value(value2);
+        if not self.__is_acquiring:
+            self.update_data_monitoring()
+        return False
+    
+    def on_dataMonitoringToggleButton1_toggled(self, button):
+        if button.get_active():
+            self.builder.get_object("dataMonitoringToggleButton2").handler_block(self.__userStatsToggleHandlerId)
+            self.builder.get_object("dataMonitoringToggleButton2").set_active(False)
+            self.builder.get_object("dataMonitoringToggleButton2").handler_unblock(self.__userStatsToggleHandlerId) 
+            self.__dataMonitoringShowGlobalStats = True
+            if not self.__is_acquiring:
+                self.update_data_monitoring()
+
+    def on_dataMonitoringToggleButton2_toggled(self, button):    
+        if button.get_active():
+            self.builder.get_object("dataMonitoringToggleButton1").handler_block(self.__globalStatsToggleHandlerId)
+            self.builder.get_object("dataMonitoringToggleButton1").set_active(False)
+            self.builder.get_object("dataMonitoringToggleButton1").handler_unblock(self.__globalStatsToggleHandlerId) 
+            self.__dataMonitoringShowGlobalStats = False
+            if not self.__is_acquiring:
+                self.update_data_monitoring()
+
+    def on_dataMonitoringCheckBox_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            settable_limits = {
+                0: ( self.__dataMonitorMinSettableID, self.__dataMonitorMaxSettableID ),
+                1: ( int(self.__dataMonitorMinSettableID/64)   , int(self.__dataMonitorMaxSettableID/64)  ),
+                2: ( int(self.__dataMonitorMinSettableID/4096) , int(self.__dataMonitorMaxSettableID/4096)),
+            }
+            min_limit, max_limit = settable_limits[self.__dataMonitorPlotBy]
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_value(min_limit)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_value(max_limit)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(False)
+        else:
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(True)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(True)
+
+    
+    def on_dataMonitoringCheckBox1_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_value(self.__dataMonitorMinSettableEnergy)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_value(self.__dataMonitorMaxSettableEnergy)
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_sensitive(False)
+        else:
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_sensitive(True)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_sensitive(True)
+
+
+    def on_dataMonitoringCheckBoxLogY_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            self.__dataMonitoringSetLogY = True
+        else:
+            self.__dataMonitoringSetLogY = False
+        self.update_data_monitoring()
+        return True
+
+    def on_dataMonitoringCheckBoxGrid_toggled(self, checkbutton):
+        if checkbutton.get_active(): 
+            self.__dataMonitoringSetGrid = True
+        else:
+            self.__dataMonitoringSetGrid = False
+        self.update_data_monitoring()
+        return True
+
+    def set_new_granularity_limits(self, prev_granularity):
+
+        if prev_granularity == 0:
+            minChannel = self.__dataMonitorMinIDSelection
+            maxChannel = self.__dataMonitorMaxIDSelection
+        elif prev_granularity == 1:
+            minChannel = self.__dataMonitorMinIDSelection * 64 
+            maxChannel = self.__dataMonitorMaxIDSelection * 64 + 64
+        elif prev_granularity == 2:
+            minChannel = self.__dataMonitorMinIDSelection * 4096 
+            maxChannel = self.__dataMonitorMaxIDSelection * 4096 + 4096
+        
+        if maxChannel > self.__dataMonitorMaxSettableID:
+            maxChannel = self.__dataMonitorMaxSettableID
+        if minChannel < self.__dataMonitorMinSettableID:
+            minChannel = self.__dataMonitorMinSettableID        
+
+        if  self.__dataMonitorPlotBy == 0:
+            self.__dataMonitorMinIDSelection = minChannel
+            self.__dataMonitorMaxIDSelection = maxChannel
+        elif  self.__dataMonitorPlotBy == 1:
+            self.__dataMonitorMinIDSelection = int(minChannel / 64)
+            self.__dataMonitorMaxIDSelection = int(maxChannel / 64)
+        elif  self.__dataMonitorPlotBy == 2:
+            self.__dataMonitorMinIDSelection = int(minChannel / 4096)
+            self.__dataMonitorMaxIDSelection = int(maxChannel / 4096)
+        
+
+        self.builder.get_object("dataMonitoringSpinButtonMin").handler_block(self.__spinHandlerIdMin)
+        self.builder.get_object("dataMonitoringSpinButtonMax").handler_block(self.__spinHandlerIdMax) 
+      
+        self.builder.get_object("dataMonitoringSpinButtonMin").set_range(0, 1310720)
+        self.builder.get_object("dataMonitoringSpinButtonMin").set_value(self.__dataMonitorMinIDSelection)
+        self.builder.get_object("dataMonitoringSpinButtonMax").set_range(0,1310720)
+        self.builder.get_object("dataMonitoringSpinButtonMax").set_value(self.__dataMonitorMaxIDSelection)
+      
+        self.builder.get_object("dataMonitoringSpinButtonMin").handler_unblock(self.__spinHandlerIdMin)
+        self.builder.get_object("dataMonitoringSpinButtonMax").handler_unblock(self.__spinHandlerIdMax)  
+
+
+    def on_executeMonitorButton_clicked(self, button):
+        if not self.__initialiseMonitorPlot:
+            ROOT.gROOT.SetBatch(True)
+            ROOT.gStyle.SetOptStat(0)
+
+            self.rootCanvas = ROOT.TCanvas("c1", "Monitor", 870, 550)
+            
+            self.rootImage = Gtk.Image()
+            self.dataMonitorPlotWindow.add_with_viewport(self.rootImage)
+            self.rootImage.show() 
+
+            self.__initialiseMonitorPlot = True
+
+        self.dataMonitorWindow.show_all()
+        self.monitorData()
+
+        return True
+    
+    def _poll_shm_status(self):
+        if shmMonitor.MonitoringShmReader.is_valid() and self.builder.get_object("acqRealTimeMonitor").get_active():
+            self.builder.get_object("executeMonitorButton").set_sensitive(True)
+            return False   # stop
+        return True
+
+    def _get_or_create_th1d(self, name, title, nbins, xlow, xhigh, color="#2E86AB"):
+        existing = ROOT.gDirectory.FindObject(name)
+        if existing:
+            existing.Reset()
+            return existing
+        h = ROOT.TH1D(name, title, nbins, xlow, xhigh)
+        h.SetFillColor(ROOT.TColor.GetColor(color))
+        h.SetFillStyle(1001)
+        return h
+
+
+    def monitorData(self):
+        self.__dataMonitorReader = shmMonitor.MonitoringShmReader()
+
+        nEnergyBins = self.__dataMonitorReader.nEnergyBins
+        edges        = self.__dataMonitorReader.edges
+        nChannels    = self.__dataMonitorReader.nChannels
+        nChipBins    = nChannels // 64
+        nFebdBins    = nChannels // 4096
+
+        self.rootHistEnergy = self._get_or_create_th1d(
+            "hEnergy", "Charge/Energy Spectrum;Energy (a.u.);Counts",
+            nEnergyBins, edges[0], edges[-1]
+        )
+        self.rootHistEnergyRaw = self._get_or_create_th1d(
+            "hEnergyRaw", "Raw efine Spectrum;Raw efine (adc);Counts",
+            nEnergyBins, edges[0] , edges[-1]
+        )
+        self.rootHistCounts = self._get_or_create_th1d(
+            "hCounts", "Channel Event Distribution;Global Channel ID;Counts",
+            nChannels, 0, nChannels
+        )
+        self.rootHistCountsChip = self._get_or_create_th1d(
+            "hCountsChip", "ASIC Event Distribution;Global Chip ID;Counts",
+            nChipBins, 0, nChipBins
+        )
+        self.rootHistCountsFebd = self._get_or_create_th1d(
+            "hCountsFebd", "FEB/D Event Distribution;Global FEB/D ID;Counts",
+            nFebdBins, 0, nFebdBins
+        )
+
+        self.hist_map = {
+            0: self.rootHistCounts,
+            1: self.rootHistCountsChip,
+            2: self.rootHistCountsFebd,
+        }
+        self.update_data_monitoring(True)
+        if self.__is_acquiring:
+            self.start_data_monitoring()
+
+
+    def start_data_monitoring(self):
+        if self.__dataMonitorSourceId is not None:
+            GLib.source_remove(self.__dataMonitorSourceId) 
+        
+        self.__dataMonitorSourceId = GLib.timeout_add(
+            self.__dataMonitorRefreshTime * 1000,
+            self.update_data_monitoring
+        )
+
+
+    def _on_draw_root(self, widget, cr):
+        if self._rootPixbuf is None:
+            return
+        alloc = widget.get_allocation()
+        scaled = self._rootPixbuf.scale_simple(
+            alloc.width, alloc.height, GdkPixbuf.InterpType.BILINEAR
+        )
+        Gdk.cairo_set_source_pixbuf(cr, scaled, 0, 0)
+        cr.paint()
+
+    def _fill_energy_histogram_from_array(self, energy_array):
+        hist = self.rootHistEnergyRaw if self.__dataMonitorDataType == 0 else self.rootHistEnergy
+        hist.Reset()
+        for i, c in enumerate(energy_array):
+            hist.SetBinContent(i + 1, float(c))    
+
+    def _fill_energy_histogram_from_array_with_range(self, energy_array, minEnergy, maxEnergy):
+        hist = self.rootHistEnergyRaw if self.__dataMonitorDataType == 0 else self.rootHistEnergy
+        hist.Reset()
+        bin_centers = self.__dataMonitorReader.bin_centers
+        bin_width = self.__dataMonitorReader.bin_width
+        masked = np.where((bin_centers - 0.5 * bin_width >= minEnergy - 0.0001) & (bin_centers + 0.5 * bin_width <= maxEnergy + 0.0001), energy_array, 0).astype(np.float64)
+        root_buf = np.frombuffer(hist.GetArray(), dtype=np.float64)
+        root_buf[1:len(masked)+1] = masked  
+    
+
+    def _fill_counts_histogram_from_array(self, granularity, counts_array):
+        hist = self.hist_map[granularity]
+        hist.Reset()
+        counts_for_fill = counts_array
+        if granularity == 1:
+            counts_for_fill = counts_array.reshape(-1, 64).sum(axis=1)
+        if granularity == 2:
+            counts_for_fill = counts_array.reshape(-1, 4096).sum(axis=1)
+        arr = counts_for_fill.astype(np.float64)
+        root_buf = np.frombuffer(hist.GetArray(), dtype=np.float64)
+        root_buf[1:len(arr)+1] = arr
+
+    def _fill_counts_histogram_from_array_with_range(self, granularity, counts_array, minChannel, maxChannel):
+        hist = self.hist_map[granularity]
+        hist.Reset()
+
+        valid = counts_array[minChannel:maxChannel]
+
+        if granularity == 0:
+            arr = np.zeros(len(counts_array), dtype=np.float64)
+            arr[minChannel:maxChannel+1] = counts_array[minChannel:maxChannel+1]
+
+        elif granularity == 1:
+            grouped = np.zeros(len(counts_array) // 64, dtype=np.float64)
+            chip_min = minChannel // 64
+            chip_max = maxChannel // 64
+            grouped[chip_min:chip_max] = valid.reshape(-1, 64).sum(axis=1)  # ← no copy, view into original
+            arr = grouped
+
+        elif granularity == 2:
+            grouped = np.zeros(len(counts_array) // 4096, dtype=np.float64)
+            febd_min = minChannel // 4096
+            febd_max = maxChannel // 4096
+            grouped[febd_min:febd_max] = valid.reshape(-1, 4096).sum(axis=1)
+            arr = grouped
+
+        root_buf = np.frombuffer(hist.GetArray(), dtype=np.float64)
+        root_buf[1:len(arr)+1] = arr
+
+    def _render_thread_worker(self):
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                tmppath = f.name
+
+            devnull = open(os.devnull, 'w')
+            old_stdout = os.dup(1)
+            old_stderr = os.dup(2)
+            os.dup2(devnull.fileno(), 1)
+            os.dup2(devnull.fileno(), 2)
+
+            self.rootCanvas.SaveAs(tmppath)
+
+            os.dup2(old_stdout, 1)
+            os.dup2(old_stderr, 2)
+            os.close(old_stdout)
+            os.close(old_stderr)
+            devnull.close()
+
+            GLib.idle_add(self._update_gtk_image, tmppath)
+        except Exception as e:
+            print(f"Render thread error: {e}")
+            self._render_thread_running = False
+
+
+    def _update_gtk_image(self, tmppath):
+        try:
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file(tmppath)
+            self.rootImage.set_from_pixbuf(pixbuf)
+            self.rootImage.queue_draw()
+            os.unlink(tmppath)
+        except Exception as e:
+            print(f"GTK image update error: {e}")
+        finally:
+            self._render_thread_running = False
+        return False 
+    
+
+    def setup_plot_for_spectra(self, xMax):
+        self.rootHistEnergy.GetXaxis().SetRangeUser(0, xMax * 1.05)
+        self.rootHistEnergyRaw.GetXaxis().SetRangeUser(0, 500)
+
+    def setup_plot_for_count_dist(self):
+        titles = {
+            0: ("Global Channel ID", "Channel Event Distribution"),
+            1: ("Chip ID",           "ASIC Event Distribution"),
+            2: ("FEB/D ID",          "FEB/D Event Distribution"),
+        }
+        limits = {
+             0: ( self.__dataMonitorMinIDSelection - 5, self.__dataMonitorMaxIDSelection + 5 ),
+             1: ( self.__dataMonitorMinIDSelection - 1, self.__dataMonitorMaxIDSelection + 2 ),
+             2: ( self.__dataMonitorMinIDSelection - 1, self.__dataMonitorMaxIDSelection + 2 ),
+         }
+        xLabel, title = titles.get(self.__dataMonitorPlotBy)
+        xMinLimit, xMaxLimit = limits.get(self.__dataMonitorPlotBy)    
+        self.hist_map[self.__dataMonitorPlotBy].SetTitle(f"{title};{xLabel};Counts")
+        self.hist_map[self.__dataMonitorPlotBy].GetXaxis().SetRangeUser(xMinLimit, xMaxLimit)
+
+    def update_data_monitoring(self, isFirstCall=False):
+
+        self.__dataMonitorMinSettableID, self.__dataMonitorMaxSettableID, channel_data_array_global = self.__dataMonitorReader.read_counts_for_all_channels(self.__dataMonitorDataType)
+        self.__dataMonitorMinSettableEnergy, self.__dataMonitorMaxSettableEnergy, _ = self.__dataMonitorReader.read_energy_for_channel_range(self.__dataMonitorDataType, 0, self.__dataMonitorReader.nChannels - 1)
+       
+        if self.__dataMonitorMinSettableEnergy is None:
+            self.__dataMonitorMinSettableEnergy = self.__dataMonitorReader.energyLow
+        if self.__dataMonitorMaxSettableEnergy is None:
+            self.__dataMonitorMaxSettableEnergy = self.__dataMonitorReader.energyHigh
+
+        if isFirstCall:
+            
+            self.__dataMonitorMinIDSelection = self.__dataMonitorMinSettableID
+            self.__dataMonitorMaxIDSelection = self.__dataMonitorMaxSettableID
+
+            self.builder.get_object("dataMonitoringSpinButtonMin").handler_block(self.__spinHandlerIdMin)
+            self.builder.get_object("dataMonitoringSpinButtonMax").handler_block(self.__spinHandlerIdMax)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_range(0, 1310720)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_value(self.__dataMonitorMinIDSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_range(0, 1310720)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_value(self.__dataMonitorMaxIDSelection)
+            self.builder.get_object("dataMonitoringSpinButtonMin").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMin").handler_unblock(self.__spinHandlerIdMin)
+            self.builder.get_object("dataMonitoringSpinButtonMax").handler_unblock(self.__spinHandlerIdMax)
+            
+            self.__dataMonitorMinEnergySelection = self.__dataMonitorMinSettableEnergy 
+            self.__dataMonitorMaxEnergySelection = self.__dataMonitorMaxSettableEnergy
+
+            self.builder.get_object("dataMonitoringSpinButtonMin1").handler_block(self.__spinHandlerIdMin1)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").handler_block(self.__spinHandlerIdMax1)
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_range(self.__dataMonitorReader.energyLow, self.__dataMonitorReader.energyHigh)
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_value(self.__dataMonitorMinEnergySelection)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_range(self.__dataMonitorReader.energyLow, self.__dataMonitorReader.energyHigh)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_value(self.__dataMonitorMaxEnergySelection)
+            self.builder.get_object("dataMonitoringSpinButtonMin1").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").set_sensitive(False)
+            self.builder.get_object("dataMonitoringSpinButtonMin1").handler_block(self.__spinHandlerIdMin1)
+            self.builder.get_object("dataMonitoringSpinButtonMax1").handler_block(self.__spinHandlerIdMax1)
+
+
+        if self.__dataMonitorMaxSettableEnergy != self.__dataMonitorMaxEnergySelection and self.builder.get_object("dataMonitoringCheckBox1").get_active():
+            spinMax1 = self.builder.get_object("dataMonitoringSpinButtonMax1")
+            spinMin1 = self.builder.get_object("dataMonitoringSpinButtonMin1")
+            spinMax1.handler_block(self.__spinHandlerIdMax1)
+            spinMin1.handler_block(self.__spinHandlerIdMin1)
+        
+            if self.__dataMonitorMaxSettableEnergy is None:                
+                spinMax1.set_value(self.__dataMonitorReader.energyHigh)
+            else:
+                spinMax1.set_value(self.__dataMonitorMaxSettableEnergy)
+            
+            if self.__dataMonitorMinSettableEnergy is None:                
+                spinMin1.set_value(self.__dataMonitorReader.energyLow)
+            else:
+                spinMin1.set_value(self.__dataMonitorMinSettableEnergy)
+              
+            spinMax1.handler_unblock(self.__spinHandlerIdMax1)
+            spinMin1.handler_unblock(self.__spinHandlerIdMin1)
+
+        self.__dataMonitorMinIDSelection = int(self.builder.get_object("dataMonitoringSpinButtonMin").get_value())
+        self.__dataMonitorMaxIDSelection = int(self.builder.get_object("dataMonitoringSpinButtonMax").get_value())
+
+        self.__dataMonitorMinEnergySelection = float(self.builder.get_object("dataMonitoringSpinButtonMin1").get_value())
+        self.__dataMonitorMaxEnergySelection = float(self.builder.get_object("dataMonitoringSpinButtonMax1").get_value())
+
+        granularity_factor = [1, 64, 4096]
+        minChannelSelection = self.__dataMonitorMinIDSelection * granularity_factor[self.__dataMonitorPlotBy]
+        maxChannelSelection = self.__dataMonitorMaxIDSelection * granularity_factor[self.__dataMonitorPlotBy] + granularity_factor[self.__dataMonitorPlotBy]
+        if self.__dataMonitorPlotBy == 0:
+            maxChannelSelection -= 1
+
+        _, _, energy_data_array_selection = self.__dataMonitorReader.read_energy_for_channel_range(self.__dataMonitorDataType, minChannelSelection, maxChannelSelection)
+
+        edges   = self.__dataMonitorReader.edges
+        centers = self.__dataMonitorReader.bin_centers
+
+        self.rootCanvas.cd()
+        self.rootCanvas.SetLogy(1 if self.__dataMonitoringSetLogY else 0)
+        self.rootCanvas.SetGrid(1, 1) if self.__dataMonitoringSetGrid else self.rootCanvas.SetGrid(0, 0)
+
+        if self.__dataMonitorPlotType == 1:
+            self._fill_energy_histogram_from_array_with_range(energy_data_array_selection, self.__dataMonitorMinEnergySelection, self.__dataMonitorMaxEnergySelection)
+            self.setup_plot_for_spectra(self.__dataMonitorMaxEnergySelection)
+            hist = self.rootHistEnergyRaw if self.__dataMonitorDataType == 0 else self.rootHistEnergy
+            hist.Draw("HIST")
+
+        elif self.__dataMonitorPlotType == 0:
+            self._fill_counts_histogram_from_array_with_range(self.__dataMonitorPlotBy, channel_data_array_global, minChannelSelection, maxChannelSelection)
+            self.setup_plot_for_count_dist()
+            self.hist_map[self.__dataMonitorPlotBy].Draw("HIST")
+
+        self.rootCanvas.Update()
+
+        if not getattr(self, '_render_thread_running', False):
+            self._render_thread_running = True
+            threading.Thread(target=self._render_thread_worker, daemon=True).start()
+
+        if not self.__is_acquiring:
+            t = self.get_time_from_buffer() 
+            if t is not None:
+                self.__dataAcquisitonDuration = self.get_time_from_buffer() 
+
+        if self.__dataMonitoringShowGlobalStats:
+            self.print_global_stats(channel_data_array_global, self.__dataAcquisitonDataLoss)
+        else:
+            self.print_user_stats(energy_data_array_selection, centers,self.__dataMonitorMinEnergySelection,self.__dataMonitorMaxEnergySelection)
+
+        if not self.__is_acquiring:
+            self.stop_data_monitoring()
+            return False
+        
+        return True
+   
+
+    def __on_stats_buffer_changed(self, buf):
+            pass  # exists only so we have a handler ID to block
+
+
+    def print_global_stats(self, channel_data_array, lost_frame_percentage=0):
+
+        if lost_frame_percentage is None:
+            lost_frame_percentage = 0
+
+        buf = self.builder.get_object("dataMonitoringTextView").get_buffer()
+
+        scrolled_window = self.builder.get_object("dataMonitoringTextScrollWindow")
+        vadj = scrolled_window.get_vadjustment()
+        saved_position = vadj.get_value()
+
+        self.__statsBufferChangedId = buf.connect("changed", self.__on_stats_buffer_changed)
+
+        sep = " " + "─" * 39 + "\n"
+
+        #if self.__dataAcquistionTime0 is not None and self.__is_acquiring:
+        #    timeElapsed = time.time() - self.__dataAcquistionTime0 + 0.2
+        #else:
+        #    timeElapsed = 1
+        #if not self.__is_acquiring:
+
+        timeElapsed = self.__dataAcquisitonDuration
+
+        nonzero_ch    = np.where(channel_data_array > 0)[0]
+        n_active      = len(nonzero_ch)
+
+        counts_f     = channel_data_array.astype(np.float64)
+
+        def _total_events_for_type(type_idx):
+            try:
+                _, _, arr = self.__dataMonitorReader.read_counts_for_all_channels(type_idx)
+                return int(arr.sum())
+            except Exception:
+                return None
+
+        total_raw          = _total_events_for_type(0)
+        total_singles       = _total_events_for_type(1)
+        total_groups        = _total_events_for_type(2)
+        total_coincidences  = int(_total_events_for_type(3)/2) # account for 1 coincidence has 2 events written
+
+        totals_by_type = {
+            0: total_raw,
+            1: total_singles,
+            2: total_groups,
+            3: total_coincidences,
+        }
+
+        total_events_selected = totals_by_type.get(self.__dataMonitorDataType)
+        if total_events_selected is None:
+            total_events_selected = 0
+
+        event_rate_selected = total_events_selected / timeElapsed
+
+        def fmt_number(v):
+            if v is None:
+                return "N/A"
+            if abs(v) >= 1e9:
+                return f"{v:.6e}"
+            return f"{v:,}"
+
+        def _grouped_stats(group_size):
+            n_total = len(counts_f)
+            n_groups = int(np.ceil(n_total / group_size))
+            if n_groups == 0:
+                return 0, 0, 0.0, 0.0, 0.0, np.array([]), 0
+
+            padded_len = n_groups * group_size
+            padded = np.zeros(padded_len, dtype=np.float64)
+            padded[:n_total] = counts_f
+
+            grp_counts = padded.reshape(n_groups, group_size).sum(axis=1)
+            grp_rates  = grp_counts / timeElapsed
+            active_mask = grp_rates > 0
+            n_active_groups = int(active_mask.sum())
+            if active_mask.any():
+                active_ids   = np.where(active_mask)[0]
+                active_rates = grp_rates[active_mask]
+                max_idx  = int(active_ids[active_rates.argmax()])
+                min_idx  = int(active_ids[active_rates.argmin()])
+                max_rate = float(grp_rates[max_idx])
+                min_rate = float(grp_rates[min_idx])
+                avg_rate = float(active_rates.mean())
+            else:
+                max_idx = min_idx = 0
+                max_rate = min_rate = avg_rate = 0.0
+            return max_idx, min_idx, max_rate, min_rate, avg_rate, grp_rates, n_active_groups
+
+        ch_max_idx, ch_min_idx, ch_max_rate, ch_min_rate, ch_avg_rate, ch_rates, n_active_ch_groups = _grouped_stats(1)
+        chip_max_idx, chip_min_idx, chip_max_rate, chip_min_rate, chip_avg_rate, chip_rates, n_active_chips = _grouped_stats(64)
+        febd_max_idx, febd_min_idx, febd_max_rate, febd_min_rate, febd_avg_rate, febd_rates, n_active_febds = _grouped_stats(4096)
+        port_max_idx, port_min_idx, port_max_rate, port_min_rate, port_avg_rate, port_rates, n_active_ports = _grouped_stats(131072)
+
+        def format_val(n):
+            if abs(n) >= 10000:
+                return f"{n:.3e}"
+            return f"{n:.1f}"
+
+        def summary_row(label, value):
+            return f" {label:<{SUMMARY_LABEL_W}}:{value:^{VALUE_W}}\n"
+
+        def stat_row(label, idx, events, rate):
+            tag = f"{label} (#{idx})" if idx is not None else label
+            return f" {tag:<{LABEL_W}}{format_val(events):>{EVENTS_W}} {format_val(rate):>{RATE_W}}\n"
+
+        header_row = f"  {'':<{LABEL_W}}{'# Events':>{EVENTS_W}} {'Rate(cps)':>{RATE_W}}\n"
+
+        def section(title, max_idx, min_idx, max_rate, min_rate, avg_rate, rates_arr):
+            return (
+                f" {title}\n"
+                + stat_row(" Max", max_idx, rates_arr[max_idx] * timeElapsed if len(rates_arr) else 0, max_rate)
+                + stat_row(" Min", min_idx, rates_arr[min_idx] * timeElapsed if len(rates_arr) else 0, min_rate)
+                + stat_row(" Avg", None, avg_rate * timeElapsed, avg_rate)
+                + sep
+            )
+
+        def render_occupancy_block(title, scale):
+            return (
+                f"{title:^41}\n{sep}"
+                + header_row
+                + sep
+                + stat_row("Total", None, total_events_selected * scale, event_rate_selected * scale)
+                + sep
+                + section("Port ID",    port_max_idx, port_min_idx, port_max_rate * scale, port_min_rate * scale, port_avg_rate * scale, port_rates * scale)
+                + section("FEB/D ID",   febd_max_idx, febd_min_idx, febd_max_rate * scale, febd_min_rate * scale, febd_avg_rate * scale, febd_rates * scale)
+                + section("Chip ID",    chip_max_idx, chip_min_idx, chip_max_rate * scale, chip_min_rate * scale, chip_avg_rate * scale, chip_rates * scale)
+                + section("Channel ID", ch_max_idx,   ch_min_idx,   ch_max_rate * scale,   ch_min_rate * scale,   ch_avg_rate * scale,   ch_rates * scale)
+            )
+
+        data_type_name = self.builder.get_object("dataMonitoringComboBox1").get_active_text()
+        major_sep = " " + "═" * 39 + "\n"
+
+        show_estimate = lost_frame_percentage > 2
+        if show_estimate:
+            received_title  = f"OCCUPANCY - {data_type_name.upper()} (RECEIVED)"
+            estimated_title = f"OCCUPANCY - {data_type_name.upper()} (ESTIMATED)"
+            scale_factor = 100.0 / (100.0 - lost_frame_percentage)
+        else:
+            received_title = f"OCCUPANCY - {data_type_name.upper()}"
+
+        occupancy_text = render_occupancy_block(received_title, 1.0)
+        if show_estimate:
+            occupancy_text += major_sep + "\n" + major_sep + render_occupancy_block(estimated_title, scale_factor)
+
+        text = (major_sep
+            + f"{'ACQUISITION SUMMARY':^41}\n{sep}"
+            + summary_row("Acquisition time (s)", f"{timeElapsed:.1f}")
+            + sep
+            + summary_row("# Events - Raw", fmt_number(total_raw))
+            + summary_row("# Events - Singles", fmt_number(total_singles))
+            + summary_row("# Events - Groups", fmt_number(total_groups))
+            + summary_row("# Events - Coinc", fmt_number(total_coincidences)) 
+            + sep
+            + summary_row("# Active Channels", fmt_number(n_active))
+            + summary_row("# Active Chips", fmt_number(n_active_chips))
+            + summary_row("# Active FEB/Ds", fmt_number(n_active_febds))
+            + summary_row("# Active Ports", fmt_number(n_active_ports))
+            + major_sep + "\n" + major_sep
+            + occupancy_text
+            + major_sep
+        )
+
+        buf.set_text(text)
+        buf.place_cursor(buf.get_start_iter())
+        GLib.idle_add(lambda: vadj.set_value(saved_position))
+
+
+    def print_user_stats(self, energy_data_array_selection, centers, minEnergy, maxEnergy):
+        buf = self.builder.get_object("dataMonitoringTextView").get_buffer()
+
+        scrolled_window = self.builder.get_object("dataMonitoringTextScrollWindow")
+        vadj = scrolled_window.get_vadjustment()
+        saved_position = vadj.get_value()
+
+        sep = " " + "─" * 39 + "\n"
+        major_sep = " " + "═" * 39 + "\n"
+
+        # if self.__dataAcquistionTime0 is not None:
+        #     timeElapsed = time.time() - self.__dataAcquistionTime0 + 0.2
+        # else:
+        #     timeElapsed = 1
+
+        timeElapsed = self.__dataAcquisitonDuration
+
+        # apply energy filter on top of the channel selection
+        energy_mask = (centers >= minEnergy) & (centers <= maxEnergy)
+        energy_data_roi = np.where(energy_mask, energy_data_array_selection, 0)
+
+        if energy_data_roi.sum() > 0:
+            peak_bin     = int(energy_data_roi.argmax())
+            peak_energy  = float(centers[peak_bin])
+            weights      = energy_data_roi.astype(np.float64)
+            mean_energy  = float(np.average(centers, weights=weights))
+            total_counts = int(energy_data_roi.sum())
+            count_rate   = total_counts / (timeElapsed if timeElapsed > 0 else 1)
+        else:
+            peak_energy = mean_energy = 0.0
+            total_counts = 0
+            count_rate   = 0.0
+
+        granularity_labels = ["Channel ID", "Chip ID", "FEB/D ID"]
+        range_label = granularity_labels[self.__dataMonitorPlotBy]
+
+        def fmt_number(v):
+            if v is None:
+                return "N/A"
+            if abs(v) >= 1e9:
+                return f"{v:.6e}"
+            return f"{v:,}"
+
+        def summary_row(label, value):
+            return f" {label:<{SUMMARY_LABEL_W}}:{value:^{VALUE_W}}\n"
+
+        data_type_name = self.builder.get_object("dataMonitoringComboBox1").get_active_text()
+
+        text = (major_sep
+            + f"{'USER SELECTION STATS - ' + data_type_name.upper():^41}\n{sep}"
+            + summary_row("Acquisition time (s)", f"{timeElapsed:.1f}")
+            + sep
+            + summary_row(f"{range_label} Range", f"[{self.__dataMonitorMinIDSelection}, {self.__dataMonitorMaxIDSelection}]")
+            + summary_row("Energy Range", f"[{minEnergy:.2f}, {maxEnergy:.2f}]")
+            + sep
+            + summary_row("# Events", fmt_number(total_counts))
+            + summary_row("Event rate (cps)", f"{count_rate:.1f}")
+            + sep
+            + summary_row("Peak energy", f"{peak_energy:.2f}")
+            + summary_row("Mean energy", f"{mean_energy:.2f}")
+            + major_sep
+        )
+        buf.set_text(text)
+        buf.place_cursor(buf.get_start_iter())
+        GLib.idle_add(lambda: vadj.set_value(saved_position))
+
+
+    def _measure_text_width_px(self, text, font_family, size_px):
+        surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
+        cr = cairo.Context(surface)
+
+        font_options = cairo.FontOptions()
+        font_options.set_hint_metrics(cairo.HintMetrics.OFF)
+        cr.set_font_options(font_options)
+
+        layout = PangoCairo.create_layout(cr)
+        font_desc = Pango.FontDescription(font_family)
+        font_desc.set_absolute_size(size_px * Pango.SCALE)
+        layout.set_font_description(font_desc)
+
+        layout.set_text(text, -1)
+        width_units, _ = layout.get_size()
+        return width_units / Pango.SCALE
+    
+
+    def _widest_stats_sample_line(self):
+        # worst-case strings for each row type, using the actual fixed widths
+        stats_line   = f"  {'Max (#123456)':<{LABEL_W}} {'1.23e+06':>{EVENTS_W}} {'1.23e+06':>{RATE_W}}"
+        summary_line = f" {'Acquisition time':<{SUMMARY_LABEL_W}}: 1224168.2 cps"
+        sep_line     = " " + "─" * 35
+        return max([stats_line, summary_line, sep_line], key=len)
+    
+    def _fit_font_size_to_width(self, sample_text, available_width_px,
+        font_family="monospace", min_size=6.0, max_size=18.0, step=0.1):
+        size = max_size
+        while size >= min_size:
+            w = self._measure_text_width_px(sample_text, font_family, size)
+            if w <= available_width_px:
+                return size
+            size -= step
+        return min_size
+
+    def _apply_stats_font_size(self, size_px):
+        if getattr(self, "_current_stats_font_size", None) == size_px:
+            return 
+        self._current_stats_font_size = size_px
+        css = f"""
+        #dataMonitoringTextView {{
+            font-family: monospace;
+            font-size: {size_px}px;
+            padding-top: 2px;
+        }}
+        """.encode()
+        provider = Gtk.CssProvider()
+        provider.load_from_data(css)
+        ctx = self.builder.get_object("dataMonitoringTextView").get_style_context()
+        ctx.add_provider(provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    def on_dataMonitoringTextView_size_allocate(self, widget, allocation):
+        if getattr(self, "_last_stats_tv_width", None) == allocation.width:
+            return
+        self._last_stats_tv_width = allocation.width
+
+        padding_px = 12
+        target_width = max(allocation.width - padding_px, 10)
+
+        sample = self._widest_stats_sample_line()
+
+        font_size = self._fit_font_size_to_width(sample, target_width)
+        self._apply_stats_font_size(font_size)
+
+   
+    def delete_monitoring_shm(self):
+        try:
+            os.unlink("/dev/shm/online_data")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            print(f"Failed to delete SHM: {e}")
+
+    def stop_data_monitoring(self):
+        if self.__dataMonitorSourceId is not None:
+            GLib.source_remove(self.__dataMonitorSourceId)
+            self.__dataMonitorSourceId = None
+    
+    # Dialogs
     def show_error_dialog(self, string):
         dialog = Gtk.MessageDialog(parent = self.MainWindow, flags = 0, message_type = Gtk.MessageType.ERROR, buttons = Gtk.ButtonsType.OK, text = "ERROR")
         dialog.format_secondary_text(string)

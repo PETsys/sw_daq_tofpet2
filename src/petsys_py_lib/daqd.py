@@ -22,12 +22,46 @@ import subprocess
 from sys import stdout
 from copy import deepcopy
 import os, stat, os.path
+import glob
 
 MAX_PORTS = 32
 MAX_SLAVES = 32
 MAX_CHIPS = 64
 
 PROTOCOL_VERSION = 0x104
+
+
+_HERE = os.path.dirname(__file__)
+DEFAULT_PROCESS_EXEC = os.path.join(_HERE, '..', 'online_process')
+DEFAULT_MONITOR_EXEC = os.path.join(_HERE, '..', 'online_monitor')
+ 
+ 
+
+class ProcessedDataFileConfig:
+	def __init__(self, eventType= "coincidence", outputFormat="", fractionToWrite=100, hitLimit=1, tRef="", userTimeRef= 0.0, filePrefix=""):
+		self.eventType = eventType
+		self.outputFormat = outputFormat
+		self.fractionToWrite = fractionToWrite
+		self.hitLimit = hitLimit
+		self.tRef = tRef
+		self.userTimeRef = userTimeRef
+		self.filePrefix = filePrefix
+
+class AcquisitionOptions:
+	def __init__(self):
+		self.calMode = False
+		self.config = None
+		self.useWriteRaw = True
+		self.processedDataFileConfig = ProcessedDataFileConfig()
+		self.secondaryExec = DEFAULT_PROCESS_EXEC
+		self.monitorToc = None
+		self.processingTarget = None
+		self.maxChannel = 131072
+		self.verbose = True
+		self.isDataTransmissionCheck = False
+		# Monitoring is filled for 1 buffer in (monitorBufferMask + 1).
+		# 0 monitors every buffer; must be of the form 2^n - 1.
+		self.monitorBufferMask = 255
 
 # Handles interaction with the system via daqd
 class Connection:
@@ -617,9 +651,10 @@ class Connection:
 			else:
 				raise ErrorAsicPresenceInconsistent(inconsistentStateAsics)
 
+		febdList = []
 		for portID, slaveID in self.getActiveFEBDs():
 			lst = []
-
+			febdList.append((portID,slaveID))
 			enable_vector = 0x0
 			for lPortID, lSlaveID, lChipID in self.getActiveAsics():
 				if lPortID != portID or lSlaveID != slaveID: continue
@@ -639,7 +674,7 @@ class Connection:
 
 		# Check that the DAQ is now running properly
 		self.__synchronizeDataToConfig()
-		return None
+		return febdList
 		
 
 	def __setAcquisitionMode(self, mode):
@@ -1034,8 +1069,6 @@ class Connection:
 					tacRefreshPeriod_1 = cachedGC.getValue("tac_refresh_period")
 					tacRefreshPeriod_2 = cachedCC.getValue("tac_max_age")
 					self.__asicConfigCache_TAC_Refresh.add((tacRefreshPeriod_1, tacRefreshPeriod_2))
-					
-			
 				
 		return None
 	
@@ -1104,156 +1137,191 @@ class Connection:
 		f.close()
 		return None
 
-	def openRawAcquisition(self, fileNamePrefix, calMode = False, verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, None, calMode, None, None, True, None, None, None, None, None, None,None, verbose=verbose)
 
-	def openAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef=0, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		processedFileNamePrefix = fileNamePrefix
-		if event_type == "raw":
-			processedFileNamePrefix += "_raw"
-		elif event_type == "singles":
-			processedFileNamePrefix += "_single"
-		elif event_type == "groups":
-			processedFileNamePrefix += "_group"
-		elif event_type == "coincidences":
-			processedFileNamePrefix += "_coinc"
+	def openRawAcquisition(self, fileNamePrefix, calMode=False):
+		opts = AcquisitionOptions()
+		opts.calMode = calMode
+		return self.__openRawAcquisition(fileNamePrefix, opts)
 
-		if output_format in ["text","textCompact"]:
-			processedFileNamePrefix += ".dat"
-		elif output_format == "root":
-			processedFileNamePrefix += ".root"
 
-		return self.__openRawAcquisition(None, processedFileNamePrefix, False, config, None, False, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec=online_process_exec, verbose=verbose)
-	
-	def openRawAcquisitionWithProcessing(self, fileNamePrefix, config, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef=0, online_process_exec=os.path.join(os.path.dirname(__file__), '..', 'online_process'), verbose=True):
-		processedFileNamePrefix = fileNamePrefix
-		if event_type== "raw":
-			processedFileNamePrefix += "_raw"
-		elif event_type == "singles":
-			processedFileNamePrefix += "_single"
-		elif event_type == "groups":
-			processedFileNamePrefix += "_group"
-		elif event_type == "coincidences":
-			processedFileNamePrefix += "_coinc"
+	def _testFileName(self, fileNamePrefix):
+		return os.path.dirname(fileNamePrefix) + "/checkDataTransmissionFile"
 
-		if output_format in ["text","textCompact"]:
-			processedFileNamePrefix += ".dat"
-		elif output_format == "root":
-			processedFileNamePrefix += ".root"
-		return self.__openRawAcquisition(fileNamePrefix, processedFileNamePrefix, False, config, None, True, event_type, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec=online_process_exec, verbose=verbose)
+	def _removeTestFiles(self, fileNamePrefix):
+		for file_path in glob.glob(self._testFileName(fileNamePrefix) + "*"):
+			if os.path.isfile(file_path):
+				os.remove(file_path)
 
-	def openRawAcquisitionWithMonitor(self, fileNamePrefix, config, monitor_toc, monitor_exec=os.path.join(os.path.dirname(__file__), '..', 'online_monitor'), verbose=True):
-		return self.__openRawAcquisition(fileNamePrefix, False, config, monitor_toc, True, None, None, None, None, None, None , None, secondary_exec=monitor_exec, verbose=verbose)
+	def _openWithProcessing(self, fileNamePrefix, opts, useWriteRaw, isDataTramsissionCheck):
+		opts.useWriteRaw = useWriteRaw
+		opts.isDataTransmissionCheck = bool(isDataTramsissionCheck)
 
-	def __openRawAcquisition(self, rawFileNamePrefix, processedFileNamePrefix, calMode, config, monitor_toc, useWriteRaw, eventType, output_format, fractionToWrite, hitLimit, tref, userTimeRef, secondary_exec, verbose=True):
-		
+		if opts.isDataTransmissionCheck:
+			fileNamePrefix = self._testFileName(fileNamePrefix)
+
+		opts.processedDataFileConfig.filePrefix = self._buildProcessedPrefix(
+			fileNamePrefix,
+			opts.processedDataFileConfig.eventType,
+			opts.processedDataFileConfig.outputFormat)
+
+		return self.__openRawAcquisition(fileNamePrefix if useWriteRaw else None, opts)
+
+	def openAcquisitionWithProcessing(self, fileNamePrefix, opts, isDataTramsissionCheck = False):
+		return self._openWithProcessing(fileNamePrefix, opts, False, isDataTramsissionCheck)
+
+	def openRawAcquisitionWithProcessing(self, fileNamePrefix, opts, isDataTramsissionCheck = False):
+		return self._openWithProcessing(fileNamePrefix, opts, True, isDataTramsissionCheck)
+ 
+
+	# Here for legacy reasons, since some users might be still using old monitor implementation
+	def openRawAcquisitionWithMonitor(self, fileNamePrefix, monitor_toc):
+		opts = AcquisitionOptions()
+		opts.useWriteRaw = True
+		opts.secondaryExec = DEFAULT_MONITOR_EXEC
+		opts.monitorToc = monitor_toc
+		return self.__openRawAcquisition(fileNamePrefix, opts)
+
+
+	def __openRawAcquisition(self, rawFileNamePrefix, opts):
 		asicsConfig = self.getAsicsConfig()
-		if rawFileNamePrefix != "/dev/null" and useWriteRaw:
-			modeFileName = rawFileNamePrefix + ".modf"
-			modeFile = open(modeFileName, "w")
-		else:
-			modeFile = open("/dev/null","w")
 
-		modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
-		modeList = [] 
-		for portID, slaveID, chipID in list(asicsConfig.keys()):
-			ac = asicsConfig[(portID, slaveID, chipID)]
-			for channelID in range(64):
-				cc = ac.channelConfig[channelID]
-				mode = cc.getValue("qdc_mode") and "qdc" or "tot"
-				modeList.append(mode)
-				modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
-				
-		if(len(set(modeList))!=1):
-			qdcMode = "mixed"
-		elif(modeList[0] == "tot"):
-			qdcMode = "tot"
-		else:
-			qdcMode = "qdc"
-                        
-		modeFile.close() 	
-		triggerID = -1
+		write_mode_to_disk = rawFileNamePrefix not in (None, "/dev/null") and opts.useWriteRaw
+		mode_file_path = (rawFileNamePrefix + ".modf") if write_mode_to_disk else "/dev/null"
+
+		with open(mode_file_path, "w") as modeFile:
+			modeFile.write("#portID\tslaveID\tchipID\tchannelID\tmode\n")
+			modeList = []
+			for portID, slaveID, chipID in list(asicsConfig.keys()):
+				ac = asicsConfig[(portID, slaveID, chipID)]
+				for channelID in range(64):
+					cc = ac.channelConfig[channelID]
+					mode = "qdc" if cc.getValue("qdc_mode") else "tot"
+					modeList.append(mode)
+					modeFile.write("%d\t%d\t%d\t%d\t%s\n" % (portID, slaveID, chipID, channelID, mode))
+
+		qdcMode = self._defineQdcMode(modeList)
+		triggerID = self._defineTriggerID()
+
+		fileCreationDAQTime = self.getCurrentTimeTag()
+		daqSynchronizationEpoch = time() - fileCreationDAQTime / self.__systemFrequency
+
+		if opts.useWriteRaw:
+			self.__writerPipe = subprocess.Popen(
+				self._buildWriteRawCmd(rawFileNamePrefix, opts, qdcMode, triggerID, daqSynchronizationEpoch, fileCreationDAQTime),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+		if opts.secondaryExec == DEFAULT_PROCESS_EXEC and opts.processingTarget is not None:
+			self.__monitorPipe = subprocess.Popen(
+				self._buildOnlineProcessCmd(opts, qdcMode, triggerID, daqSynchronizationEpoch, fileCreationDAQTime),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+			n = struct.calcsize("@?")
+			self.__monitorPipe.stdout.read(n)
+
+		elif opts.secondaryExec == DEFAULT_MONITOR_EXEC and opts.monitor_toc is not None:
+			self.__monitorPipe = subprocess.Popen(
+				self._buildOnlineMonitorCmd(opts, qdcMode, opts.monitor_toc, triggerID),
+				bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True,
+			)
+			n = struct.calcsize("@?")
+			self.__monitorPipe.stdout.read(n)
+
+
+	def _buildWriteRawCmd(self, rawFileNamePrefix, opts, qdcMode, triggerID, daqSyncEpoch, fileCreationDAQTime):
+		return [
+			os.path.join(os.path.dirname(__file__), '..', 'write_raw'),
+			self.__shmName,
+			rawFileNamePrefix,
+			str(int(self.__systemFrequency)),
+			str(qdcMode),
+			"%1.12f" % daqSyncEpoch,
+			str(fileCreationDAQTime),
+			'T' if opts.calMode else 'N',
+			str(triggerID),
+			'T' if opts.verbose else 'N',
+		]
+
+	def _buildOnlineProcessCmd(self, opts, qdcMode, triggerID, daqSyncEpoch, fileCreationDAQTime):
+		return [
+			DEFAULT_PROCESS_EXEC,
+			str(int(self.__systemFrequency)),
+			opts.processedDataFileConfig.filePrefix,
+			opts.processedDataFileConfig.eventType,
+			opts.processedDataFileConfig.outputFormat,
+			qdcMode,
+			opts.config,
+			self.__shmName,
+			str(triggerID),
+			"%1.12f" % daqSyncEpoch,
+			str(fileCreationDAQTime),
+			str(opts.processedDataFileConfig.fractionToWrite),
+			str(opts.processedDataFileConfig.hitLimit),
+			opts.processedDataFileConfig.tRef,
+			'T' if opts.isDataTransmissionCheck else 'N',
+			'T' if opts.verbose else 'N',
+			opts.processingTarget,
+			str(opts.maxChannel),
+			str(opts.monitorBufferMask),
+			"%1.12f" % opts.processedDataFileConfig.userTimeRef
+		]
+
+
+	def _buildOnlineMonitorCmd(self, monitor_exec, qdcMode, monitor_toc, triggerID):
+		return [
+			monitor_exec,
+			str(int(self.__systemFrequency)),
+			"tot" if qdcMode == "tot" else "qdc",
+			self.__shmName,
+			monitor_toc,
+			str(triggerID),
+			"%1.12f" % self.getAcquisitionStartTime(),
+		]
+
+	def _buildProcessedPrefix(self, base, event_type, output_format):
+		suffix_map = {
+			"raw": "_raw",
+			"singles": "_single",
+			"groups": "_group",
+			"coincidences": "_coinc",
+		}
+		prefix = base + suffix_map.get(event_type, "")
+		if output_format in ("text", "textCompact"):
+			prefix += ".dat"
+		elif output_format == "root":
+			prefix += ".root"
+		return prefix
+
+	def _defineQdcMode(self, modeList):
+		if len(set(modeList)) != 1:
+			return "mixed"
+		return modeList[0]
+
+	def _defineTriggerID(self):
 		trigger = self.getTriggerUnit()
 		if trigger is None:
-			triggerID = -1
-		elif [ trigger ] == self.getActiveFEBDs():
-			triggerID = 1
-		else:
-			portID, slaveID = trigger
-			triggerID = 32 * portID + slaveID
-  		
-		# Determine current time and and estimate acquisition wallclock start time
-		fileCreationDAQTime = self.getCurrentTimeTag()
-		currentTime = time()
-		daqSynchronizationEpoch = currentTime - fileCreationDAQTime / self.__systemFrequency
+			return -1
+		if [trigger] == self.getActiveFEBDs():
+			return 1
+		portID, slaveID = trigger
+		return 32 * portID + slaveID
 
-		if useWriteRaw:
-			cmd = [ os.path.join(os.path.dirname(__file__), '..', "write_raw"),      
-			self.__shmName, \
-			rawFileNamePrefix, \
-			str(int(self.__systemFrequency)), \
-			str(qdcMode), "%1.12f" % daqSynchronizationEpoch,
-            str(fileCreationDAQTime),
-			calMode and 'T' or 'N', 
-			str(triggerID),
-			verbose and 'T' or 'N']
 	
-			self.__writerPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-		if secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_process'):
-			cmd = [
-			secondary_exec,
-			str(int(self.__systemFrequency)),
-			processedFileNamePrefix,
-			eventType,
-			output_format,
-			qdcMode,
-			config,
-			self.__shmName,
-			str(triggerID), 
-			"%1.12f" % daqSynchronizationEpoch,
-            str(fileCreationDAQTime),
-			str(fractionToWrite),
-			str(hitLimit),
-			tref,
-			"%1.12f" % userTimeRef,
-			verbose and 'T' or 'N'
-			]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-
-			template = "@?"
-			n = struct.calcsize(template)
-			data = self.__monitorPipe.stdout.read(n)
-		elif secondary_exec == os.path.join(os.path.dirname(__file__), '..', 'online_monitor'):
-			cmd = [
-				secondary_exec,
-				str(int(self.__systemFrequency)),
-				(qdcMode == "tot") and "tot" or "qdc",
-				config,
-				self.__shmName,
-				monitor_toc,
-				str(triggerID), 
-				"%1.12f" % self.getAcquisitionStartTime()
-				]
-			self.__monitorPipe = subprocess.Popen(cmd, bufsize=-1, stdin=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
-			data = self.__monitorPipe.stdout.read(n)
-			
 
 	## Closes the current acquisition file
 	def closeAcquisition(self):
-		workers = [self.__writerPipe ]
-		if self.__monitorPipe is not None:
-			workers += [ self.__monitorPipe ]
-
+		workers = [ w for w in (self.__writerPipe, self.__monitorPipe) if w is not None ]
+ 
 		for worker in workers:
 			worker.stdin.close()
-
+ 
 		sleep(0.5)
-
+ 
 		for worker in workers:
 			worker.kill()
 			
 		self.__writerPipe = None
 		self.__monitorPipe = None
+
 
 	def __stopAcquisitionRequest(self, fifo_fd):
 		try:
@@ -1355,6 +1423,8 @@ class Connection:
 			for pin, pout in workers:
 				data = pout.read(n3)
 
+			stepFrames, stepFramesLost, stepEvents = struct.unpack(template3, data)
+                        
 			index = (rdPointer + bs - 1) % bs
 			currentFrame = self.__shm.getFrameID(index)
 
@@ -1362,16 +1432,16 @@ class Connection:
 
 			nFrames = currentFrame - startFrame + 1
 			nBlocks += 1
-			if (currentFrame - lastUpdateFrame) * frameLength > 0.1:
+			if (currentFrame - lastUpdateFrame) * frameLength > 0.2:
 				t1 = time()
 				if(verbose):
-					stdout.write("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)\r" % (nFrames, t1-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
+					stdout.write("INFO: Acquired for %4.1f seconds | #Events: %d | Avg Rate: %4.1f evts/s | Data Loss: %3.1f%%\r" % (nFrames * frameLength, stepEvents, stepEvents/(nFrames * frameLength), 100.0 * stepFramesLost / stepFrames))
 				stdout.flush()
 				lastUpdateFrame = currentFrame
 		t1 = time()
 		if(verbose):
-			print("Python:: Acquired %d frames in %4.1f seconds, corresponding to %4.1f seconds of data (delay = %4.1f)" % (nFrames, time()-t0, nFrames * frameLength, (t1-t0) - nFrames * frameLength))
-
+			print("INFO: Acquired for %4.1f seconds | #Events: %d | Avg Rate: %4.1f evts/s | Data Loss: %3.1f%%\r" % (nFrames * frameLength, stepEvents, stepEvents/(nFrames * frameLength), 100.0 * stepFramesLost / stepFrames))
+                       
 		# Send end of step block (with wrPointer = rdPointer)
 		data = struct.pack(template1, step1, step2, rdPointer, rdPointer, 2)
 		for pin, pout in workers:
@@ -1392,16 +1462,18 @@ class Connection:
 		return stepFrames, stepFramesLost, stepEvents
 
 
-	def checkDataTransmission(self, acquisitionTime, testTime = 5):
+	def checkDataTransmission(self, acquisitionTime, fileNamePrefix, testTime = 5):
 		print("INFO: Checking system data transmission...")	
 		stdout.flush()
 		frames, framesLost, events = self.acquire(testTime, 0, 0, verbose=False)
 		dataLoss = 100.0 * framesLost / frames
 		transmittedRate = events / testTime / 1e6
-		if(dataLoss > 10.0):
+		self._removeTestFiles(fileNamePrefix)
+		
+		if(dataLoss > 5.0):
 			if dataLoss<100:
 				totalRate = transmittedRate * (100.0 / (100 - dataLoss))
-				user_input = input("WARNING: Estimated data loss for %.1f%% of data frames. Successful transmission/processing for %.1f Mevents/s (out of total incoming %.1f MEvents/s)."
+				user_input = input("WARNING: Estimated data loss for %.1f%% of data frames. Successful transmission for an estimated %.1f Mevents/s (out of total incoming %.1f MEvents/s)."
 						"\nProceed with acquisition for %4.1f second(s)? [Y/n]\n" % (dataLoss, transmittedRate, totalRate, acquisitionTime))
 			else:
 				user_input = input("WARNING: Estimated data loss for %.1f%% of data frames."
@@ -1416,9 +1488,54 @@ class Connection:
 				return False
 		else:
 			return True
-        
-        ## Acquires data and decodes it into a bytes buffer
-        # @param acquisitionTime Acquisition time in seconds
+		
+	def tuneMonitorBufferMask(self, fileNamePrefix, opts, maxDataLoss = 5.0, testTime = 2, candidateMasks = None):
+		if candidateMasks is None:
+			candidateMasks = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023]
+
+		print("INFO: Testing online monitoring sampling rates...")
+		stdout.flush()
+
+		savedVerbose = opts.verbose
+		opts.verbose = False
+
+		lastDataLoss = None
+		try:
+			i = 0
+			while i < len(candidateMasks):
+				mask = candidateMasks[i]
+				opts.monitorBufferMask = mask
+				self._openWithProcessing(fileNamePrefix, opts, opts.useWriteRaw, True)
+
+				frames, framesLost, events = self.acquire(testTime, 0, 0, verbose=False)
+				lastDataLoss = 100.0 * framesLost / frames
+				self.closeAcquisition()
+				self._removeTestFiles(fileNamePrefix)
+
+				stdout.flush()
+
+				if lastDataLoss <= maxDataLoss:
+					return True
+				
+				if mask == 0 and lastDataLoss > 33.0 and 15 in candidateMasks:
+					i = candidateMasks.index(15)
+					continue
+				
+				i += 1
+		finally:
+			opts.verbose = savedVerbose
+
+		print("WARNING: Data loss is about %.1f%% with online monitoring"
+			% (lastDataLoss))
+		user_input = input("Proceed with acquisition anyway? [Y/n]\n")
+		if user_input in ('', 'y', 'yes', 'Y', 'Yes'):
+			return True
+		print("WARNING: Acquisition aborted")
+		return False
+
+    
+	## Acquires data and decodes it into a bytes buffer
+    # @param acquisitionTime Acquisition time in seconds
 	# @return A bytes buffer containing events as per shw_raw_py.cpp/unpacked_event_t
 	def acquireAsBytes(self, acquisitionTime):
 		frameLength = 1024.0 / self.__systemFrequency
